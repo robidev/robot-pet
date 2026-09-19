@@ -38,7 +38,7 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 | Cluster | Status (2026-09-19) |
 |---|---|
 | **A: firmware and C++** | **Done.** A1–A3 are in `~/LilyGo-Cam-RobotFace` (uncommitted), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
-| **B: foundations and I/O** | **Done** apart from the `/tool/{name}` route, which moves to D2. Live-verified: vacuum polling, face init, audio to the PC, `/api/face/current` and snapshot through the API, STT and piper supervision, and clean shutdown. **Still needs you:** `smoke.py face` with a face in view, `smoke.py stt` (speak to it), and `smoke.py say` / `smoke.py echo` with socat running on the robot. |
+| **B: foundations and I/O** | **Done and verified on hardware**, apart from the `/tool/{name}` route, which moves to D2. All five smoke tests pass: vacuum polling, face events and presence, STT, TTS out of the robot's speaker, and `echo` — where the pet heard itself zero times (the gate caught its own utterances) and answered every real one. |
 
 **Findings from the first hardware smoke tests (2026-09-20):**
 
@@ -54,7 +54,8 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
   - Identity needs to be **sticky per presence episode**: once recognized, keep the name until presence is lost. That goes in E3.
   - Presence debounce should probably be about 3 s.
 - **The device clock was about 6.7 s behind the PC** before the reboot, and 0.17 s ahead after re-syncing. `device_utc` can't be trusted in absolute terms. Estimate a face-clock→PC offset (for example from `/api/status` round-trips, the same lower-envelope approach as Player) in C2.
-- **STT latency:** about 1.9 s from the end of speech to text. The echo-filter `ignore list` caught a stray "you" as designed.
+- **STT latency:** about 1.9–2.2 s from the end of speech to text. The echo-filter `ignore list` caught a stray "you" as designed.
+- **Barge-in is not possible yet, as expected:** while the pet speaks, the user's speech is dropped along with the pet's own (the gate can't tell them apart). Phase 2.
 
 **Running it:**
 
