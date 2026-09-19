@@ -115,6 +115,7 @@ class Brain:
         try:
             async for event in self.backend.send(turn):
                 if isinstance(event, TextDelta):
+                    log.debug("delta %r", event.text)
                     for piece in parser.feed(event.text):
                         utterance = await self._emit(piece, utterance)
                 elif isinstance(event, ToolStarted):
