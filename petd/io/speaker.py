@@ -115,12 +115,23 @@ class Utterance:
         await self.done.wait()
 
 
-def piper_synthesizer(url: str) -> Synthesizer:
+def piper_synthesizer(url: str, startup_timeout_s: float = 30.0) -> Synthesizer:
     import requests
     session = requests.Session()
 
     def post(text: str) -> bytes:
-        resp = session.post(f"{url}/synthesize", json={"text": text}, timeout=30)
+        # petd starts piper itself, and the flask server needs a few
+        # seconds; the first utterance can easily beat it.
+        deadline = time.monotonic() + startup_timeout_s
+        while True:
+            try:
+                resp = session.post(f"{url}/synthesize", json={"text": text}, timeout=30)
+                break
+            except requests.ConnectionError:
+                if time.monotonic() > deadline:
+                    raise
+                log.info("waiting for piper at %s ...", url)
+                time.sleep(0.5)
         resp.raise_for_status()
         return resp.content
 
