@@ -33,6 +33,8 @@ class App:
         self.face: Optional[FaceAdapter] = None
         self.speaker: Optional[Speaker] = None
         self.stt = None
+        self.tools = None
+        self.brain = None
         self._piper: Optional[ManagedProcess] = None
         self._tasks: list[asyncio.Task] = []
         self._stopped = asyncio.Event()
@@ -57,6 +59,16 @@ class App:
             if part is not None:
                 await part.start()
 
+        from .brain.tools import build_registry
+        self.tools = build_registry(self)
+        if not self.echo:
+            # The brain and the echo loop both answer Heard events; --echo
+            # is the hardware test path, so it wins when both are asked for.
+            from .brain.brain import build_brain
+            self.brain = build_brain(self)
+            if self.brain is not None:
+                await self.brain.start()
+
         if cfg.api.enabled:
             from .api.server import serve
             self._tasks.append(asyncio.create_task(serve(self), name="api"))
@@ -71,7 +83,7 @@ class App:
         for task in self._tasks:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
-        for part in (self.stt, self.speaker, self.face, self.vacuum):
+        for part in (self.brain, self.stt, self.speaker, self.face, self.vacuum):
             if part is not None:
                 try:
                     await part.close()

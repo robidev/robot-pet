@@ -40,6 +40,14 @@ speaker:
   playback_latency_s: 0.3
   gate_tail_s: 0.6
 
+brain:
+  backend: claude_cli          # claude_cli | ollama
+  model: claude-haiku-4-5-20251001   # or claude-sonnet-5 for more depth, slower
+  memory_dir: memory           # persona.md / backstory.md / body.md / style.md
+  episode_idle_timeout_s: 600  # quiet for this long -> start a fresh conversation
+  # ollama_url: http://127.0.0.1:11434
+  # ollama_model: qwen2.5:7b
+
 api:
   host: 127.0.0.1
   port: 8765

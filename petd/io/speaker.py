@@ -63,7 +63,20 @@ class RobotTcpSink(AudioSink):
         self._writer: Optional[asyncio.StreamWriter] = None
 
     async def open(self) -> None:
-        _, self._writer = await asyncio.wait_for(asyncio.open_connection(self.host, self.port), 3.0)
+        # socat forks an aplay per connection; right after a previous
+        # utterance it can briefly refuse the next one.
+        last: Exception | None = None
+        for attempt in range(3):
+            try:
+                _, self._writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.host, self.port), 3.0)
+                return
+            except (OSError, asyncio.TimeoutError) as exc:
+                last = exc
+                await asyncio.sleep(0.4 * (attempt + 1))
+        raise ConnectionError(
+            f"robot speaker at {self.host}:{self.port} not reachable "
+            f"(is socat running on the robot?): {last}") from last
 
     async def write(self, pcm: bytes) -> None:
         self._writer.write(pcm)

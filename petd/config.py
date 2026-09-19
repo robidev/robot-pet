@@ -107,6 +107,24 @@ class SpeakerConfig:
 
 
 @dataclass
+class BrainConfig:
+    enabled: bool = True
+    backend: str = "claude_cli"               # claude_cli | ollama
+    model: str = "claude-haiku-4-5-20251001"  # latency-first; Sonnet 5 for more depth
+    claude_binary: str = "claude"
+    python: str = ".venv/bin/python"          # interpreter for the MCP shim
+    runtime_dir: str = "runtime/brain"        # generated system.md + mcp.json, claude's cwd
+    memory_dir: str = "memory"                # persona/backstory/body/style markdown
+    extra_args: list = field(default_factory=list)
+    # A conversation ends after this much quiet, so context stays small.
+    episode_idle_timeout_s: float = 600.0
+    turn_timeout_s: float = 120.0
+    ollama_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen2.5:7b"
+    max_tool_iterations: int = 8
+
+
+@dataclass
 class ApiConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -122,6 +140,7 @@ class Config:
     face: FaceConfig = field(default_factory=FaceConfig)
     stt: SttConfig = field(default_factory=SttConfig)
     speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
+    brain: BrainConfig = field(default_factory=BrainConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
 
     def path(self, relative: str) -> Path:

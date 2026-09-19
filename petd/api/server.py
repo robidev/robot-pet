@@ -90,6 +90,23 @@ def create_app(pet: "App") -> FastAPI:
                                  "X-Servo-Pan-Deg": str(snap.servo_pan_deg),
                                  "X-Servo-Tilt-Deg": str(snap.servo_tilt_deg)})
 
+    @api.get("/tools")
+    def tools() -> list:
+        """The tool set, as the MCP shim and non-MCP backends see it."""
+        if pet.tools is None:
+            raise HTTPException(503, "no tool registry")
+        return pet.tools.list()
+
+    @api.post("/tool/{name}")
+    async def call_tool(name: str, arguments: dict | None = None) -> dict:
+        if pet.tools is None:
+            raise HTTPException(503, "no tool registry")
+        if name not in pet.tools:
+            raise HTTPException(404, f"no such tool: {name}")
+        result = await pet.tools.call(name, arguments or {})
+        return {"text": result.text, "image_b64": result.image_b64,
+                "mime": result.mime, "is_error": result.is_error}
+
     @api.get("/faces/current")
     async def faces_current() -> dict:
         if not pet.face:
