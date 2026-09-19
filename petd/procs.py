@@ -88,6 +88,10 @@ class ManagedProcess:
                 env = None if self.env is None else {**os.environ, **self.env}
                 self._proc = await asyncio.create_subprocess_exec(
                     *self.argv, cwd=self.cwd, env=env,
+                    # Own session: Ctrl-C in petd's terminal reaches the
+                    # whole process group, and children would die before
+                    # petd shuts them down in order.
+                    start_new_session=True,
                     stdin=asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
