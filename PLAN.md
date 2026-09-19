@@ -38,6 +38,8 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 | Cluster | Status (2026-09-19) |
 |---|---|
 | **A: firmware and C++** | **Done.** A1–A3 are in `~/LilyGo-Cam-RobotFace` (uncommitted), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
+| **D: brain** | **Done and verified on hardware** (`886de32`). Persistent `claude -p` per episode (stream-json, isolated: own cwd, no inherited settings, `--tools ""`, only `mcp__robot__*`), the tool registry behind the local API, the `robot_mcp` stdio shim, the streaming tag/sentence parser, expressions, prompt assembly, and an untested ollama backend. On the robot it called `look()`, saw the room through MCP and described it correctly. Turn latency 7–10 s on Haiku 4.5, plus ~2 s for STT. D5 (ollama) needs a real ollama to verify. |
+| **F1: persona** | **Done** (`a816850`). `memory/{persona,backstory,body,style}.md`. Checked in conversation: in character, refuses what the body can't do, drops the act when someone is upset. `emotions.yaml` keyframes still belong to E. |
 | **B: foundations and I/O** | **Done and verified on hardware**, apart from the `/tool/{name}` route, which moves to D2. All five smoke tests pass: vacuum polling, face events and presence, STT, TTS out of the robot's speaker, and `echo` — where the pet heard itself zero times (the gate caught its own utterances) and answered every real one. |
 
 **Findings from the first hardware smoke tests (2026-09-20):**
@@ -56,6 +58,12 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 - **The device clock was about 6.7 s behind the PC** before the reboot, and 0.17 s ahead after re-syncing. `device_utc` can't be trusted in absolute terms. Estimate a face-clock→PC offset (for example from `/api/status` round-trips, the same lower-envelope approach as Player) in C2.
 - **STT latency:** about 1.9–2.2 s from the end of speech to text. The echo-filter `ignore list` caught a stray "you" as designed.
 - **Barge-in is not possible yet, as expected:** while the pet speaks, the user's speech is dropped along with the pet's own (the gate can't tell them apart). Phase 2.
+
+**Next up (in order):**
+
+1. **Cluster E** (Opus 5 / high), which needs no hardware time from you: the attention gate and wake word (must accept "Gladys", see below), reflex keywords, `emotions.yaml` keyframes, the people/SQLite memory with sticky identity, enrollment and greeting, then drives, sleep, explore and attention-seeking. E2 gives M1's finished form, E3 gives M2.
+2. **Cluster C** (Opus 5 / high), which **needs you at the robot** for C3 and C4: map/heading conventions and the face-distance calibration, then `approach_person` (M3).
+3. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
 
 **Running it:**
 
