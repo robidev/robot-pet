@@ -40,6 +40,22 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 | **A: firmware and C++** | **Done.** A1–A3 are in `~/LilyGo-Cam-RobotFace` (uncommitted), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
 | **B: foundations and I/O** | **Done** apart from the `/tool/{name}` route, which moves to D2. Live-verified: vacuum polling, face init, audio to the PC, `/api/face/current` and snapshot through the API, STT and piper supervision, and clean shutdown. **Still needs you:** `smoke.py face` with a face in view, `smoke.py stt` (speak to it), and `smoke.py say` / `smoke.py echo` with socat running on the robot. |
 
+**Findings from the first hardware smoke tests (2026-09-20):**
+
+- **The face firmware rebooted every 20–40 s under `petd`. Fixed** (firmware `e6102eb` and `b3066da`, flashed and verified). `scripts/face_stress.py` reproduces the load; `/api/status` now also reports `uptime_s`, `reset_reason` and `heap`, and a serial capture named the task. Causes, all pre-existing:
+  - The device was **resetting itself** (`reset_reason=task_wdt`, "CPU 0: vision"): a detection pass is hundreds of ms of uninterrupted inference, and the vision loop's single 5 ms yield went to the higher-priority audio and WiFi tasks, so core 0's idle task never ran inside the 5 s watchdog window.
+  - `/ws` frames were sent **straight from the vision and control tasks**, racing the httpd task on the same sockets. They are queued with `httpd_queue_work` now.
+  - **The eye redrew the OLED every 5 ms tick over a 100 kHz I2C bus** (~90 ms per frame), so the control task rendered back-to-back: core 1 at 87 % even with vision off. Now 400 kHz, redrawn only when the eye's state changed.
+  - `/api/status` waited on the recognizer mutex (held for a whole pass), which is why responses took ~780 ms. The enrolled count is cached.
+  - Result under the same load: core 0 3 %, core 1 8 % (was 3 %/100 %), `/api/status` median 21 ms (was 781 ms), no reboots.
+  - Worth knowing: the task watchdog only watches **core 0's** idle task, so starving core 1 fails silently. Vision now runs on core 1 and caps its own duty cycle.
+- **"GLaDOS" is transcribed as "Gladys."** The wake-word matcher (E2) must accept it, along with "glados", "gladis" and "glad os". Consider passing whisper an initial prompt containing "GLaDOS" to bias it (a small `--prompt` option in udp-stream).
+- **Recognition flickers.** It alternates between id=1 and id=-1 frame to frame (similarity about 0.55, close to the threshold), and detection drops out for more than 1.5 s at a time even with a face held still close to the camera (box h ≈ 0.5). Two consequences:
+  - Identity needs to be **sticky per presence episode**: once recognized, keep the name until presence is lost. That goes in E3.
+  - Presence debounce should probably be about 3 s.
+- **The device clock was about 6.7 s behind the PC** before the reboot, and 0.17 s ahead after re-syncing. `device_utc` can't be trusted in absolute terms. Estimate a face-clock→PC offset (for example from `/api/status` round-trips, the same lower-envelope approach as Player) in C2.
+- **STT latency:** about 1.9 s from the end of speech to text. The echo-filter `ignore list` caught a stray "you" as designed.
+
 **Running it:**
 
 - `.venv/bin/python -m petd`, with the dashboard at http://127.0.0.1:8765.
