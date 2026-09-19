@@ -1,0 +1,176 @@
+API for robot: (build turtlebot style vacuum cleaner robot with lidar, bump-sensors, sonar and odometers)
+measurements via HTTP:
+ - get map (bitmap?)
+ - get positon on map (x/y)
+ - get direction on map (angle)
+ - get battery-charge
+ - get state(cleaning, docked, driving, pause, stopped)
+ additional (via player)
+ - get speed(odometer)
+ - get compass/gyro (2d)
+ - get accelero (3d)
+ - get bumper (on/off)
+ - get sonar (distance)
+ - get ir_wall (distance)
+ - get cliff (4x distance)
+ 
+commands via HTTP:
+ go_to x/y 
+ drive   {
+    "omega": -0.8,
+    "velocity": 0.3,
+    "duration": 1500,
+    "seqnum": 1
+  }
+ go_to_dock
+ cleanup/play
+ pause
+ stop
+ [play sound]
+ 
+
+API for face module: (build standalone ESP32 S3 with camera, microphone, oled and 2 servos for pan/tilt of the face)
+measurements via HTTP:
+ - camera image
+ - audio-stream
+ - face-detect bounding-box (if any)
+ - face recognition(if any): box+name
+ - servo orientation (pan/tilt)
+ - eye x/y aperture
+additional
+  camera stream
+  [pir detection]
+ 
+commands via HTTP:
+ record new face
+ clear all faces
+ set eye location+aperture
+ [set eye manual/auto]
+ set servo pan/tilt
+ set servo track/manual
+ set audio gain
+additional
+  enable/disable detection
+  camera settings
+  set wifi pw
+  set audio-endpoint
+  
+  
+API on pc: (to be implemented!!!)
+  calculate face-location (bounding box width + robot pose + servo-pan = x/y on map) - timestamp??
+  list objects in image (name+bounding-box)? maybe multimodal model's job?
+
+  TTS with glados accent, stream to robot
+  STT for UDP-stream to text
+  
+  LLM interact text-to-text
+  LLM agentic: commands for
+   - robot location(drive/waypoint)
+   - face mood (set x,y,aperture)
+   - face look direction (servo pan/tilt)
+   - record face for face-recognize (command)
+  LLM query:
+   - SLAM map
+   - robot position+direction on map
+   - face servo pan/tilt degree
+   - camera image
+   - face detect json
+   - face recognition json
+   - battery-state
+   - bumper-on/off
+   - robot-state(docked, cleaning, driving, stopped)
+   - face x/y/aperture
+   
+Additional data on PC:
+  database of detected objects? maybe even photos? + metadata: when, where. what
+  learned behaviors: md
+  recognised people: md
+  own character-description: md
+  
+
+
+
+
+Preparation on robot:
+ - root device
+ - install valetudo + ssh access
+ - configure wifi
+ - install null driver (github:)
+ - configure .cfg to use null driver for vacuum, main brush and side brush
+ - open firewall to port 6665
+ - install socat
+ - install alsa/aplay
+
+Preparation on LilyGo-camera-s3
+ - burn the firmware (github:)
+ - set wifi (connect to AP, go to website at 192.168.4.1, and send command with ssid+pw
+ 
+Preparation on the PC:
+ - clone/install glue-logic
+ - start glue-logic
+ - configure LLM (token/secret for access, or local model)
+   - several MD filse for context
+   - maybe enable MCP
+ - start LLM connection(stt in, agent invocation for out)
+ - install whisper.cpp
+ - download silero and whisper models
+ - compile udp-stream
+ - start stt service
+ - pip install piper-tts
+ - download glados model
+ - start tts service
+
+ 
+**************************************************************************************************************** 
+  
+low level glue logic MVP: ( ~ is a call to initialize, - is a call to get data, + is a call to send a command, * is higher level processing )
+ python HTTP API call to valetudo (setting: ip-address)
+ - get map (bitmap?)
+ - get positon on map (x/y)
+ - get direction on map (angle)
+ - get battery-charge
+ - get state(cleaning, docked, driving, pause, stopped)
+ + go_to x/y on map
+ + drive   { "omega": -0.8, "velocity": 0.3, "duration": 1500,  "seqnum": 1 }
+ + go_to_dock
+ + start cleanup/play
+ + pause cleanup
+ + stop cleanup
+
+ python HTTP API call to face (setting: ip-address)
+ ~ set audio stream ip (+ set gain if needed..) 
+ ~ enable detection+recognition
+ ~ subscribe to websocket for events
+   - face detected/recognized-> timestamped, servo-pos
+   - movement detected-> timestamped, servo-pos
+ - get camera capture-> timestamped,  with servo coordinates
+ - get face position+size+id(if recognized) (or none), with servo coordinates-> timestamped
+ - get eye x/y/size-> timestamped
+ - get servo stance-> timestamped
+ + set servo position
+ + set servo tracking
+ + set face x/y+aperture
+ + [set eye manual/auto]
+ + record face
+ + clear face
+ 
+ aplay: (socat pipe to aplay on robot; same ip as valetudo)
+ ~ init socat for audio playback on robot on port 6000 
+
+ playerc-python: (timestamped by sensors) from TCP port 6665 on robot ip(same ip as valetudo)
+ ~ perform analyisis to define offset between UTC time(platform that player runs on is NTP synced) and monotonic time since boot(what playerc publishes)
+ - get x+y+direction
+
+ 
+ python for localhost
+ ~ set whisper.cpp udp-stream(github:..) to listen for incoming audio, and convert into text
+ ~ subscribe to whisper.cpp
+   - scentence utterance
+   - stop/break off
+ ~ init piper-tts on port 5001  (and know robot ip to pipe audio to)
+ - play TTS audio scentence -> send curl to piper-tts on PC (localhost:5001)
+ * get detected face position on map(face-detect event data): get map, get timestamped playerc data from near the detection event, calculate whole pose, calulate face position on map, return x/y 
+ * store/query face-id for name
+ * store/query foto's with objects
+ * query a photo for what objects are seen on it
+ * write/revise/update own .MD files for context and learned behaviors

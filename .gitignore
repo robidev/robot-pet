@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local config and runtime state
+config.yaml
+runtime/
+
+# Third-party checkout, rebuilt from stt/README.md
+stt/whisper.cpp/
+
+# Large models, downloaded separately (see stt/README.md, piper-tts/README.md)
+*.bin
+*.onnx
+
+# Build output
+stt/udp-stream/whisper-udp-stream

@@ -1,0 +1,22 @@
+please have a look at \home\user\robot-pet, especially the todo.txt, and vacuum-api and face-api. I want to make a robot pet with these ingredients;
+
+The robot-vacuum is the mobile robot platform. it can navigate the room, already includes SLAM, obstacle avoidance, cliff avoidance, AStar and DStar path planning, home&docking routine, so we only care about the high-level functions like goto, drive, stop and dock. All needed functions are exposed via vacuum-api, besides the timestamped pose of the robot, which is exposed via playerc-client(with a small caveat regarding the timestamp for player being since boot, not UTC)
+
+The face is mounted with a pan+tilt servo on the robot (on top of the lidar to be precise). servos are controlled by the face. it has a camera that can send video/stills. It can stream audio from a microphone over udp with 16khz, 16-bit PCM. it has a 'face' in the form of a robotic-eye(aperture) that can convey some sense of a robotic-intelligence. A pir for movement-detection. It will send events timestamped, and with pose-info, as well as some queries via the web-api will contain pose and timestamps. Also is the camera setup for face detection and recognition, and the face can remember 7 faces. A face is stored by triggering the function in the web-api, when a face is present, and then will be coupled to a face-ID. Faces will also be tracked by the servos when in tracking mode (thus eye contact is maintained). 
+
+The audio is received on udp port 5000, and converted via whisper.cpp, using a VAD to text (currently it is only a command-line app). This needs to be 'plugged' into a customizable LLM. lets for now just send it to claude-cli(if possible), maybe ollama later.(account for this)
+
+The LLM should be able to have an awareness of its postioning inside a robot, the abilities it has(move, see, hear, show emotions) a personality, and some background info, backstory and motivation,
+
+responses from the LLM may be converted from text to speech using piper-tts, and streamed to the robot-vacuum, as it has a set-up sound system.
+Besides text responses, also commands can be send to the face, or robot-vacuum platform
+
+Please consider this, what has been already build(quite a bit, all components are there, but the 'glue' is missing) and create a design/plan for this robot pet, and document it as an implementation plan, so it can be implemented. Suggest for each step the recommended model/effort, and cluster where possible, so we can run workloads without switching too much. I'd suggest python for the glue, but im open for other suggestions.
+
+1 feature I tought would be interesting, is to allow the bot, when it sees a person, to drive up to him/her. I planned to use the face-detection on the camera, to make, using device pose+pan/tilt servo angle and timestamps, an estimate of where the person would be in respect to the robot (coarse distance+angle), and guess an x/y coordinate based on that, that it then drives to. maybe inacurate, but maybe good enough.
+
+Also, if I would call the bot, and it cannot see me, it may look around until it sees a face, ask if that person called it, and maybe use face recognition to only do it to faces in its database.
+
+additional behaviors might be to associate names+faces (needs a simple, sqlite?database), play some simple games. Maybe allow it for a certain schedule where it goes into exploring or attention seeking mode(to make it feel more alive)
+
+I.e. a real robot pet. Can you help flesh this out into an MVP(minimal viable product)? Any questions that need answering?

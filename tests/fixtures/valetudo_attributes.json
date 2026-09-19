@@ -1,0 +1,1 @@
+[{"__class":"PresetSelectionStateAttribute","metaData":{},"type":"fan_speed","value":"min"},{"__class":"StatusStateAttribute","metaData":{},"value":"docked","flag":"none"},{"__class":"BatteryStateAttribute","metaData":{},"level":100,"flag":"charged"}]

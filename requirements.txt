@@ -1,0 +1,10 @@
+# petd (python -m petd). Install into ./.venv:
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+requests>=2.28
+websocket-client>=1.6
+pillow>=10.0
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pytest>=8.0
+pytest-asyncio>=0.23

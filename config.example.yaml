@@ -1,0 +1,45 @@
+# petd configuration. Copy to config.yaml (picked up automatically) and edit.
+# Every key is optional; defaults live in petd/config.py.
+# Override any key from the environment: PETD__FACE__HOST=192.168.101.41
+
+pet:
+  name: GLaDOS
+
+network:
+  pc_ip: auto              # where the face streams audio; auto = route towards the face
+
+vacuum:
+  host: 192.168.101.43     # Valetudo; also the Player (6665) and speaker (6000) host
+  poll_interval_s: 2.0
+
+player:
+  port: 6665
+
+face:
+  host: 192.168.101.40
+  audio_port: 5000
+  audio_gain: null         # e.g. 1.5; null leaves the device setting alone
+  enable_recognition: true
+  faces_lost_debounce_s: 1.5
+
+stt:
+  binary: stt/udp-stream/whisper-udp-stream
+  cwd: stt/udp-stream
+  model: models/ggml-base.en.bin
+  vad_model: models/ggml-silero-v6.2.0.bin
+  threads: 8
+  extra_args: []           # e.g. ["--vad-threshold", "0.4", "--min-silence-ms", "600"]
+  max_no_speech_prob: 0.6
+
+speaker:
+  sink: robot              # robot | null
+  robot_port: 6000         # on the robot: socat -u TCP-LISTEN:6000,reuseaddr,fork EXEC:'aplay -f S16_LE -r 22050 -c 1 -t raw -'
+  piper_url: http://127.0.0.1:5001
+  manage_piper: true       # start piper-tts's http_server if nothing listens on piper_url
+  lead_s: 0.3
+  playback_latency_s: 0.3
+  gate_tail_s: 0.6
+
+api:
+  host: 127.0.0.1
+  port: 8765
