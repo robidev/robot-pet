@@ -63,7 +63,7 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 1. **Cluster E** (Opus 5 / high), which needs no hardware time from you: the attention gate and wake word (must accept "Gladys", see below), reflex keywords, `emotions.yaml` keyframes, the people/SQLite memory with sticky identity, enrollment and greeting, then drives, sleep, explore and attention-seeking. E2 gives M1's finished form, E3 gives M2.
 2. **Cluster C** (Opus 5 / high), which **needs you at the robot** for C3 and C4: map/heading conventions and the face-distance calibration, then `approach_person` (M3).
-3. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
+3. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below); **G4, the latency instrumentation (4.9), before E4 puts extra model round trips on the critical path**.
 
 **Running it:**
 
@@ -346,6 +346,42 @@ If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, i
 - `persona.md`, `backstory.md` and `body.md` are written by a human (step F1).
 - `learned.md` and `journal.md` are appended by the pet through tools, with a size cap. When they get too large, they are compacted by an LLM call at episode end.
 
+### 4.9 Latency budget and profiling
+
+The felt latency is capture → STT → petd → LLM → petd → TTS → speaker. Most of it
+is already recorded: every event carries `t`, the PC wall clock at creation
+(`events.py`), the bus keeps the last 300 (`bus.py`), and `GET /events?n=` serves
+them as JSON. So the timeline exists; what is missing is the inside of the brain
+and the two legs that cross a hardware boundary.
+
+| Leg | Known today | How it is (or would be) measured |
+|---|---|---|
+| Mic capture on the face → whisper on the PC | **No.** `Heard.t_start`/`t_end` are PC *receive* times, not capture times | Needs C2's face-clock offset. The device clock was 6.7 s out once, so absolute device time is not usable until then |
+| End of speech → transcript | **Yes: 1.9–2.2 s** (B smoke tests) | `Heard.t − SpeechEnded.t_utc`, straight from the event history |
+| Transcript → turn starts | No | Needs a brain event (G4) |
+| Think → first sentence emitted | Only as a bound: `Heard.t → SpeakingStarted.t` | G4 splits thinking from synthesis |
+| Piper synthesis, per sentence | No | One timer in `speaker._synthesize_all` (G4) |
+| First PCM byte → audible in the room | **No.** `playback_latency_s: 0.3` is a configured guess the echo gate depends on | Loopback: speak with the gate off and time when our own STT hears it. One number for speaker → air → mic → STT, using hardware we already have |
+| Whole turn | **Yes: 7–10 s on Haiku 4.5** (D, on hardware) | `TurnDone.duration_s`, currently only a log line |
+
+**The brain is the one stage the event history cannot see.** `petd/brain/` publishes
+nothing to the bus: `TurnDone`, `ToolStarted` and `ToolFinished` (`brain/backend.py`)
+are internal to the backend protocol, and turn duration and cost end up in a log
+line (`brain/brain.py`). Putting them on the bus is what makes the rest measurable.
+
+**Watch time-to-first-word, not turn duration.** The brain already streams
+sentence by sentence through `SpeechStreamParser`, and the speaker synthesizes one
+sentence ahead, so first audio does not wait for the full reply. Turn duration is
+therefore a misleading thing to optimize; `Heard.t → SpeakingStarted.t` is what
+someone standing in the room actually experiences.
+
+**Expect the LLM to dominate.** ~2 s of STT and 7–10 s of turn against in-process
+async plumbing measured in microseconds: profiling is here to confirm that before
+anyone optimizes the wrong thing, and to catch regressions as tools land on the
+critical path. E4's `approach_person` turn is transcript → `get_senses` → `look`
+→ answer, which is three model round trips where M1 had one. That is where this
+will quietly get worse, so **G4 is worth doing before E4**, not after.
+
 ### 4.8 Safety
 
 - Motion tools are clamped (turn ≤180°, move ≤100 cm, speed ≤0.3) and rate-limited.
@@ -469,6 +505,7 @@ Concurrency, state machines, and where the "feel" lives.
 | G1 | `README.md` for petd: setup, the WSL `.wslconfig` note, how to run, config reference, and troubleshooting. Update `todo.txt`. | Someone else could set it up. |
 | G2 | `scripts/start.sh` or a systemd user unit, log rotation, and `runtime/` layout creation. | One command starts the pet. A reboot restores it. |
 | G3 | Dashboard extras (Sonnet): live event log, map with robot, people and target overlay, drives, and a manual tool console. | Useful for debugging M3 and M4. |
+| G4 | Latency instrumentation (4.9): publish the brain's turn and tool timings on the bus, time piper per sentence, a `--trace` flag appending every event to JSONL (the 300-event ring is for the last turn, not for a session), and `scripts/latency.py` to print a per-turn breakdown from `/events` or a trace. **Do this before E4.** | A spoken turn prints hear → think → synth → first word → done, with the numbers adding up to the wall clock. |
 
 ### Suggested run order
 
