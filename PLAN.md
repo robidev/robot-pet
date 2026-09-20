@@ -37,7 +37,7 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 | Cluster | Status (2026-09-19) |
 |---|---|
-| **A: firmware and C++** | **Done.** A1–A3 are in `~/LilyGo-Cam-RobotFace` (uncommitted), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
+| **A: firmware and C++** | **Done.** A1–A3 are committed in `~/LilyGo-Cam-RobotFace` (`edc6f87`, then `e6102eb` and `b3066da`), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised on hardware because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
 | **D: brain** | **Done and verified on hardware** (`886de32`). Persistent `claude -p` per episode (stream-json, isolated: own cwd, no inherited settings, `--tools ""`, only `mcp__robot__*`), the tool registry behind the local API, the `robot_mcp` stdio shim, the streaming tag/sentence parser, expressions, prompt assembly, and an untested ollama backend. On the robot it called `look()`, saw the room through MCP and described it correctly. Turn latency 7–10 s on Haiku 4.5, plus ~2 s for STT. D5 (ollama) needs a real ollama to verify. |
 | **F1: persona** | **Done** (`a816850`). `memory/{persona,backstory,body,style}.md`. Checked in conversation: in character, refuses what the body can't do, drops the act when someone is upset. `emotions.yaml` keyframes still belong to E. |
 | **B: foundations and I/O** | **Done and verified on hardware**, apart from the `/tool/{name}` route, which moves to D2. All five smoke tests pass: vacuum polling, face events and presence, STT, TTS out of the robot's speaker, and `echo` — where the pet heard itself zero times (the gate caught its own utterances) and answered every real one. |
@@ -94,7 +94,7 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 - **F3: face UTC timestamps have 1-second resolution.** `time_service.cpp` uses `"%Y-%m-%dT%H:%M:%SZ"`. That is useless for fusing pose at the robot's turn rates. **Fix in firmware** (add milliseconds). Until then, use the PC receipt time (`received_monotonic` already exists) and accept ~50–150 ms of WebSocket latency.
 - **F4: face events are pushed only when the *set* of faces changes.** The cached box is from the moment the face *appeared*, not from now. After the robot drives 1 m toward someone, or the person steps closer or sits down, the cached box still shows the old size and position, so the distance estimate is stale. The same person staying in view never triggers a new event. **Fix:** an on-demand `GET /api/face/current` that returns the current boxes, servo pose and ms timestamp from the latest processed frame (A2). A periodic push would also work, but a GET is simpler and costs nothing when unused. Fallback without firmware: run a PC-side face detector on `get_snapshot()`.
 - **F5: the pet will hear itself.** The speaker is on the vacuum and the mic is on the face, so they sit on the same body. The glue must **gate STT while TTS is playing** (plus a ~600 ms tail). Motor and brush noise while driving will also produce junk transcripts.
-- **F6: face memory is limited to 7 slots with "clear all" only.** There is no single-ID delete. The DB must own the slot→person mapping. "Forget X" means clearing all and re-enrolling everyone else, so a firmware single-delete would help.
+- **F6: face memory is limited to 7 slots** (`face_id_save_number = 7`). **Single-ID delete now exists** (A3, firmware `edc6f87`): `GET /api/face/delete?id=N` returns the number remaining, and `GET /api/face/list` returns the current set. "Forget X" is one call, not a clear-and-re-enroll. The DB still owns the slot→person mapping, and now has to *reconcile* it: **ESP-DL ids are not guaranteed to be 0..6 or contiguous after a delete**, so never assume an id range — read `/api/face/list` (`FaceApiClient.list_enrolled_faces()`) and drop DB rows whose slot is gone.
 - **F7: WSL2 does not forward inbound UDP under NAT networking.** Port 5000 audio from the face only reaches WSL with `networkingMode=mirrored` in `%UserProfile%\.wslconfig` (or run the glue on a Linux box or Raspberry Pi). Outbound HTTP, WebSocket and TCP to the robot work either way.
 - **F8: the pan servo range is 0–180° with 90 = center.** Check the direction sign, and that 90° really means "robot forward", during calibration. The camera runs at QVGA (320×240) and the horizontal field of view has to be calibrated.
 - **F9: Player `CMD_VEL` would be a better drive channel than Valetudo manual control.** It has real rad/s and m/s, but it may fight Valetudo's own control. The MVP uses Valetudo only. Closed-loop turns use Player yaw as *feedback*.
@@ -258,11 +258,12 @@ class LLMBackend(Protocol):
 | `search_for_person(name?)` | behavior | See 4.6. |
 | `go_home()` / `stop()` | action | Dock, and stop everything. |
 | `remember_face(name)` | action | Enrollment flow (4.7). Refuses when slots are full, and explains. |
+| `forget_person(name)` | action | Single-ID delete (4.7). Explicit request only, and confirms who by name. |
 | `who_do_i_know()` / `recall_person(name)` | query | From the DB: notes, last seen, where. |
 | `note_about_person(name, note)` / `remember_fact(text)` | memory | Append-only, length-limited. |
 | `set_mood(mood)` | state | Persistent baseline mood (idle eye style). |
 
-  Not exposed to the LLM, ever: `clear_enrolled_faces`, `set_wifi_credentials`, `start_cleaning`, camera or NTP config.
+  Not exposed to the LLM, ever: `clear_enrolled_faces` (wipes everyone at once — `forget_person` is the one-person alternative), `set_wifi_credentials`, `start_cleaning`, camera or NTP config.
 
 ### 4.6 Behaviors (`petd/behavior/`)
 
@@ -328,7 +329,9 @@ kv(key PK, value)                                                             --
 3. Wait up to about 5 s for a face event with `id ≥ 0` that is not already in the DB. That is the new slot.
 4. Store the name→slot mapping and confirm out loud.
 
-If the slots are full, tell the LLM "slots full". "Forget X" is only offered as a guided "re-enroll everyone" flow until a firmware single-delete exists.
+Step 3 compares against `/api/face/list` rather than assuming the next id: after a delete, ids are neither contiguous nor reused in order.
+
+If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, it can offer to forget someone instead. **"Forget X"** is `forget_person(name)`: look the slot up in the DB, `delete_enrolled_face(slot)`, delete the person row, confirm out loud. It is the one destructive tool the LLM gets, so it names who it is forgetting and acts only on an explicit request (never on its own initiative, never on a bare "forget that").
 
 **Familiarity:** `familiarity` rises with the interaction count and the days seen (thresholds in config). The LLM can also bump it through `note_about_person`. It shapes behavior:
 
@@ -402,7 +405,7 @@ Needs flashing and a hardware check by you.
 |---|---|---|
 | A1 | Face firmware: **millisecond UTC** in all events, snapshot headers and status (`%Y-%m-%dT%H:%M:%S.mmmZ` via `gettimeofday`). Add a **monotonic `seq`** to events. | Events show ms, and the face-api parser still works (it treats `utc` as a string). |
 | A2 | Face firmware: **`GET /api/face/current`**, which returns the latest processed frame's faces (boxes, ids, confidence), servo pan and tilt, ms UTC and the frame age. Add `FaceApiClient.get_current_faces()`. | Stand still in view, then step forward. Two GETs show different box sizes with fresh timestamps. |
-| A3 | Face firmware (optional): **delete a single enrolled id** (`/api/face/delete?id=`), if ESP-WHO's recognizer supports it. Update `face_client.py` and its README. | Enroll 2 faces, delete one, and the other is still recognized. |
+| A3 | **Done** (`edc6f87`). Face firmware: **delete a single enrolled id** (`/api/face/delete?id=N`) plus `/api/face/list`; `face_client.py` and its README have `delete_enrolled_face()` / `list_enrolled_faces()`, and `petd/io/face.py` exposes `delete_enrolled()` / `list_enrolled()`. | Enroll 2 faces, delete one, and the other is still recognized. **Not yet run on hardware** (destructive); do it when E3 lands. |
 | A4 | `whisper-udp-stream`: add `--json` (one JSON line per event: `speech_start`, `speech_end`, `text` with `t_start_utc`, `t_end_utc`, `no_speech_prob`). The text output stays the default. | `--json` output parses. The old output is unchanged. |
 
 A1 and A2 are strongly recommended before M3. The MVP still works without them, with degraded accuracy.
