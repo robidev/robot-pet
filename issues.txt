@@ -1,0 +1,3 @@
+noah's face was said to be stored, when requested, but in the Lilygo-cam-RobotFace, I still see only 1 face enrolled
+volume is too high
+the robot does not drive when requested

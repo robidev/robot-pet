@@ -90,6 +90,10 @@ class SpeakerConfig:
     sink: str = "robot"                       # robot | null
     robot_port: int = 6000                    # socat -> aplay on the vacuum
     sample_rate: int = 22050                  # must match the robot's aplay -r
+    # Output loudness. The robot's amixer controls nothing and piper's HTTP
+    # server has no volume knob, so the PCM is scaled here. 1.0 = as piper
+    # made it (peak-normalised, i.e. as loud as the speaker goes).
+    volume: float = 1.0
     piper_url: str = "http://127.0.0.1:5001"
     manage_piper: bool = True                 # start piper.http_server if not already up
     piper_cwd: str = "piper-tts"

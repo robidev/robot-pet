@@ -12,14 +12,19 @@ Text-to-speech out of the robot's own speaker.
   be recalled, so a small lead keeps interrupt() fast.
 - Playback spans are recorded so the STT echo gate can tell whether a
   transcript overlaps the pet's own voice.
+- The robot has no usable mixer (amixer controls nothing on its sound
+  card) and piper's HTTP server doesn't expose piper's own --volume, so
+  loudness is set here, by scaling the PCM before it goes out.
 """
 
 from __future__ import annotations
 
+import array
 import asyncio
 import io
 import itertools
 import logging
+import sys
 import time
 import wave
 from abc import ABC, abstractmethod
@@ -46,6 +51,22 @@ def wav_to_pcm(wav_bytes: bytes, expected_rate: int) -> bytes:
         if w.getframerate() != expected_rate:
             raise ValueError(f"WAV is {w.getframerate()} Hz but the robot plays {expected_rate} Hz")
         return w.readframes(w.getnframes())
+
+
+def apply_gain(pcm: bytes, gain: float) -> bytes:
+    """Scales S16LE samples by `gain`, clipping if asked for more than 1.0."""
+    if gain == 1.0:
+        return pcm
+    samples = array.array("h")
+    samples.frombytes(pcm)
+    if sys.byteorder == "big":
+        samples.byteswap()
+    for i, s in enumerate(samples):
+        v = int(s * gain)
+        samples[i] = -32768 if v < -32768 else 32767 if v > 32767 else v
+    if sys.byteorder == "big":
+        samples.byteswap()
+    return samples.tobytes()
 
 
 class AudioSink(ABC):
@@ -293,6 +314,7 @@ class Speaker:
                 return
             try:
                 pcm = wav_to_pcm(await self.synthesize(sentence), self.cfg.sample_rate)
+                pcm = apply_gain(pcm, self.cfg.volume)
             except Exception:  # noqa: BLE001 - skip the sentence, keep talking
                 log.exception("synthesis failed for %r", sentence)
                 continue

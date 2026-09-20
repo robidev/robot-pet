@@ -5,6 +5,7 @@ Hardware smoke tests for petd's adapters (PLAN.md cluster B acceptance).
     .venv/bin/python scripts/smoke.py face            # face/motion/presence events live
     .venv/bin/python scripts/smoke.py stt             # what the pet hears (speak to the face)
     .venv/bin/python scripts/smoke.py say "Hello."    # plays on the robot (needs socat on :6000)
+    .venv/bin/python scripts/smoke.py volume          # the same line at each gain; pick one for speaker.volume
     .venv/bin/python scripts/smoke.py echo            # hear -> say back; checks the echo gate
 
 None of these move the robot. Ctrl-C to stop.
@@ -38,8 +39,11 @@ NEEDS = {
     "face": {"face"},
     "stt": {"face", "stt"},          # face: points its audio at this PC
     "say": {"speaker"},
+    "volume": {"speaker"},
     "echo": {"face", "stt", "speaker"},
 }
+
+VOLUME_STEPS = (1.0, 0.7, 0.5, 0.35, 0.25, 0.15)
 
 
 def describe(event) -> str:
@@ -65,10 +69,20 @@ async def main(args) -> None:
     sub = app.bus.subscribe(*WATCH.get(args.what, (SpeakingFinished,)))
     await app.start()
     try:
-        if args.what == "say":
-            utt = app.speaker.say(" ".join(args.text) or "Hello, and welcome to the Aperture Science enrichment center.")
-            await utt.wait()
-            print("interrupted" if utt.interrupted else "done")
+        if args.what in ("say", "volume"):
+            text = " ".join(args.text) or "Hello, and welcome to the Aperture Science enrichment center."
+            steps = VOLUME_STEPS if args.what == "volume" else \
+                (cfg.speaker.volume if args.volume is None else args.volume,)
+            for gain in steps:
+                cfg.speaker.volume = gain
+                print(f"volume {gain}", flush=True)
+                utt = app.speaker.say(text)
+                await utt.wait()
+                if utt.interrupted:
+                    print("interrupted")
+                    return
+                await asyncio.sleep(0.7)
+            print("done")
             return
         async for event in sub:
             print(describe(event), flush=True)
@@ -81,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("what", choices=sorted(NEEDS))
     parser.add_argument("text", nargs="*")
     parser.add_argument("--config")
+    parser.add_argument("--volume", type=float, help="override speaker.volume for this run")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
     setup_logging(args.log_level)

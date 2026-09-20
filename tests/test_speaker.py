@@ -8,7 +8,7 @@ import pytest
 from petd.bus import EventBus
 from petd.config import SpeakerConfig
 from petd.events import SpeakingFinished, SpeakingStarted
-from petd.io.speaker import NullSink, Speaker, wav_to_pcm
+from petd.io.speaker import NullSink, Speaker, apply_gain, wav_to_pcm
 
 RATE = 22050
 
@@ -38,6 +38,17 @@ def test_wav_to_pcm_checks_rate():
     assert len(wav_to_pcm(wav(0.1), RATE)) == int(RATE * 0.1) * 2
     with pytest.raises(ValueError, match="16000 Hz"):
         wav_to_pcm(wav(0.1, 16000), RATE)
+
+
+def pcm(*samples: int) -> bytes:
+    return b"".join(s.to_bytes(2, "little", signed=True) for s in samples)
+
+
+def test_apply_gain():
+    loud = pcm(0, 1000, -1000, 32767, -32768)
+    assert apply_gain(loud, 1.0) is loud                 # untouched, not rebuilt
+    assert apply_gain(loud, 0.25) == pcm(0, 250, -250, 8191, -8192)
+    assert apply_gain(loud, 4.0) == pcm(0, 4000, -4000, 32767, -32768)   # clipped
 
 
 async def test_streams_all_sentences_paced_to_real_time():
