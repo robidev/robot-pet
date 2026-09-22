@@ -4,7 +4,8 @@ import time
 import pytest
 
 from petd.app import App
-from petd.behavior.converse import Listener, NameMatcher, barge_in, match_reflex
+from petd.behavior.converse import (Listener, NameMatcher, barge_in, match_reflex,
+                                    repeats_own_speech)
 from petd.config import Config
 from petd.events import Heard, HeardDropped, SpeakingFinished
 from petd.io.face import Face
@@ -16,7 +17,9 @@ def words_after_name(text):
 
 @pytest.mark.parametrize("text", [
     "GLaDOS, what time is it?", "Gladys what time is it", "hey glad os, what time is it",
-    "Gladis? What time is it", "what time is it, Glados", "Gladdos, what time is it"])
+    "Gladis? What time is it", "what time is it, Glados", "Gladdos, what time is it",
+    # what whisper makes of the name once primed with it
+    "GularDOS, what time is it?", "OkGLaDOS, what time is it", "JledDOS, what time is it"])
 def test_the_name_however_whisper_spells_it(text):
     found, rest = words_after_name(text)
     assert found
@@ -24,7 +27,8 @@ def test_the_name_however_whisper_spells_it(text):
 
 
 @pytest.mark.parametrize("text", [
-    "I'd gladly do it", "a glass of water", "the gladiolus", "what time is it"])
+    "I'd gladly do it", "a glass of water", "the gladiolus", "what time is it",
+    "the DOS prompt", "those kudos"])
 def test_words_that_are_not_the_name(text):
     assert not words_after_name(text)[0]
 
@@ -45,6 +49,14 @@ def test_barge_in_ignores_our_own_words():
     assert barge_in("stop worrying about it", "Stop worrying about it.") is None
     assert barge_in("shut the", "") == "quiet"
     assert barge_in("the cake is a lie", "The cake is a lie.") is None
+
+
+@pytest.mark.parametrize("heard,echo", [
+    ("the cake is a lie", True), ("is a lie", True), ("cake is a lie Robin", True),
+    ("Lie.", True), ("Cake.", False), ("why do you say that I'm new", False),
+    ("what cake", False), ("", False)])
+def test_echo_by_content(heard, echo):
+    assert repeats_own_speech(heard, "Hello. You're new. The cake is a lie.") is echo
 
 
 class StubBrain:
@@ -160,3 +172,13 @@ async def test_driving_noise_is_ignored_unless_named(pet):
     assert pet.brain.told == []
     await hear(pet, "Gladys, where are you going?")
     assert pet.brain.told[-1][0] == "Gladys, where are you going?"
+
+
+async def test_a_late_echo_is_not_a_conversation(pet):
+    pet.speaker.say("Consider yourself officially remembered.")
+    while not pet.speaker.said_recently():
+        await asyncio.sleep(0.01)
+    pet.listener.window_until = time.time() + 60
+    await hear(pet, "officially remembered")
+    assert pet.brain.told == []
+    assert (await asyncio.wait_for(pet.dropped.get(), 1)).reason.startswith("echo")

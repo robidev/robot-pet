@@ -226,6 +226,10 @@ struct Params {
     bool verbose = false;
     bool log_levels = false;
     bool json_output = false;
+
+    // Initial prompt for whisper: words it should expect, e.g. a name it
+    // would otherwise hear as something more common ("GLaDOS" -> "Gladys").
+    std::string prompt;
 };
 
 // -----------------------------------------------------------------------------
@@ -313,6 +317,8 @@ Options:
                            (very noisy: several lines per 32ms window)
   --log-levels             Log RMS/peak/clipping stats for captured
                            audio, to help tune microphone gain [off]
+  --prompt TEXT            Initial prompt, to bias whisper toward words it
+                           would otherwise mishear (e.g. a name) [none]
   --json                   Machine-readable output: one JSON object per
                            line on stdout (ready, speech_start,
                            speech_end, text, stopped); banners go to
@@ -379,6 +385,8 @@ static bool parse_args(int argc, char ** argv, Params & params) {
             params.log_levels = true;
         } else if (arg == "--json") {
             params.json_output = true;
+        } else if (arg == "--prompt") {
+            params.prompt = require_value("--prompt");
         } else {
             std::fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
             print_usage(argv[0]);
@@ -471,6 +479,10 @@ public:
         wparams.temperature = 0.0f;
 
         wparams.audio_ctx = 0;
+
+        if (!params_->prompt.empty()) {
+            wparams.initial_prompt = params_->prompt.c_str();
+        }
 
         const int result = whisper_full(
             ctx_,

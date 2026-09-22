@@ -63,6 +63,7 @@ class SttAdapter:
             "--port", str(cfg.face.audio_port),
             "--threads", str(c.threads),
             "--model", c.model, "--vad-model", c.vad_model,
+            "--prompt", c.prompt if c.prompt is not None else cfg.pet.name,
             *[str(a) for a in c.extra_args],
         ]
         self.process = ManagedProcess(

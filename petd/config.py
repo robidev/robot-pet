@@ -63,9 +63,9 @@ class FaceConfig:
     enable_recognition: bool = True
     status_poll_s: float = 0.5
     # A face set going empty only counts as "nobody here" after this long,
-    # to ride out detection dropouts (measured at over 1.5 s with a face
-    # held still in view).
-    faces_lost_debounce_s: float = 3.0
+    # to ride out detection dropouts (over 1.5 s with a face held still in
+    # view; 3 s still lost a seated person several times a minute).
+    faces_lost_debounce_s: float = 5.0
 
 
 @dataclass
@@ -78,6 +78,9 @@ class SttConfig:
     threads: int = 8
     extra_args: list = field(default_factory=list)
     max_no_speech_prob: float = 0.6
+    # Whisper's initial prompt. Without it "GLaDOS" comes out as "Gladys",
+    # "G let us" or "Clovis". None = the pet's name.
+    prompt: Optional[str] = None
     min_chars: int = 2
     # Compared after lowercasing and stripping punctuation.
     ignore_phrases: list = field(default_factory=lambda: [

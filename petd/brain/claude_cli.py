@@ -54,6 +54,9 @@ class ClaudeCliBackend:
             *argv, cwd=self.runtime_dir,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE, start_new_session=True,
+            # A tool result carrying a photo comes back as one base64 line,
+            # far past asyncio's 64 KiB readline default.
+            limit=64 * 1024 * 1024,
             env={**os.environ, "PETD_API": self.api_url},
         )
         asyncio.create_task(self._log_stderr(), name="brain-stderr")

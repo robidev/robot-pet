@@ -12,6 +12,10 @@ then the attention gate, then the brain.
   when a conversation window is open (it spoke, or was addressed, in the
   last `window_s`), or when a known person is in view. Everything else is
   published as HeardDropped("not addressed") and left alone.
+- Echo is filtered twice: by time in io/stt.py (while the pet talks, plus
+  a tail), and here by content, for echoes that outlast that estimate:
+  a transcript that mostly repeats the pet's last 20 s of speech is not
+  someone talking to it.
 - The strict reflex match (the whole utterance is the command, give or take
   the name and a "please") keeps "don't stop" or "stop by the shop later"
   from halting the robot.
@@ -21,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import string
 import time
 from typing import TYPE_CHECKING, Optional
 
@@ -46,6 +52,8 @@ ALWAYS = ("stop", "quiet")
 # Words that may appear in a transcript of someone talking over the pet.
 BARGE_IN = {"stop": "stop", "halt": "stop", "freeze": "stop",
             "quiet": "quiet", "shut": "quiet", "silence": "quiet", "enough": "quiet"}
+# How far back our own words count when recognizing an echo by its text.
+ECHO_WINDOW_S = 20.0
 FILLERS = {"please", "now", "right", "ok", "okay", "hey", "just", "oh", "come", "on", "you",
            "yes", "no", "i", "said"}
 
@@ -61,15 +69,24 @@ def edit_distance(a: str, b: str) -> int:
 
 
 class NameMatcher:
-    """Finds the pet's name in a transcript, however whisper spelled it."""
+    """
+    Finds the pet's name in a transcript, however whisper spelled it.
+
+    Whisper is primed with the name (stt.prompt), and its near misses then
+    keep the name's capitals: "GularDOS", "OkGLaDOS". A word ending in
+    the name's last three capitals, or containing the name, counts.
+    """
 
     def __init__(self, name: str, wake_words: list[str]):
         self.name = normalize(name).replace(" ", "")
+        self.tail = re.sub(r"[^A-Za-z]", "", name)[-3:] if name[-3:].isupper() else None
         self.phrases = {normalize(w) for w in wake_words} | {self.name}
 
     def split(self, text: str) -> tuple[bool, list[str]]:
         """(was the name said, the remaining words)."""
-        words = normalize(text).split()
+        raw = [w.strip(string.punctuation) for w in text.split()]
+        raw = [w for w in raw if w]
+        words = [normalize(w) for w in raw]
         rest: list[str] = []
         found = False
         i = 0
@@ -78,17 +95,23 @@ class NameMatcher:
             if len(words) > i + 1 and (pair in self.phrases or self._close(words[i] + words[i + 1])):
                 found = True
                 i += 2
-            elif words[i] in self.phrases or self._close(words[i]):
+            elif words[i] in self.phrases or self._close(words[i]) or self._marked(raw[i]):
                 found = True
                 i += 1
             else:
-                rest.append(words[i])
+                rest.extend(words[i].split())
                 i += 1
         return found, rest
 
     def _close(self, word: str) -> bool:
         # One edit only: two lets in "gladly" and "glass".
         return len(word) >= 5 and edit_distance(word, self.name) <= 1
+
+    def _marked(self, raw: str) -> bool:
+        if self.name in raw.lower().replace("'", ""):
+            return True
+        return (self.tail is not None and len(raw) > len(self.tail)
+                and raw.endswith(self.tail))
 
 
 def match_reflex(words: list[str]) -> Optional[str]:
@@ -107,6 +130,22 @@ def barge_in(heard: str, said: str) -> Optional[str]:
         if word in BARGE_IN and word not in ours:
             return BARGE_IN[word]
     return None
+
+
+def repeats_own_speech(heard: str, said: str) -> bool:
+    """
+    Mostly our own recent words: an echo the timing gate let through
+    (it ends as soon as we think the robot's speaker went quiet).
+    """
+    words = normalize(heard).split()
+    ours = set(normalize(said).split())
+    if not words or not ours:
+        return False
+    matched = sum(word in ours for word in words)
+    if len(words) == 1:
+        # One word is only an echo if it's how our last sentence ended.
+        return normalize(said).split()[-1] == words[0]
+    return matched >= 2 and matched / len(words) >= 0.6
 
 
 class Listener:
@@ -150,6 +189,12 @@ class Listener:
             await self.reflex(reflex, text)
 
     async def on_heard(self, event: Heard) -> None:
+        speaker = self.pet.speaker
+        if speaker is not None and repeats_own_speech(event.text, speaker.said_recently(ECHO_WINDOW_S)):
+            log.info("ignoring %r: repeats what I just said", event.text)
+            self.pet.bus.publish(HeardDropped(text=event.text, reason="echo (repeats own words)"))
+            return   # HeardDropped("echo...") still gets its barge-in check
+
         addressed, words = self.names.split(event.text)
         reflex = match_reflex(words)
         if reflex in ALWAYS:

@@ -62,6 +62,15 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 **Findings from issues.txt (2026-09-22):** the pet said it had stored Noah's face, and that it was on its way somewhere, when it had no tool for either. `body.md` describes the whole body, and the model filled the gap between that and its tools with claims. `style.md` now says a missing tool means "I can't yet", and it says so in testing. Both abilities still need their tools: the face one landed in E3; driving is cluster C.
 
+**Findings from the first E2/E3 hardware test (2026-09-22):** enrolling two faces, recognition after a restart, the name gate and interrupting all worked. Four problems, fixed in software:
+
+- **The pet's own echo started a conversation with itself.** The timing gate ends `playback_latency_s + gate_tail_s` (0.9 s) after the last audio was *due*; whatever the robot plays after that is heard as someone else, and the 20 s conversation window then passes it to the brain. Now also filtered by content (a transcript that mostly repeats the pet's last 20 s of speech is dropped). `scripts/echo_timing.py` measures the real lag, to set the timing gate from data instead of a guess.
+- **A photo in a tool result crashed the turn** (`LimitOverrunError`): the CLI echoes it as one base64 line, over asyncio's 64 KiB readline limit. Raised to 64 MiB.
+- **Whisper hears "GLaDOS" as "Clovis", "Gladys", "G let us".** udp-stream has `--prompt` now, and petd primes it with the pet's name. On piper-spoken test lines that turned "Hey G let us" into "Hey GLaDOS" and "Glottos" into "GLaDOS"; the misses keep the capitals ("GularDOS"), which the name matcher accepts.
+- **"You're new" to someone it had just recognized:** the people list called familiarity tier 0 "new". It now says "I know their face", and tier 0 isn't named at all.
+
+Presence still dropped a seated, recognized person three times in 45 s with the 3 s debounce; raised to 5 s.
+
 **Next up (in order):**
 
 1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`).

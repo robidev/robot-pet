@@ -31,7 +31,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-FAMILIARITY_WORDS = ("new", "acquaintance", "regular", "favourite test subject")
+# Tier 0 is anyone with a stored face I haven't got to know yet. Calling it
+# "new" made the pet tell someone it had recognized that they were new.
+FAMILIARITY_WORDS = ("not familiar yet", "acquaintance", "regular", "favourite test subject")
 SIGHTING_EVERY_S = 30.0
 
 

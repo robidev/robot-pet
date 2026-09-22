@@ -237,7 +237,8 @@ async def test_prompt_lists_people_journal_and_facts(pet):
     pet.db.add_fact("the dock is behind the couch")
     pet.db.end_conversation(pet.db.start_conversation(), "Robin asked about the weather.")
     prompt = build_system_prompt(pet)
-    assert "# People I know" in prompt and "- Robin: new" in prompt and "hates Mondays" in prompt
+    assert "# People I know" in prompt and "- Robin: I know their face" in prompt
+    assert "hates Mondays" in prompt and "new" not in prompt.split("# People I know")[1][:200]
     assert "Robin asked about the weather." in prompt
     assert "the dock is behind the couch" in prompt
 

@@ -104,9 +104,12 @@ def memory_sections(pet: "App") -> str:
         line = f"- {person.name}"
         if person.nickname:
             line += f" (I call them {person.nickname})"
-        line += f": {FAMILIARITY_WORDS[min(person.familiarity, 3)]}"
-        if person.face_slot is None:
-            line += ", face not stored"
+        details = []
+        if person.familiarity > 0:
+            details.append(FAMILIARITY_WORDS[min(person.familiarity, 3)])
+        details.append("I know their face" if person.face_slot is not None
+                       else "face not stored")
+        line += ": " + ", ".join(details)
         if person.last_seen_at is not None:
             line += f", last seen {ago(now - person.last_seen_at)} ago"
         line += "."
