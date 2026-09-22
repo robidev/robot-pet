@@ -34,10 +34,11 @@ stt:
 speaker:
   sink: robot              # robot | null
   robot_port: 6000         # on the robot: socat -u TCP-LISTEN:6000,reuseaddr,fork EXEC:'aplay -f S16_LE -r 22050 -c 1 -t raw -'
+  stop_port: null             # e.g. 6001 with, on the robot: socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay'
   piper_url: http://127.0.0.1:5001
   manage_piper: true       # start piper-tts's http_server if nothing listens on piper_url
   volume: 1.0              # gain applied to the PCM before it is sent (0.3 is a comfortable room level)
-  lead_s: 0.3
+  lead_s: 2.0                  # jitter buffer: the robot's WiFi stalls for >1 s now and then
   playback_latency_s: 0.3
   gate_tail_s: 1.0             # scripts/echo_timing.py: latency + tail >= 1.3 s on this robot
 

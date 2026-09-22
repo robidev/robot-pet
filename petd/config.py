@@ -93,6 +93,10 @@ class SpeakerConfig:
     enabled: bool = True
     sink: str = "robot"                       # robot | null
     robot_port: int = 6000                    # socat -> aplay on the vacuum
+    # Connecting here kills aplay on the robot, for an instant interrupt():
+    # socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay'
+    # None = no such listener; interrupting then takes ~2 s to go quiet.
+    stop_port: Optional[int] = None
     sample_rate: int = 22050                  # must match the robot's aplay -r
     # Output loudness. The robot's amixer controls nothing and piper's HTTP
     # server has no volume knob, so the PCM is scaled here. 1.0 = as piper
@@ -105,9 +109,10 @@ class SpeakerConfig:
         ".venv/bin/python", "-m", "piper.http_server",
         "--port", "5001", "-m", "glados_piper_medium.onnx",
     ])
-    # How far ahead of real time audio is pushed to the robot. Small keeps
-    # interrupt() responsive (buffered audio can't be recalled).
-    lead_s: float = 0.3
+    # How far ahead of real time audio is pushed to the robot: the jitter
+    # buffer that rides out its WiFi stalls (measured up to 1.4 s). It costs
+    # nothing on interrupt, which resets the connection and drops the lot.
+    lead_s: float = 2.0
     # Rough delay between writing audio and hearing it (aplay startup + buffer).
     playback_latency_s: float = 0.3
     # Extra time after playback during which the mic hears our own echo.

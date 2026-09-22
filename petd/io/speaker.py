@@ -8,8 +8,13 @@ Text-to-speech out of the robot's own speaker.
   is still generating). One TCP connection per utterance.
 - Synthesis runs one sentence ahead of playback so there's no gap between
   sentences.
-- Audio is paced to real time plus `lead_s`. Anything already sent can't
-  be recalled, so a small lead keeps interrupt() fast.
+- Audio is paced to real time plus `lead_s`, and the lead is the jitter
+  buffer: the robot's WiFi stalls for over a second now and then (pings
+  of 1.3-1.4 s, while the face and router on the same network stay under
+  20 ms), and with a 0.3 s lead every stall was an aplay underrun, heard
+  as the voice cutting out. What's already sent can't be recalled, so
+  interrupt() resets the connection and, if the robot has one, pokes its
+  stop port, which kills aplay and the queued audio with it.
 - Playback spans are recorded so the STT echo gate can tell whether a
   transcript overlaps the pet's own voice.
 - The robot has no usable mixer (amixer controls nothing on its sound
@@ -42,6 +47,8 @@ log = logging.getLogger(__name__)
 Synthesizer = Callable[[str], Awaitable[bytes]]   # text -> WAV bytes
 
 CHUNK_S = 0.05
+# How long the robot keeps playing after interrupt() pokes its stop port.
+INTERRUPT_S = 0.5
 
 
 def wav_to_pcm(wav_bytes: bytes, expected_rate: int) -> bytes:
@@ -77,10 +84,14 @@ class AudioSink(ABC):
     @abstractmethod
     async def close(self) -> None: ...
 
+    async def abort(self) -> None:
+        """Stops at once, dropping whatever is queued downstream."""
+        await self.close()
+
 
 class RobotTcpSink(AudioSink):
-    def __init__(self, host: str, port: int):
-        self.host, self.port = host, port
+    def __init__(self, host: str, port: int, stop_port: Optional[int] = None):
+        self.host, self.port, self.stop_port = host, port, stop_port
         self._writer: Optional[asyncio.StreamWriter] = None
 
     async def open(self) -> None:
@@ -111,6 +122,22 @@ class RobotTcpSink(AudioSink):
             except OSError:
                 pass
             self._writer = None
+
+    async def abort(self) -> None:
+        # A reset, not a FIN. On its own that still takes ~2 s to go quiet:
+        # socat only notices once aplay has drained the pipe in between, and
+        # then gives aplay a second's grace. A connection to the robot's stop
+        # port (a socat that runs `killall aplay`) silences it at once.
+        if self._writer is not None:
+            self._writer.transport.abort()
+            self._writer = None
+        if self.stop_port:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.host, self.stop_port), 1.0)
+                writer.close()
+            except (OSError, asyncio.TimeoutError) as exc:
+                log.warning("robot stop port %s:%s: %s", self.host, self.stop_port, exc)
 
 
 class NullSink(AudioSink):
@@ -309,6 +336,11 @@ class Speaker:
             remaining = sent_s - (time.monotonic() - t0) + self.cfg.playback_latency_s
             if sink is not None and remaining > 0:
                 await asyncio.sleep(remaining)
+        except asyncio.CancelledError:
+            if sink is not None:
+                await sink.abort()
+                sink = None
+            raise
         finally:
             synth.cancel()
             if sink is not None:
@@ -333,8 +365,11 @@ class Speaker:
             return
         end = self._open_span_end
         if interrupted:
-            # Audio already pushed (lead + aplay buffer) keeps playing briefly.
-            end = min(end, time.time() + self.cfg.lead_s + self.cfg.playback_latency_s)
+            # With a stop port the robot goes quiet almost at once. Without
+            # one, it plays until socat sees the reset (after the lead has
+            # drained through the pipe) and its 1 s grace for aplay is up.
+            quiet_after = INTERRUPT_S if self.cfg.stop_port else self.cfg.lead_s + 1.0
+            end = min(end, time.time() + quiet_after + self.cfg.playback_latency_s)
         self._spans.append((self._open_span_start, end))
         self._open_span_start = None
 
@@ -345,7 +380,7 @@ def build_speaker(cfg: Config, bus: EventBus, fake: bool) -> tuple[Speaker, Opti
     if fake or sc.sink == "null":
         sink_factory: Callable[[], AudioSink] = NullSink
     else:
-        sink_factory = lambda: RobotTcpSink(cfg.vacuum.host, sc.robot_port)  # noqa: E731
+        sink_factory = lambda: RobotTcpSink(cfg.vacuum.host, sc.robot_port, sc.stop_port)  # noqa: E731
 
     if fake:
         async def synthesize(text: str) -> bytes:
