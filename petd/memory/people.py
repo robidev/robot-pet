@@ -319,7 +319,9 @@ class People:
 
 def describe(person: Person, now: float, away_s: Optional[float] = None) -> str:
     """One line about someone, for the brain."""
-    bits = [f"Familiarity: {FAMILIARITY_WORDS[min(person.familiarity, 3)]}."]
+    bits = []
+    if person.familiarity > 0:
+        bits.append(f"Familiarity: {FAMILIARITY_WORDS[min(person.familiarity, 3)]}.")
     if person.nickname:
         bits.append(f"You call them {person.nickname}.")
     if away_s is not None:

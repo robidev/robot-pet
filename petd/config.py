@@ -111,7 +111,9 @@ class SpeakerConfig:
     # Rough delay between writing audio and hearing it (aplay startup + buffer).
     playback_latency_s: float = 0.3
     # Extra time after playback during which the mic hears our own echo.
-    gate_tail_s: float = 0.6
+    # scripts/echo_timing.py on the robot: the voice ends up to ~1.0 s after
+    # its last byte was due, so latency + tail must be >= 1.3 s.
+    gate_tail_s: float = 1.0
 
 
 @dataclass
@@ -156,9 +158,10 @@ class MemoryConfig:
     # Greet a known person by name at most this often.
     greet_every_h: float = 4.0
     # Mention a stranger in view at most this often, and only once they've
-    # been in view this long without being recognized (recognition flickers).
+    # been in view this long without being recognized. Recognizing someone
+    # can take several seconds; at 4 s the pet asked Robin who they were.
     stranger_every_min: float = 30.0
-    stranger_after_s: float = 4.0
+    stranger_after_s: float = 10.0
     # familiarity tier N is reached at thresholds[N-1] = [interactions, days seen].
     familiarity_thresholds: list = field(default_factory=lambda: [[1, 1], [10, 3], [40, 10]])
     # The device's face slots (face_id_save_number in the firmware).

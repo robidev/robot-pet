@@ -71,6 +71,8 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 Presence still dropped a seated, recognized person three times in 45 s with the 3 s debounce; raised to 5 s.
 
+Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its last byte (start lag 0.14 s), so `gate_tail_s` is 1.0 (1.3 s in total). No segment *started* after the audio was due, so the timing gate alone may have been enough for these lines; long multi-sentence replies are still to be checked. Greetings after a restart work. The stranger note fired 4 s before recognition caught up ("Who are you?" to Robin), so it now waits 10 s.
+
 **Next up (in order):**
 
 1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`).

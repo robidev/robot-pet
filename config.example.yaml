@@ -39,7 +39,7 @@ speaker:
   volume: 1.0              # gain applied to the PCM before it is sent (0.3 is a comfortable room level)
   lead_s: 0.3
   playback_latency_s: 0.3
-  gate_tail_s: 0.6
+  gate_tail_s: 1.0             # scripts/echo_timing.py: latency + tail >= 1.3 s on this robot
 
 brain:
   backend: claude_cli          # claude_cli | ollama
