@@ -173,10 +173,11 @@ def build_registry(pet: "App") -> ToolRegistry:
     @registry.tool(
         "look_direction",
         "Point my head. pan: 0 is far right, 90 straight ahead, 180 far left. "
-        "tilt: 90 is level, higher looks up. Turns off face tracking while I hold the pose.",
+        "tilt: 90 is level, lower looks up (60 sees a standing adult's face), higher looks down. "
+        "Turns off face tracking while I hold the pose.",
         {"type": "object",
          "properties": {"pan": {"type": "number", "minimum": 0, "maximum": 180},
-                        "tilt": {"type": "number", "minimum": 0, "maximum": 180}},
+                        "tilt": {"type": "number", "minimum": 50, "maximum": 140}},
          "required": []})
     async def look_direction(args: dict) -> str:
         face = require_face()
@@ -184,7 +185,8 @@ def build_registry(pet: "App") -> ToolRegistry:
         if pan is None and tilt is None:
             raise ToolError("give me a pan and/or tilt angle")
         await face.set_servo(mode="manual")
-        await face.set_servo(pan_deg=_clamp(pan, 0, 180), tilt_deg=_clamp(tilt, 0, 180))
+        await face.set_servo(pan_deg=_clamp(pan, 0, 180),
+                             tilt_deg=_clamp(tilt, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg))
         return "looking there"
 
     @registry.tool(

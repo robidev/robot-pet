@@ -35,12 +35,13 @@ EMOTIONS: dict[str, tuple[float, float, float]] = {
     "listening": (0.0,  0.05, 1.25),
 }
 
-# look -> (x, y) gaze, and the head offset in degrees from centre
+# look -> (x, y) gaze, and the head offset in degrees from centre. A lower
+# tilt looks up (checked with snapshots at 60 and 120).
 GLANCES: dict[str, tuple[float, float, float, float]] = {
     "left":  (-0.8, 0.0, 25.0, 0.0),
     "right": (0.8, 0.0, -25.0, 0.0),
-    "up":    (0.0, 0.7, 0.0, 15.0),
-    "down":  (0.0, -0.7, 0.0, -15.0),
+    "up":    (0.0, 0.7, 0.0, -15.0),
+    "down":  (0.0, -0.7, 0.0, 15.0),
     "ahead": (0.0, 0.0, 0.0, 0.0),
     "away":  (-0.7, 0.4, 0.0, 0.0),
 }
@@ -51,6 +52,8 @@ class Expressions:
 
     def __init__(self, face: "FaceAdapter", pan_centre: float = 90.0, tilt_centre: float = 90.0):
         self.face = face
+        self.tilt_min = getattr(face.cfg, "tilt_min_deg", 0.0)
+        self.tilt_max = getattr(face.cfg, "tilt_max_deg", 180.0)
         self.pan_centre = pan_centre
         self.tilt_centre = tilt_centre
 
@@ -89,7 +92,7 @@ class Expressions:
             tilt = (state.tilt_deg if state.tilt_deg is not None else self.tilt_centre) + tilt_offset
             await self.face.set_servo(mode="manual")
             await self.face.set_servo(pan_deg=max(0.0, min(180.0, pan)),
-                                      tilt_deg=max(0.0, min(180.0, tilt)))
+                                      tilt_deg=max(self.tilt_min, min(self.tilt_max, tilt)))
 
     async def nod(self) -> None:
         await self._wiggle(tilt=True)
@@ -104,7 +107,7 @@ class Expressions:
         await self.face.set_servo(mode="manual")
         for offset in (12.0, -12.0, 0.0):
             if tilt:
-                await self.face.set_servo(tilt_deg=max(0.0, min(180.0, tilt_deg + offset)))
+                await self.face.set_servo(tilt_deg=max(self.tilt_min, min(self.tilt_max, tilt_deg + offset)))
             else:
                 await self.face.set_servo(pan_deg=max(0.0, min(180.0, pan + offset)))
             await asyncio.sleep(0.22)

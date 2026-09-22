@@ -86,10 +86,18 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **`go_to` works** and plans its own path, but overshot a 30 cm target to ~90 cm before settling 12 cm past it.
 - **Valetudo drops idle HTTP keep-alive connections**, and the robot's WiFi stalls (see the audio finding) outlast a 5 s timeout now and then: arming and disarming retry (disarm for up to 20 s: left armed, the lidar keeps spinning), moves use a 1 s timeout and are simply resent, and a motion stops and waits up to 3 s for odometry rather than driving blind.
 
+**Findings from the face calibration attempt (2026-09-23, around midnight): stop-and-look can't see a standing adult.**
+
+- **Tilt: lower looks up** (snapshots at 60 and 120). `look_direction`'s description and the `[look:up]` glance had it backwards; fixed.
+- **The tilt mount stops at ~45°**, and face tracking drove the servo into it following a standing face: the stall browned out the board and reset it. Firmware now clamps tilt to 50–140 (`~/LilyGo-Cam-RobotFace` `2ff6bcb`, **built, not yet flashed**), and petd clamps what it asks for too. Until it's flashed, don't leave tracking on with a face near the top of the frame.
+- **The head sees up to ~45° of elevation at most.** A standing adult's eyes (1.70 m) are 45° up from 1.5 m away and 56° from 1.0 m.
+- **Faces aren't detected much beyond ~1.5 m**, even in full room light: stage one of the detector (`HumanFaceDetectMSR01(..., 0.2F)`) runs on the VGA frame scaled to 20%, 128×96, where a face 2 m away is ~8 px. Robin was only detected at 1.5 m when bending their knees.
+- **So there's no distance at which a standing adult is both high enough in the frame and big enough to detect.** The face-distance calibration wasn't possible; `scripts/calibrate_face.py` (fixed-tilt captures, no tracking) is ready for when it is. Options, roughly in order of payoff for "come here": (1) **a person/feet detector on the PC**, run on `/snapshot`: legs are in view at tilt 90, the bearing comes from the box, and the distance from where the feet meet the floor (camera 0.20 m up, known tilt) needs no face height at all; face recognition stays for *who*, up close; (2) the detector's resize scale 0.2 → 0.3–0.4 for range, at a CPU cost to measure against the vision duty cycle; (3) tilting the camera up on its mount by 15–20°.
+
 **Next up (in order):**
 
 1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`).
-2. **Rest of cluster C:** the face-distance calibration (C3, **you at the robot**, standing at 1, 2 and 3 m), C1 map geometry, C5 person localization. Then E4 (`approach_person`, search, the arbiter) for M3.
+2. **Flash the tilt clamp** (`2ff6bcb`). Then decide how "come here" finds a standing person (see the calibration findings): a PC-side person detector is the recommendation. Then C1 map geometry, C5 person localization on whatever that gives, and E4 (`approach_person`, search, the arbiter) for M3.
 3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
 4. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
 
