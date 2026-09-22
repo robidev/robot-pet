@@ -20,7 +20,7 @@ face:
   audio_port: 5000
   audio_gain: null         # e.g. 1.5; null leaves the device setting alone
   enable_recognition: true
-  faces_lost_debounce_s: 1.5
+  faces_lost_debounce_s: 3.0   # recognition drops out for >1.5 s with a face in view
 
 stt:
   binary: stt/udp-stream/whisper-udp-stream
@@ -48,6 +48,13 @@ brain:
   episode_idle_timeout_s: 600  # quiet for this long -> start a fresh conversation
   # ollama_url: http://127.0.0.1:11434
   # ollama_model: qwen2.5:7b
+
+memory:
+  db_path: runtime/pet.db      # people, sightings, conversations, facts
+  greet_every_h: 4             # greet a known person by name at most this often
+  stranger_every_min: 30       # mention an unrecognized face at most this often
+  familiarity_thresholds: [[1, 1], [10, 3], [40, 10]]   # [interactions, days seen] per tier
+  journal_in_prompt: 5         # recent conversation summaries in each new episode
 
 api:
   host: 127.0.0.1

@@ -109,6 +109,12 @@ def build_registry(pet: "App") -> ToolRegistry:
     """The MVP tool set (PLAN.md 4.5). Later clusters add movement and memory."""
     registry = ToolRegistry()
 
+    def _face_name(face) -> Optional[str]:
+        if not face.recognized:
+            return None
+        person = pet.db.person_by_slot(face.id) if pet.db is not None else None
+        return person.name if person else f"a face I stored without a name (#{face.id})"
+
     def require_face():
         if pet.face is None:
             raise ToolError("I have no head attached right now")
@@ -133,12 +139,17 @@ def build_registry(pet: "App") -> ToolRegistry:
             out["head"] = {"reachable": f.reachable, "pan_deg": f.pan_deg, "tilt_deg": f.tilt_deg,
                            "servo_mode": f.servo_mode, "known_faces_stored": f.enrolled}
             out["sees"] = [
-                {"face_id": face.id if face.recognized else None,
+                {"who": _face_name(face),
                  "where": _describe_position(face.cx),
                  "size": round(face.h, 2), "confidence": round(face.confidence, 2)}
                 for face in frame.faces
             ]
             out["someone_present"] = pet.face.presence.present
+            if pet.people is not None:
+                names, strangers = pet.people.who_is_here()
+                # Recognition flickers frame to frame; this is who was
+                # recognized at any point since they came into view.
+                out["people_here"] = {"known": names, "unrecognized": strangers}
         if pet.speaker:
             out["speaking"] = pet.speaker.speaking
         return out
@@ -175,7 +186,8 @@ def build_registry(pet: "App") -> ToolRegistry:
     @registry.tool(
         "track_faces",
         "Turn face tracking on or off. On means my head follows whoever I'm looking at, "
-        "keeping eye contact. Turn it on when someone is with me.",
+        "keeping eye contact. Turn it on when someone is with me. It only moves my head: "
+        "it does not learn or remember anyone's face.",
         {"type": "object", "properties": {"on": {"type": "boolean"}}, "required": ["on"]})
     async def track_faces(args: dict) -> str:
         await require_face().set_servo(mode="track" if args.get("on", True) else "manual")
@@ -198,7 +210,107 @@ def build_registry(pet: "App") -> ToolRegistry:
         await pet.stop_everything("tool")
         return "stopped"
 
+    if pet.people is not None:
+        _add_memory_tools(registry, pet)
     return registry
+
+
+def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
+    """The people and memory tools (PLAN.md 4.5, 4.7; cluster E3)."""
+    from ..memory.people import FAMILIARITY_WORDS, ago
+    people, db = pet.people, pet.db
+    name_arg = {"type": "string", "description": "The person's name, as they said it"}
+
+    def require_person(name: str):
+        person = db.person_by_name(name or "")
+        if person is None:
+            raise ToolError(f"I don't know anyone called {name}")
+        return person
+
+    @registry.tool(
+        "remember_face",
+        "Memorize the face of the person in front of me, under their name, so I recognize them "
+        "from now on. Only when they ask me to remember them or agree to it. Exactly one person "
+        "must be in view, facing me. Takes a few seconds; the result says whether it worked.",
+        {"type": "object",
+         "properties": {"name": name_arg,
+                        "insist": {"type": "boolean", "description":
+                                   "Store the face even though it looks like someone I know, or "
+                                   "retake a face I already have. Only after a first attempt "
+                                   "told me to."}},
+         "required": ["name"]})
+    async def remember_face(args: dict) -> str:
+        return await people.enroll(args.get("name", ""), insist=bool(args.get("insist")))
+
+    @registry.tool(
+        "forget_person",
+        "Permanently delete someone: their stored face and everything I know about them. Only "
+        "when a person explicitly asks me to forget them (or someone by name). Never on my own "
+        "initiative, and never on a vague 'forget it'.",
+        {"type": "object", "properties": {"name": name_arg}, "required": ["name"]})
+    async def forget_person(args: dict) -> str:
+        return await people.forget(args.get("name", ""))
+
+    @registry.tool(
+        "who_do_i_know",
+        "Everyone I know by name, whether I have their face stored, and when I last saw them.")
+    async def who_do_i_know(args: dict) -> list:
+        now = time.time()
+        return [{"name": p.name, "nickname": p.nickname,
+                 "face_stored": p.face_slot is not None,
+                 "familiarity": FAMILIARITY_WORDS[min(p.familiarity, 3)],
+                 "last_seen": None if p.last_seen_at is None else ago(now - p.last_seen_at) + " ago"}
+                for p in db.people()]
+
+    @registry.tool(
+        "recall_person",
+        "What I remember about someone: my notes, things they told me, and when and where I "
+        "last saw them.",
+        {"type": "object", "properties": {"name": name_arg}, "required": ["name"]})
+    async def recall_person(args: dict) -> dict:
+        person = require_person(args.get("name", ""))
+        now = time.time()
+        return {"name": person.name, "nickname": person.nickname, "notes": person.notes or None,
+                "face_stored": person.face_slot is not None,
+                "familiarity": FAMILIARITY_WORDS[min(person.familiarity, 3)],
+                "times_met": person.interactions,
+                "last_seen": (None if person.last_seen_at is None
+                              else ago(now - person.last_seen_at) + " ago"),
+                "in_view_now": person.id in people.present,
+                "facts": [f.text for f in db.facts(about=person.id, limit=10)]}
+
+    @registry.tool(
+        "note_about_person",
+        "Remember something about someone I know: a preference, a running joke, something they "
+        "told me. Short, one fact per call. Can also set the nickname I use for them.",
+        {"type": "object",
+         "properties": {"name": name_arg,
+                        "note": {"type": "string", "maxLength": 300},
+                        "nickname": {"type": "string", "maxLength": 40}},
+         "required": ["name"]})
+    async def note_about_person(args: dict) -> str:
+        person = require_person(args.get("name", ""))
+        note, nickname = (args.get("note") or "").strip(), (args.get("nickname") or "").strip()
+        if not note and not nickname:
+            raise ToolError("give me a note or a nickname")
+        if note:
+            db.add_fact(note, about=person.id)
+        if nickname:
+            db.set_nickname(person.id, nickname)
+        return f"noted about {person.name}"
+
+    @registry.tool(
+        "remember_fact",
+        "Remember something general for later: about the house, the routine, or myself. Not for "
+        "facts about one person (use note_about_person). Short, one fact per call.",
+        {"type": "object", "properties": {"text": {"type": "string", "maxLength": 300}},
+         "required": ["text"]})
+    async def remember_fact(args: dict) -> str:
+        text = (args.get("text") or "").strip()
+        if not text:
+            raise ToolError("remember what, exactly?")
+        db.add_fact(text)
+        return "noted"
 
 
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:

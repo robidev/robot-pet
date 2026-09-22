@@ -190,7 +190,10 @@ class FaceAdapter(ABC):
     @abstractmethod
     async def set_eye_mode(self, mode: str) -> None: ...
     @abstractmethod
-    async def enroll_next_face(self) -> None: ...
+    async def enroll_next_face(self) -> None:
+        """Arms enrollment: the first face in the next frame gets a new id (then disarms)."""
+    @abstractmethod
+    async def cancel_enroll(self) -> None: ...
     @abstractmethod
     async def list_enrolled(self) -> list: ...
     @abstractmethod
@@ -314,6 +317,9 @@ class RobotFace(FaceAdapter):
     async def enroll_next_face(self) -> None:
         await asyncio.to_thread(self._client.enroll_face, True)
 
+    async def cancel_enroll(self) -> None:
+        await asyncio.to_thread(self._client.enroll_face, False)
+
     async def list_enrolled(self) -> list:
         return await asyncio.to_thread(self._client.list_enrolled_faces)
 
@@ -363,9 +369,14 @@ class FakeFace(FaceAdapter):
         self.commands.append(("eye_mode", mode))
 
     async def enroll_next_face(self) -> None:
+        """Like the device: enrolls whoever is in view (already known or not)."""
         self.commands.append(("enroll",))
-        new_id = max(self.enrolled, default=-1) + 1
-        self.enrolled.append(new_id)
+        if self._frame_faces and len(self.enrolled) < 7:
+            new_id = max(self.enrolled, default=-1) + 1
+            self.enrolled.append(new_id)
+
+    async def cancel_enroll(self) -> None:
+        self.commands.append(("enroll_cancel",))
 
     async def list_enrolled(self) -> list:
         return list(self.enrolled)

@@ -33,6 +33,8 @@ class App:
         self.face: Optional[FaceAdapter] = None
         self.speaker: Optional[Speaker] = None
         self.stt = None
+        self.db = None
+        self.people = None
         self.tools = None
         self.brain = None
         self._piper: Optional[ManagedProcess] = None
@@ -59,6 +61,14 @@ class App:
             if part is not None:
                 await part.start()
 
+        if cfg.memory.enabled:
+            from .memory.db import MemoryDB
+            from .memory.people import People
+            # --fake gets a throwaway memory so test runs don't meet real people.
+            self.db = MemoryDB(":memory:" if fake else cfg.path(cfg.memory.db_path))
+            self.people = People(self, self.db)
+            await self.people.start()
+
         from .brain.tools import build_registry
         self.tools = build_registry(self)
         if not self.echo:
@@ -68,6 +78,8 @@ class App:
             self.brain = build_brain(self)
             if self.brain is not None:
                 await self.brain.start()
+                if self.people is not None:
+                    self.people.set_notify(lambda text: self.brain.tell(text, kind="event"))
 
         if cfg.api.enabled:
             from .api.server import serve
@@ -83,7 +95,7 @@ class App:
         for task in self._tasks:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
-        for part in (self.brain, self.stt, self.speaker, self.face, self.vacuum):
+        for part in (self.brain, self.people, self.stt, self.speaker, self.face, self.vacuum):
             if part is not None:
                 try:
                     await part.close()
@@ -91,6 +103,8 @@ class App:
                     log.exception("error closing %s", type(part).__name__)
         if self._piper:
             await self._piper.stop()
+        if self.db is not None:
+            self.db.close()
 
     async def run_until_stopped(self) -> None:
         await self._stopped.wait()

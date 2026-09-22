@@ -57,6 +57,22 @@ class FaceDeviceConnection(Event):
     detail: str = ""
 
 
+# --- people ------------------------------------------------------------------
+
+@dataclass(frozen=True, kw_only=True)
+class PersonArrived(Event):
+    """A known person was recognized for the first time in this presence episode."""
+    person_id: int
+    name: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class PersonLeft(Event):
+    """Nobody has been in view for the debounce time; a known person counts as gone."""
+    person_id: int
+    name: str
+
+
 # --- hearing -----------------------------------------------------------------
 
 @dataclass(frozen=True, kw_only=True)

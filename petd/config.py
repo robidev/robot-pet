@@ -63,8 +63,9 @@ class FaceConfig:
     enable_recognition: bool = True
     status_poll_s: float = 0.5
     # A face set going empty only counts as "nobody here" after this long,
-    # to ride out single-frame detection dropouts.
-    faces_lost_debounce_s: float = 1.5
+    # to ride out detection dropouts (measured at over 1.5 s with a face
+    # held still in view).
+    faces_lost_debounce_s: float = 3.0
 
 
 @dataclass
@@ -129,6 +130,25 @@ class BrainConfig:
 
 
 @dataclass
+class MemoryConfig:
+    enabled: bool = True
+    db_path: str = "runtime/pet.db"
+    # Greet a known person by name at most this often.
+    greet_every_h: float = 4.0
+    # Mention a stranger in view at most this often, and only once they've
+    # been in view this long without being recognized (recognition flickers).
+    stranger_every_min: float = 30.0
+    stranger_after_s: float = 4.0
+    # familiarity tier N is reached at thresholds[N-1] = [interactions, days seen].
+    familiarity_thresholds: list = field(default_factory=lambda: [[1, 1], [10, 3], [40, 10]])
+    # The device's face slots (face_id_save_number in the firmware).
+    face_slots: int = 7
+    enroll_timeout_s: float = 6.0
+    journal_in_prompt: int = 5
+    facts_in_prompt: int = 15
+
+
+@dataclass
 class ApiConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -145,6 +165,7 @@ class Config:
     stt: SttConfig = field(default_factory=SttConfig)
     speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
     brain: BrainConfig = field(default_factory=BrainConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
 
     def path(self, relative: str) -> Path:

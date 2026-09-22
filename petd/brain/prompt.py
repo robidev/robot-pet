@@ -4,8 +4,8 @@ and each user turn (what it senses, plus what was said or happened).
 
 The persona lives in editable markdown under memory/ so it can be changed
 without touching code; anything missing falls back to a built-in default.
-Cluster F replaces these defaults with the real GLaDOS persona, and
-cluster E adds people and journal sections.
+The people I know, my journal and what I've learned come from the
+memory database (petd/memory/) and are rebuilt at every episode start.
 """
 
 from __future__ import annotations
@@ -86,9 +86,60 @@ def load_persona(memory_dir: Path, pet_name: str) -> str:
     return "\n\n".join(parts)
 
 
+def memory_sections(pet: "App") -> str:
+    """People I know, my journal and things I've learned, from the database."""
+    db = pet.db
+    if db is None:
+        return ""
+    from ..memory.people import FAMILIARITY_WORDS, ago
+    cfg = pet.cfg.memory
+    now = time.time()
+    parts: list[str] = []
+
+    people = db.people()
+    lines = ["# People I know", ""]
+    if not people:
+        lines.append("Nobody yet. I have not been introduced to anyone.")
+    for person in people:
+        line = f"- {person.name}"
+        if person.nickname:
+            line += f" (I call them {person.nickname})"
+        line += f": {FAMILIARITY_WORDS[min(person.familiarity, 3)]}"
+        if person.face_slot is None:
+            line += ", face not stored"
+        if person.last_seen_at is not None:
+            line += f", last seen {ago(now - person.last_seen_at)} ago"
+        line += "."
+        if person.notes:
+            line += f" {person.notes}"
+        # Closer people get more of what I know about them up front.
+        facts = db.facts(about=person.id, limit=3 if person.familiarity >= 2 else 1)
+        if facts:
+            line += " " + " ".join(f.text.rstrip(".") + "." for f in facts)
+        lines.append(line)
+    parts.append("\n".join(lines))
+
+    journal = db.journal(limit=cfg.journal_in_prompt)
+    if journal:
+        lines = ["# My journal (recent conversations)", ""]
+        lines += [f"- {time.strftime('%a %d %b %H:%M', time.localtime(c.started_at))}: {c.summary}"
+                  for c in journal]
+        parts.append("\n".join(lines))
+
+    facts = db.facts(limit=cfg.facts_in_prompt)
+    if facts:
+        lines = ["# Things I have learned", ""]
+        lines += [f"- {f.text}" for f in reversed(facts)]
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
+
+
 def build_system_prompt(pet: "App") -> str:
     memory_dir = pet.cfg.path(pet.cfg.brain.memory_dir)
     persona = load_persona(memory_dir, pet.cfg.pet.name)
+    memory = memory_sections(pet)
+    if memory:
+        persona += "\n\n" + memory
     return persona + "\n\n" + f"""\
 # Right now
 
@@ -116,12 +167,23 @@ def senses_line(pet: "App") -> str:
         if not pet.face.state.reachable:
             bits.append("head offline")
         elif pet.face.presence.present:
-            faces = (pet.face.last_faces.faces if pet.face.last_faces else ())
-            known = [f"face #{f.id}" for f in faces if f.recognized]
-            bits.append("sees " + (", ".join(known) if known else "someone"))
+            bits.append("sees " + _who_is_here(pet))
         else:
             bits.append("nobody in view")
     return "[" + " | ".join(bits) + "]"
+
+
+def _who_is_here(pet: "App") -> str:
+    if pet.people is not None:
+        names, strangers = pet.people.who_is_here()
+    else:
+        faces = pet.face.last_faces.faces if pet.face.last_faces else ()
+        names = [f"face #{f.id}" for f in faces if f.recognized]
+        strangers = len(faces) - len(names)
+    if strangers:
+        names.append("someone I don't recognize" if strangers == 1
+                     else f"{strangers} people I don't recognize")
+    return " and ".join(names) if names else "someone"
 
 
 def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str] = None) -> str:
@@ -138,3 +200,18 @@ def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str
     else:
         body = f"[event] {text}\n(Say something only if it's worth saying out loud.)"
     return f"{senses_line(pet)}\n{body}"
+
+
+JOURNAL_REQUEST = (
+    "[journal] This conversation is over. Write one or two plain sentences for your private "
+    "journal: who you talked with, what about, and anything worth remembering next time. "
+    "This is not spoken aloud. No tags, no tool calls."
+)
+
+
+def clean_summary(text: str) -> str:
+    """The journal line as stored: tags stripped, whitespace collapsed, length capped."""
+    import re
+    text = re.sub(r"\[[a-z]+(?::[^\]]*)?\]", "", text)
+    text = " ".join(text.split())
+    return text[:400]

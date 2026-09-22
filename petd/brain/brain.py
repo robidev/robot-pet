@@ -4,7 +4,9 @@ speech, expression and tool calls.
 
 One "episode" is one LLM conversation. It starts on the first turn and
 ends after `episode_idle_timeout_s` of quiet, so context stays small and
-the persona reloads; cluster E adds a journal summary at that point.
+the persona reloads. Before it ends, the model writes a line for its
+journal (never spoken), and the next episode's system prompt carries the
+most recent entries: long-term memory without a long context.
 
 Turns are serialized: while one is being spoken, another arrival waits
 (or is dropped if the queue is already full), so the pet never talks over
@@ -41,6 +43,8 @@ class Brain:
         self._tasks: list[asyncio.Task] = []
         self._last_turn_at = 0.0
         self._episode_open = False
+        self._conversation_id: Optional[int] = None
+        self._heard_this_episode = 0
         self.busy = False
 
     async def start(self) -> None:
@@ -55,13 +59,17 @@ class Brain:
     async def close(self) -> None:
         for task in self._tasks:
             task.cancel()
-        await self.backend.end_episode()
+        # No journal entry on shutdown: it would hold Ctrl-C up for a model turn.
+        await self._end_episode(summary=None)
 
     # --- inputs ---------------------------------------------------------------
 
     async def _collect_heard(self, sub) -> None:
         async for event in sub:
-            self.tell(event.text, kind="heard")
+            # One known face and nobody else in view: they're almost certainly
+            # the one talking. Otherwise the senses line says who is around.
+            person = self.pet.people.sole_person() if self.pet.people else None
+            self.tell(event.text, kind="heard", speaker=person.name if person else None)
 
     def tell(self, text: str, kind: str = "heard", speaker: Optional[str] = None) -> None:
         """Queues a turn. Behaviors use kind='event' to report what happened."""
@@ -87,29 +95,73 @@ class Brain:
 
     async def _run_turns(self) -> None:
         while True:
-            text, kind, speaker = await self._queue.get()
+            try:
+                text, kind, speaker = await asyncio.wait_for(self._queue.get(), self._idle_left())
+            except asyncio.TimeoutError:
+                # Summarizing here, in the only task that runs turns, means a
+                # new turn can't race the episode's last one.
+                await self._close_idle_episode()
+                continue
             try:
                 await self._run_turn(text, kind, speaker)
             except Exception:  # noqa: BLE001 - one bad turn must not kill the brain
                 log.exception("turn failed")
 
+    def _idle_left(self) -> Optional[float]:
+        if not self._episode_open:
+            return None
+        return max(0.0, self._last_turn_at + self.cfg.episode_idle_timeout_s - time.time())
+
     async def _ensure_episode(self) -> None:
-        idle = time.time() - self._last_turn_at
-        if self._episode_open and idle < self.cfg.episode_idle_timeout_s:
-            return
         if self._episode_open:
-            log.info("episode idle for %.0fs; starting a fresh one", idle)
-            await self.backend.end_episode()
+            return
         await self.backend.start_episode(prompt_module.build_system_prompt(self.pet))
         self._episode_open = True
+        self._heard_this_episode = 0
+        if self.pet.db is not None:
+            self._conversation_id = self.pet.db.start_conversation()
+
+    async def _close_idle_episode(self) -> None:
+        log.info("episode idle for %.0fs; closing it", time.time() - self._last_turn_at)
+        summary = None
+        if self._heard_this_episode:
+            try:
+                summary = await asyncio.wait_for(self._summarize(), 60)
+            except Exception:  # noqa: BLE001 - a lost journal line is not worth more
+                log.exception("journal summary failed")
+        await self._end_episode(summary)
+
+    async def _summarize(self) -> Optional[str]:
+        """Asks the model for its journal line. Collected, never spoken."""
+        text = ""
+        async for event in self.backend.send(prompt_module.JOURNAL_REQUEST):
+            if isinstance(event, TextDelta):
+                text += event.text
+            elif isinstance(event, BrainError):
+                log.warning("journal summary: %s", event.message)
+        summary = prompt_module.clean_summary(text)
+        log.info("journal: %s", summary)
+        return summary or None
+
+    async def _end_episode(self, summary: Optional[str]) -> None:
+        if self._conversation_id is not None and self.pet.db is not None:
+            self.pet.db.end_conversation(self._conversation_id, summary)
+        self._conversation_id = None
+        self._episode_open = False
+        await self.backend.end_episode()
 
     async def _run_turn(self, text: str, kind: str, speaker: Optional[str]) -> None:
         await self._ensure_episode()
         turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker)
         log.info("-> brain: %s", turn.replace("\n", " | "))
 
+        if kind == "heard":
+            self._heard_this_episode += 1
+        self._record((speaker or "someone") if kind == "heard" else "event", text)
+
         parser = SpeechStreamParser()
         utterance = None
+        said: list[str] = []
         self.busy = True
         started = time.monotonic()
         try:
@@ -117,7 +169,7 @@ class Brain:
                 if isinstance(event, TextDelta):
                     log.debug("delta %r", event.text)
                     for piece in parser.feed(event.text):
-                        utterance = await self._emit(piece, utterance)
+                        utterance = await self._emit(piece, utterance, said)
                 elif isinstance(event, ToolStarted):
                     log.info("brain calls %s(%s)", event.name, event.arguments)
                 elif isinstance(event, ToolFinished):
@@ -127,25 +179,32 @@ class Brain:
                     log.error("brain error: %s", event.message)
                 elif isinstance(event, TurnDone):
                     for piece in parser.flush():
-                        utterance = await self._emit(piece, utterance)
+                        utterance = await self._emit(piece, utterance, said)
                     log.info("turn done in %.1fs (cost %s)",
                              event.duration_s or (time.monotonic() - started), event.cost_usd)
         finally:
             self.busy = False
             self._last_turn_at = time.time()
+            if said:
+                self._record("pet", " ".join(said))
             if utterance is not None:
                 utterance.end()
                 await utterance.wait()
             if self.expressions is not None:
                 await self.expressions.rest()
 
-    async def _emit(self, piece, utterance):
+    def _record(self, speaker: str, text: str) -> None:
+        if self._conversation_id is not None and self.pet.db is not None:
+            self.pet.db.add_utterance(self._conversation_id, speaker, text)
+
+    async def _emit(self, piece, utterance, said: list):
         if isinstance(piece, Action):
             if self.expressions is not None:
                 await self.expressions.apply(piece)
             return utterance
         if isinstance(piece, Sentence):
             log.info("<- brain says: %s", piece.text)
+            said.append(piece.text)
             if self.pet.speaker is not None:
                 if utterance is None:
                     utterance = self.pet.speaker.begin()
