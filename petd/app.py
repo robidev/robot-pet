@@ -35,6 +35,8 @@ class App:
         self.stt = None
         self.db = None
         self.people = None
+        self.motion = None
+        self.motion_task: Optional[asyncio.Task] = None
         self.tools = None
         self.brain = None
         self.listener = None
@@ -61,6 +63,20 @@ class App:
         for part in (self.vacuum, self.face, self.speaker, self.stt):
             if part is not None:
                 await part.start()
+
+        if self.vacuum is not None and cfg.motion.enabled:
+            from .spatial.motion import Motion
+            if fake:
+                odometry = self.vacuum.odometry
+            else:
+                from .spatial.odometry import PlayerOdometry
+                odometry = PlayerOdometry(cfg.vacuum.host, cfg.player.port)
+            self.motion = Motion(self.vacuum, odometry, cfg.motion)
+            # Connected from the start (it only streams while armed), so the
+            # first turn doesn't also wait for a Player handshake.
+            start = getattr(odometry, "start", None)
+            if start:
+                start()
 
         if cfg.memory.enabled:
             from .memory.db import MemoryDB
@@ -99,7 +115,9 @@ class App:
         for task in self._tasks:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
-        for part in (self.listener, self.brain, self.people, self.stt, self.speaker, self.face, self.vacuum):
+        await self._cancel_motion()
+        for part in (self.listener, self.brain, self.people, self.motion, self.stt, self.speaker,
+                     self.face, self.vacuum):
             if part is not None:
                 try:
                     await part.close()
@@ -122,11 +140,53 @@ class App:
         self.bus.publish(StopRequested(source=source))
         if self.speaker:
             self.speaker.interrupt()
+        await self._cancel_motion()
         if self.vacuum:
             try:
                 await self.vacuum.stop_motion()
             except Exception:  # noqa: BLE001 - a stop must not fail loudly
                 log.exception("vacuum stop failed")
+
+    def start_motion(self, coro, describe: str, report: bool = True) -> asyncio.Task:
+        """
+        Runs a motion (a turn, a move, a trip to a place) as a task, one at
+        a time, so a stop can cancel it. With `report`, the brain hears how
+        it went: a success as a note with its next turn, a failure as an
+        event of its own. Without, the caller awaits the task's
+        (outcome, ok) itself.
+        """
+        async def run() -> tuple[str, bool]:
+            try:
+                outcome, ok = await coro
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - becomes something the pet can say
+                log.exception("%s failed", describe)
+                outcome, ok = f"{describe} failed: {exc}", False
+            log.info("motion: %s", outcome)
+            if report and self.brain is not None:
+                if ok:
+                    self.brain.note(outcome)
+                else:
+                    self.brain.tell(outcome, kind="event")
+            return outcome, ok
+        self.motion_task = asyncio.create_task(run(), name="motion")
+        return self.motion_task
+
+    @property
+    def moving(self) -> bool:
+        return self.motion_task is not None and not self.motion_task.done()
+
+    async def _cancel_motion(self) -> None:
+        task, self.motion_task = self.motion_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+        if self.motion is not None:
+            await self.motion.disarm()
 
     def hear(self, text: str, source: str = "api") -> None:
         """Injects text as if it had been heard (goes through the same filters)."""

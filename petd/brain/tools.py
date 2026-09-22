@@ -152,6 +152,10 @@ def build_registry(pet: "App") -> ToolRegistry:
                 out["people_here"] = {"known": names, "unrecognized": strangers}
         if pet.speaker:
             out["speaking"] = pet.speaker.speaking
+        if pet.db is not None:
+            out["places_i_know"] = pet.db.places()
+        if pet.motion is not None:
+            out["on_the_move"] = pet.moving
         return out
 
     @registry.tool(
@@ -162,7 +166,7 @@ def build_registry(pet: "App") -> ToolRegistry:
     async def look(args: dict) -> dict:
         snap = await require_face().snapshot()
         if snap is None:
-            raise ToolError("my camera returned nothing")
+            raise ToolError("my camera is not working right now: no photo came back, so I saw nothing at all")
         return {"image": snap.jpeg, "mime": "image/jpeg",
                 "text": f"photo taken at pan {snap.servo_pan_deg}, tilt {snap.servo_tilt_deg}"}
 
@@ -212,7 +216,149 @@ def build_registry(pet: "App") -> ToolRegistry:
 
     if pet.people is not None:
         _add_memory_tools(registry, pet)
+    if pet.motion is not None:
+        _add_motion_tools(registry, pet)
     return registry
+
+
+def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
+    """Turning, moving and named places (PLAN.md 4.5; cluster C4)."""
+    import asyncio
+    motion, vacuum, cfg = pet.motion, pet.vacuum, pet.cfg.motion
+
+    def check_can_move(leaving_dock_ok: bool = False) -> None:
+        state = vacuum.state
+        if not state.reachable:
+            raise ToolError("my wheels aren't answering")
+        if pet.moving:
+            raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
+        if state.docked:
+            if not leaving_dock_ok:
+                raise ToolError("I'm on my dock, and turning or shuffling here would scrape my "
+                                "contacts. Send me to a named place instead, and I'll undock.")
+            if (state.battery_level or 0) < cfg.min_battery_to_leave:
+                raise ToolError(f"my battery is at {state.battery_level}%, too low to leave the "
+                                "dock; I'd only have to come straight back")
+
+    warmup = ("My lidar spins up first, so the first motion takes about ten seconds to start; "
+              "say something before calling it rather than leaving a silence.")
+
+    async def run_to_completion(coro, describe: str) -> str:
+        """Turns and moves finish before the tool returns, so what comes next
+        (a look, another move) happens where I ended up, not on the way."""
+        task = pet.start_motion(coro, describe, report=False)
+        try:
+            outcome, ok = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if task.cancelled():
+                return f"{describe} was cut short: I was told to stop"
+            raise
+        if not ok:
+            raise ToolError(outcome)
+        return outcome
+
+    @registry.tool(
+        "turn",
+        "Turn my whole body in place. Positive degrees turn left (counter-clockwise), negative "
+        "turn right; up to 180 either way. Returns when the turn is done. " + warmup,
+        {"type": "object",
+         "properties": {"degrees": {"type": "number", "minimum": -180, "maximum": 180}},
+         "required": ["degrees"]})
+    async def turn(args: dict) -> str:
+        degrees = float(args.get("degrees") or 0)
+        if abs(degrees) < 3:
+            raise ToolError("that's not a turn, that's a twitch")
+        check_can_move()
+
+        async def run():
+            result = await motion.turn_by(degrees)
+            return result.describe(), result.ok
+        return await run_to_completion(run(), f"turn {degrees:+.0f} degrees")
+
+    @registry.tool(
+        "move",
+        "Drive straight: positive centimetres forward, negative backward, up to 100. Slow (about "
+        "12 cm/s) and only my bumpers see obstacles, so only when the way looks clear. Returns "
+        "when I've stopped. " + warmup,
+        {"type": "object",
+         "properties": {"cm": {"type": "number", "minimum": -100, "maximum": 100}},
+         "required": ["cm"]})
+    async def move(args: dict) -> str:
+        cm = float(args.get("cm") or 0)
+        if abs(cm) < 3:
+            raise ToolError("too small to bother the wheels with")
+        check_can_move()
+
+        async def run():
+            result = await motion.move_by(cm)
+            return result.describe(), result.ok
+        return await run_to_completion(run(), f"move {cm:+.0f} cm")
+
+    @registry.tool(
+        "remember_place",
+        "Remember where I am right now under a name ('the couch', 'the door'), so I can go back "
+        "there later. Only when someone tells me this spot has a name.",
+        {"type": "object", "properties": {"name": {"type": "string", "maxLength": 40}},
+         "required": ["name"]})
+    async def remember_place(args: dict) -> str:
+        name = " ".join((args.get("name") or "").split())
+        if not name:
+            raise ToolError("a place needs a name")
+        if pet.moving:
+            raise ToolError("I'm still moving; ask me again once I've stopped")
+        # While manual control is armed the robot doesn't update its map
+        # pose; it catches up about a second after disarming.
+        if motion.armed:
+            await motion.disarm()
+        since = motion.last_disarmed_at
+        if since is not None and time.time() - since < 4:
+            await asyncio.sleep(4 - (time.time() - since))
+        await vacuum.refresh()
+        pose = vacuum.state.pose
+        if pose is None:
+            raise ToolError("I don't know where I am right now")
+        pet.db.set_place(name, pose.x, pose.y)
+        return f"remembered this spot as {name}"
+
+    @registry.tool(
+        "go_to_place",
+        "Drive to a place I know by name (see places_i_know in get_senses). My base plans its "
+        "own route around obstacles and off-limits areas. Returns at once; I'm told when I "
+        "arrive or if I couldn't get there.",
+        {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})
+    async def go_to_place(args: dict) -> str:
+        name = args.get("name") or ""
+        target = pet.db.place(name)
+        if target is None:
+            known = ", ".join(pet.db.places()) or "none yet"
+            raise ToolError(f"I don't know a place called {name} (I know: {known})")
+        check_can_move(leaving_dock_ok=True)
+
+        async def run():
+            await motion.disarm()
+            await vacuum.go_to(*target)
+            return await _await_arrival(vacuum, name)
+        pet.start_motion(run(), f"go to {name}")
+        return f"on my way to {name}"
+
+
+async def _await_arrival(vacuum, name: str, timeout_s: float = 180.0):
+    """Valetudo reports the trip through its status: moving, then idle (or an error)."""
+    import asyncio
+    deadline = time.monotonic() + timeout_s
+    started = False
+    while time.monotonic() < deadline:
+        state = await vacuum.refresh()
+        if state.status == "error":
+            return f"couldn't get to {name}: my base reported an error ({state.error})", False
+        if state.moving:
+            started = True
+        elif started:
+            return f"arrived at {name}", True
+        elif time.monotonic() > deadline - timeout_s + 8:
+            return f"never set off for {name}: I may already be there, or my base ignored me", True
+        await asyncio.sleep(1.0)
+    return f"gave up on getting to {name}: it took too long", False
 
 
 def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:

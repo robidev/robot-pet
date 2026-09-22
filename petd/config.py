@@ -141,6 +141,49 @@ class BrainConfig:
 
 
 @dataclass
+class CalibrationConfig:
+    """
+    Measured conventions (PLAN.md 4.1, C3). Map heading: Valetudo's robot
+    angle a (degrees) points along (sin a, -cos a) in map cm, i.e.
+    theta = a + map_heading_offset_deg from +x towards +y, and it grows with
+    a counter-clockwise turn, as odometry does (2026-09-22: a +90 turn moved
+    it 45 -> 143, and 20 cm forward then moved the map pose +15/+15 cm).
+    """
+    map_heading_offset_deg: float = -90.0
+    map_heading_sign: float = 1.0
+
+
+@dataclass
+class MotionConfig:
+    """Closed-loop turn/move over Valetudo manual control (spatial/motion.py)."""
+    enabled: bool = True
+    # Moves are ignored until the lidar has spun up after arming (~6 s).
+    warmup_s: float = 7.0
+    resend_s: float = 0.2
+    # Stay armed (lidar spinning) this long after the last motion, so a
+    # follow-up doesn't pay the warm-up again.
+    idle_disarm_s: float = 20.0
+    # Measured: velocity 0.3 -> 12.6 cm/s; angle a -> ~a deg/s.
+    cm_s_per_velocity: float = 42.0
+    deg_s_per_angle: float = 1.0
+    cruise_cm_s: float = 12.0          # the V1 ignores velocity >= 0.3 (12.6 cm/s)
+    slow_cm_s: float = 5.0
+    max_turn_rate_deg_s: float = 60.0
+    min_turn_rate_deg_s: float = 15.0
+    turn_gain: float = 1.5             # deg/s of rate per degree left to turn
+    # It keeps going briefly after a stop: stop early by rate x coast_s.
+    coast_s: float = 0.3
+    settle_s: float = 0.6
+    turn_tolerance_deg: float = 4.0
+    move_tolerance_cm: float = 2.0
+    max_turn_deg: float = 180.0
+    max_move_cm: float = 100.0
+    turn_timeout_s: float = 15.0
+    # Leaving the dock on a low battery would only mean coming back.
+    min_battery_to_leave: int = 40
+
+
+@dataclass
 class ConverseConfig:
     # Whisper spellings of the pet's name that count as being addressed, on
     # top of the name itself and anything one edit away from it.
@@ -195,6 +238,8 @@ class Config:
     speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
     brain: BrainConfig = field(default_factory=BrainConfig)
     converse: ConverseConfig = field(default_factory=ConverseConfig)
+    motion: MotionConfig = field(default_factory=MotionConfig)
+    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
 

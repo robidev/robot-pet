@@ -128,6 +128,19 @@ class VacuumAdapter(ABC):
     @abstractmethod
     async def refresh(self) -> VacuumState: ...
 
+    # Raw manual control, for spatial/motion.py. On this robot (Roborock V1)
+    # arming spins the lidar up, and moves are ignored for ~6 s until it's
+    # ready; with no moves for a few seconds it spins down again. velocity
+    # 0.3 is ~12.6 cm/s; angle a spins in place at ~a deg/s, clockwise for
+    # positive a (Valetudo sends omega = -a in rad/s).
+    @abstractmethod
+    async def manual_start(self) -> None: ...
+    @abstractmethod
+    async def manual_move(self, velocity: float, angle: float) -> None:
+        """MOVES THE ROBOT (after the warm-up)."""
+    @abstractmethod
+    async def manual_end(self) -> None: ...
+
 
 class ValetudoVacuum(VacuumAdapter):
     def __init__(self, cfg: VacuumConfig, bus: EventBus):
@@ -136,6 +149,9 @@ class ValetudoVacuum(VacuumAdapter):
         self.cfg = cfg
         self._poll_client = ValetudoClient(cfg.host, cfg.port, timeout=5.0)
         self._cmd_client = ValetudoClient(cfg.host, cfg.port, timeout=5.0)
+        # Manual moves are resent every 200 ms: one stuck behind a WiFi stall
+        # is worth dropping, not waiting 5 s for.
+        self._move_client = ValetudoClient(cfg.host, cfg.port, timeout=1.0)
         self._cmd_lock = asyncio.Lock()
         self._poll_task: Optional[asyncio.Task] = None
         self._drive_task: Optional[asyncio.Task] = None
@@ -217,6 +233,39 @@ class ValetudoVacuum(VacuumAdapter):
                 # until Valetudo's own timeout.
                 await asyncio.shield(asyncio.to_thread(client.disable_manual_control))
 
+    async def manual_start(self) -> None:
+        await self._cancel_drive()
+        await self._manual(self._cmd_client.enable_manual_control, give_up_after_s=10.0)
+
+    async def manual_move(self, velocity: float, angle: float) -> None:
+        await self._manual(self._move_client.drive_vector, velocity, angle, give_up_after_s=0.0)
+
+    async def manual_end(self) -> None:
+        # Left armed, the lidar keeps spinning and the robot ignores go_to:
+        # keep trying through a WiFi stall.
+        await asyncio.shield(self._manual(self._cmd_client.disable_manual_control,
+                                          give_up_after_s=20.0))
+        asyncio.create_task(self.refresh())
+
+    async def _manual(self, fn, *args, give_up_after_s: float) -> None:
+        """Retries until `give_up_after_s` has passed (0 = a single retry at most,
+        for a keep-alive connection Valetudo dropped while idle)."""
+        import requests
+        deadline = time.monotonic() + give_up_after_s
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                async with self._cmd_lock:
+                    await asyncio.to_thread(fn, *args)
+                return
+            except requests.RequestException as exc:
+                if attempt >= 2 and time.monotonic() >= deadline:
+                    raise
+                log.debug("manual control call failed (%s); retrying", exc)
+                if attempt >= 2:
+                    await asyncio.sleep(0.5)
+
     async def _cancel_drive(self) -> None:
         task, self._drive_task = self._drive_task, None
         if task is not None and not task.done():
@@ -228,11 +277,21 @@ class ValetudoVacuum(VacuumAdapter):
 
 
 class FakeVacuum(VacuumAdapter):
-    """In-memory stand-in: records commands, "arrives" at go_to targets instantly."""
+    """
+    In-memory stand-in: records commands, "arrives" at go_to targets
+    instantly, and in manual control integrates an odometry pose from the
+    commanded speeds (after the same warm-up as the real robot, shortened).
+    """
 
-    def __init__(self, bus: EventBus):
+    CM_S_PER_VELOCITY = 42.0        # 0.3 -> 12.6 cm/s, as measured
+    COAST_S = 0.3                   # it keeps going after a stop (82 deg for 67 asked, at 45 deg/s)
+
+    def __init__(self, bus: EventBus, warmup_s: float = 0.0):
         super().__init__(bus)
         self.commands: list = []
+        self.warmup_s = warmup_s
+        self.odometry = FakeOdometry()
+        self._manual_since: Optional[float] = None
         self._set_state(VacuumState(
             reachable=True, status="docked", flag="none", battery_level=100,
             battery_flag="charged", pose=MapPose(2560, 2549, 342),
@@ -262,6 +321,24 @@ class FakeVacuum(VacuumAdapter):
         if self._state.moving:
             self._update(status="idle")
 
+    async def manual_start(self) -> None:
+        self.commands.append(("manual_start",))
+        self._manual_since = time.monotonic()
+        self._update(status="manual_control")
+
+    async def manual_move(self, velocity: float, angle: float) -> None:
+        self.commands.append(("manual_move", velocity, angle))
+        if self._manual_since is None or time.monotonic() - self._manual_since < self.warmup_s:
+            return                  # the lidar isn't up yet: ignored, like the real one
+        self.odometry.command(velocity * self.CM_S_PER_VELOCITY / 100.0,
+                              -angle * 3.141592653589793 / 180.0, self.COAST_S)
+
+    async def manual_end(self) -> None:
+        self.commands.append(("manual_end",))
+        self._manual_since = None
+        self.odometry.command(0.0, 0.0, 0.0)
+        self._update(status="idle")
+
     async def drive(self, velocity: float, angle: float, duration_s: float) -> None:
         self.commands.append(("drive", velocity, angle, duration_s))
         self._update(status="manual_control")
@@ -269,3 +346,40 @@ class FakeVacuum(VacuumAdapter):
             await asyncio.sleep(duration_s)
         finally:
             self._update(status="idle")
+
+
+class FakeOdometry:
+    """Integrates commanded speeds into a pose; `latest()` like PlayerOdometry."""
+
+    def __init__(self):
+        self.x = self.y = self.yaw = 0.0
+        self.v = self.w = 0.0
+        self.stalled = False
+        self._t = time.monotonic()
+        self._stop_at: Optional[float] = None
+
+    def _advance(self) -> None:
+        import math
+        now = time.monotonic()
+        end = now if self._stop_at is None else min(now, self._stop_at)
+        dt = max(0.0, end - self._t)
+        self.yaw += self.w * dt
+        self.x += self.v * dt * math.cos(self.yaw)
+        self.y += self.v * dt * math.sin(self.yaw)
+        self._t = now
+        if self._stop_at is not None and now >= self._stop_at:
+            self.v = self.w = 0.0
+            self._stop_at = None
+
+    def command(self, v: float, w: float, coast_s: float) -> None:
+        self._advance()
+        if v == 0.0 and w == 0.0 and (self.v or self.w):
+            self._stop_at = time.monotonic() + coast_s
+        else:
+            self.v, self.w, self._stop_at = v, w, None
+
+    def latest(self):
+        from ..spatial.odometry import OdomSample
+        self._advance()
+        return OdomSample(t=time.monotonic(), x=self.x, y=self.y, yaw=self.yaw,
+                          v=self.v, w=self.w, stalled=self.stalled)
