@@ -37,6 +37,7 @@ class App:
         self.people = None
         self.tools = None
         self.brain = None
+        self.listener = None
         self._piper: Optional[ManagedProcess] = None
         self._tasks: list[asyncio.Task] = []
         self._stopped = asyncio.Event()
@@ -78,6 +79,9 @@ class App:
             self.brain = build_brain(self)
             if self.brain is not None:
                 await self.brain.start()
+                from .behavior.converse import Listener
+                self.listener = Listener(self)
+                await self.listener.start()
                 if self.people is not None:
                     self.people.set_notify(lambda text: self.brain.tell(text, kind="event"))
 
@@ -95,7 +99,7 @@ class App:
         for task in self._tasks:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
-        for part in (self.brain, self.people, self.stt, self.speaker, self.face, self.vacuum):
+        for part in (self.listener, self.brain, self.people, self.stt, self.speaker, self.face, self.vacuum):
             if part is not None:
                 try:
                     await part.close()

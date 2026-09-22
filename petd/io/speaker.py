@@ -190,6 +190,8 @@ class Speaker:
         self._spans: deque = deque(maxlen=50)
         self._open_span_start: Optional[float] = None
         self._open_span_end = 0.0
+        # (time sent, sentence): what the mic may be hearing of us right now.
+        self._said: deque = deque(maxlen=20)
 
     # --- public API -----------------------------------------------------------
 
@@ -220,6 +222,11 @@ class Speaker:
             utt.done.set()
         if self._current_task is not None and not self._current_task.done():
             self._current_task.cancel()
+
+    def said_recently(self, window_s: float = 30.0) -> str:
+        """Our own sentences sent in the last window_s, for telling echo from barge-in."""
+        cutoff = time.time() - window_s
+        return " ".join(sentence for t, sentence in self._said if t >= cutoff)
 
     @property
     def speaking(self) -> bool:
@@ -288,6 +295,7 @@ class Speaker:
                 if sent_s < now_s:
                     sent_s = now_s
                 utt.spoken.append(sentence)
+                self._said.append((time.time(), sentence))
                 for i in range(0, len(pcm), chunk):
                     ahead = sent_s - (time.monotonic() - t0)
                     if ahead > self.cfg.lead_s:

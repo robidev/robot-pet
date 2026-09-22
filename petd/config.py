@@ -130,6 +130,23 @@ class BrainConfig:
 
 
 @dataclass
+class ConverseConfig:
+    # Whisper spellings of the pet's name that count as being addressed, on
+    # top of the name itself and anything one edit away from it.
+    wake_words: list = field(default_factory=lambda: [
+        "glados", "gladys", "gladis", "gladdis", "glad os", "glados's",
+    ])
+    # After the pet speaks, or after being addressed, it keeps listening
+    # without its name for this long.
+    window_s: float = 20.0
+    # A known person in view counts as talking to the pet.
+    gaze_opens: bool = True
+    # Motor noise makes junk transcripts; while driving, only reflexes and
+    # speech that names the pet get through.
+    ignore_while_driving: bool = True
+
+
+@dataclass
 class MemoryConfig:
     enabled: bool = True
     db_path: str = "runtime/pet.db"
@@ -165,6 +182,7 @@ class Config:
     stt: SttConfig = field(default_factory=SttConfig)
     speaker: SpeakerConfig = field(default_factory=SpeakerConfig)
     brain: BrainConfig = field(default_factory=BrainConfig)
+    converse: ConverseConfig = field(default_factory=ConverseConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
 

@@ -186,7 +186,8 @@ def _who_is_here(pet: "App") -> str:
     return " and ".join(names) if names else "someone"
 
 
-def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str] = None) -> str:
+def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str] = None,
+               notes: Optional[list[str]] = None) -> str:
     """
     A user turn: the senses line plus what happened.
 
@@ -199,7 +200,8 @@ def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str
         body = f'{who} says: "{text}"'
     else:
         body = f"[event] {text}\n(Say something only if it's worth saying out loud.)"
-    return f"{senses_line(pet)}\n{body}"
+    meanwhile = "".join(f"[meanwhile] {note}\n" for note in notes or ())
+    return f"{senses_line(pet)}\n{meanwhile}{body}"
 
 
 JOURNAL_REQUEST = (

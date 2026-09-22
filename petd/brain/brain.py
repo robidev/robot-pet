@@ -10,7 +10,8 @@ most recent entries: long-term memory without a long context.
 
 Turns are serialized: while one is being spoken, another arrival waits
 (or is dropped if the queue is already full), so the pet never talks over
-itself.
+itself. What it hears reaches it through behavior/converse.py, which
+decides whether it was being spoken to at all.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ..events import Heard, SpeechEnded, SpeechStarted
+from ..events import SpeechEnded, SpeechStarted, StopRequested
 from . import prompt as prompt_module
 from .backend import BrainError, LLMBackend, TextDelta, ToolFinished, ToolStarted, TurnDone
 from .expressions import Expressions
@@ -45,13 +46,16 @@ class Brain:
         self._episode_open = False
         self._conversation_id: Optional[int] = None
         self._heard_this_episode = 0
+        # Things that happened without a turn (reflexes), told with the next one.
+        self._notes: list[str] = []
+        self._hushed = False
         self.busy = False
 
     async def start(self) -> None:
-        subs = [self.pet.bus.subscribe(Heard),
+        subs = [self.pet.bus.subscribe(StopRequested),
                 self.pet.bus.subscribe(SpeechStarted, SpeechEnded)]
         self._tasks = [
-            asyncio.create_task(self._collect_heard(subs[0]), name="brain-heard"),
+            asyncio.create_task(self._watch_stops(subs[0]), name="brain-stops"),
             asyncio.create_task(self._feedback_loop(subs[1]), name="brain-feedback"),
             asyncio.create_task(self._run_turns(), name="brain-turns"),
         ]
@@ -64,12 +68,21 @@ class Brain:
 
     # --- inputs ---------------------------------------------------------------
 
-    async def _collect_heard(self, sub) -> None:
+    async def _watch_stops(self, sub) -> None:
         async for event in sub:
-            # One known face and nobody else in view: they're almost certainly
-            # the one talking. Otherwise the senses line says who is around.
-            person = self.pet.people.sole_person() if self.pet.people else None
-            self.tell(event.text, kind="heard", speaker=person.name if person else None)
+            # The brain's own stop() tool is part of its turn; let it answer.
+            if event.source != "tool":
+                self.hush()
+
+    def hush(self) -> None:
+        """Silences the rest of the current turn. The model still finishes it
+        (its output has to be read either way); nothing more is said or done."""
+        if self.busy:
+            self._hushed = True
+
+    def note(self, text: str) -> None:
+        """Something the model should know at its next turn, without a turn of its own."""
+        self._notes.append(text)
 
     def tell(self, text: str, kind: str = "heard", speaker: Optional[str] = None) -> None:
         """Queues a turn. Behaviors use kind='event' to report what happened."""
@@ -152,7 +165,8 @@ class Brain:
 
     async def _run_turn(self, text: str, kind: str, speaker: Optional[str]) -> None:
         await self._ensure_episode()
-        turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker)
+        notes, self._notes = self._notes, []
+        turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker, notes=notes)
         log.info("-> brain: %s", turn.replace("\n", " | "))
 
         if kind == "heard":
@@ -162,6 +176,7 @@ class Brain:
         parser = SpeechStreamParser()
         utterance = None
         said: list[str] = []
+        self._hushed = False
         self.busy = True
         started = time.monotonic()
         try:
@@ -198,6 +213,8 @@ class Brain:
             self.pet.db.add_utterance(self._conversation_id, speaker, text)
 
     async def _emit(self, piece, utterance, said: list):
+        if self._hushed:
+            return utterance
         if isinstance(piece, Action):
             if self.expressions is not None:
                 await self.expressions.apply(piece)
