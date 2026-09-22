@@ -35,11 +35,12 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 ## 0.2 Progress
 
-| Cluster | Status (2026-09-19) |
+| Cluster | Status (2026-09-22) |
 |---|---|
 | **A: firmware and C++** | **Done.** A1–A3 are committed in `~/LilyGo-Cam-RobotFace` (`edc6f87`, then `e6102eb` and `b3066da`), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised on hardware because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
 | **D: brain** | **Done and verified on hardware** (`886de32`). Persistent `claude -p` per episode (stream-json, isolated: own cwd, no inherited settings, `--tools ""`, only `mcp__robot__*`), the tool registry behind the local API, the `robot_mcp` stdio shim, the streaming tag/sentence parser, expressions, prompt assembly, and an untested ollama backend. On the robot it called `look()`, saw the room through MCP and described it correctly. Turn latency 7–10 s on Haiku 4.5, plus ~2 s for STT. D5 (ollama) needs a real ollama to verify. |
 | **F1: persona** | **Done** (`a816850`). `memory/{persona,backstory,body,style}.md`. Checked in conversation: in character, refuses what the body can't do, drops the act when someone is upset. `emotions.yaml` keyframes still belong to E. |
+| **E1–E3: memory, listening, people** | **Done with fakes and the real model, not yet on hardware** (`5b74e4c`, `44356fd`). E1: `memory/db.py` (SQLite, migrations; people, sightings, conversations, utterances, facts, places, kv). E3: `memory/people.py` (sticky identity, greetings, a lingering stranger, enrollment that diffs `/api/face/list`, forget, slot reconciliation) and the people tools; idle episodes end with a journal line. E2: `behavior/converse.py` (reflexes, barge-in, attention gate). Deferred: the priority **arbiter** moves to E4, where the first competing behaviors (approach, search) arrive and there is something to arbitrate; **`emotions.yaml` keyframes** move to E5 (the single-pose emotes work). |
 | **B: foundations and I/O** | **Done and verified on hardware**, apart from the `/tool/{name}` route, which moves to D2. All five smoke tests pass: vacuum polling, face events and presence, STT, TTS out of the robot's speaker, and `echo` — where the pet heard itself zero times (the gate caught its own utterances) and answered every real one. |
 
 **Findings from the first hardware smoke tests (2026-09-20):**
@@ -59,11 +60,14 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 - **STT latency:** about 1.9–2.2 s from the end of speech to text. The echo-filter `ignore list` caught a stray "you" as designed.
 - **Barge-in is not possible yet, as expected:** while the pet speaks, the user's speech is dropped along with the pet's own (the gate can't tell them apart). Phase 2.
 
+**Findings from issues.txt (2026-09-22):** the pet said it had stored Noah's face, and that it was on its way somewhere, when it had no tool for either. `body.md` describes the whole body, and the model filled the gap between that and its tools with claims. `style.md` now says a missing tool means "I can't yet", and it says so in testing. Both abilities still need their tools: the face one landed in E3; driving is cluster C.
+
 **Next up (in order):**
 
-1. **Cluster E** (Opus 5 / high), which needs no hardware time from you: the attention gate and wake word (must accept "Gladys", see below), reflex keywords, `emotions.yaml` keyframes, the people/SQLite memory with sticky identity, enrollment and greeting, then drives, sleep, explore and attention-seeking. E2 gives M1's finished form, E3 gives M2.
-2. **Cluster C** (Opus 5 / high), which **needs you at the robot** for C3 and C4: map/heading conventions and the face-distance calibration, then `approach_person` (M3).
-3. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below); **G4, the latency instrumentation (4.9), before E4 puts extra model round trips on the critical path**.
+1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`). See the checklist in the session notes / commit messages.
+2. **Cluster C** (Opus 5 / high), which **needs you at the robot** for C3 and C4: map/heading conventions and the face-distance calibration, then `move`/`turn`/`go_to_place` (fixes "doesn't drive when asked") and `approach_person` (M3).
+3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
+4. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
 
 **Running it:**
 
