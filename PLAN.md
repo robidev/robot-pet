@@ -64,7 +64,7 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 **Next up (in order):**
 
-1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`). See the checklist in the session notes / commit messages.
+1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`).
 2. **Cluster C** (Opus 5 / high), which **needs you at the robot** for C3 and C4: map/heading conventions and the face-distance calibration, then `move`/`turn`/`go_to_place` (fixes "doesn't drive when asked") and `approach_person` (M3).
 3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
 4. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
