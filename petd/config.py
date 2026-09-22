@@ -66,10 +66,10 @@ class FaceConfig:
     # to ride out detection dropouts (over 1.5 s with a face held still in
     # view; 3 s still lost a seated person several times a minute).
     faces_lost_debounce_s: float = 5.0
-    # The tilt mount stops at ~45 deg (lower looks up), and holding the servo
-    # against it browns the board out. Firmware clamps too, once flashed.
-    tilt_min_deg: float = 50.0
-    tilt_max_deg: float = 140.0
+    # The tilt mount's range, measured by hand: 58 (up) to 105 (down). Held
+    # against a stop, the servo browns the board out. Firmware clamps too.
+    tilt_min_deg: float = 58.0
+    tilt_max_deg: float = 105.0
 
 
 @dataclass

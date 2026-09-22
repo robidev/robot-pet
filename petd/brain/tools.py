@@ -173,11 +173,11 @@ def build_registry(pet: "App") -> ToolRegistry:
     @registry.tool(
         "look_direction",
         "Point my head. pan: 0 is far right, 90 straight ahead, 180 far left. "
-        "tilt: 90 is level, lower looks up (60 sees a standing adult's face), higher looks down. "
+        "tilt: 90 is level, lower looks up (58 is as far up as it goes), higher looks down (105 at most). "
         "Turns off face tracking while I hold the pose.",
         {"type": "object",
          "properties": {"pan": {"type": "number", "minimum": 0, "maximum": 180},
-                        "tilt": {"type": "number", "minimum": 50, "maximum": 140}},
+                        "tilt": {"type": "number", "minimum": 58, "maximum": 105}},
          "required": []})
     async def look_direction(args: dict) -> str:
         face = require_face()
