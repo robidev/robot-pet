@@ -34,7 +34,7 @@ stt:
 speaker:
   sink: robot              # robot | null
   robot_port: 6000         # on the robot: socat -u TCP-LISTEN:6000,reuseaddr,fork EXEC:'aplay -f S16_LE -r 22050 -c 1 -t raw -'
-  stop_port: null             # e.g. 6001 with, on the robot: socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay'
+  stop_port: 6001          # on the robot: socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay' (null if absent)
   piper_url: http://127.0.0.1:5001
   manage_piper: true       # start piper-tts's http_server if nothing listens on piper_url
   volume: 1.0              # gain applied to the PCM before it is sent (0.3 is a comfortable room level)

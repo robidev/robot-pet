@@ -93,10 +93,11 @@ class SpeakerConfig:
     enabled: bool = True
     sink: str = "robot"                       # robot | null
     robot_port: int = 6000                    # socat -> aplay on the vacuum
-    # Connecting here kills aplay on the robot, for an instant interrupt():
+    # Connecting here kills aplay on the robot, for an instant interrupt()
+    # (/root/watchdog_scripts/speaker_stop.sh, started by WatchDoge):
     # socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay'
     # None = no such listener; interrupting then takes ~2 s to go quiet.
-    stop_port: Optional[int] = None
+    stop_port: Optional[int] = 6001
     sample_rate: int = 22050                  # must match the robot's aplay -r
     # Output loudness. The robot's amixer controls nothing and piper's HTTP
     # server has no volume knob, so the PCM is scaled here. 1.0 = as piper
