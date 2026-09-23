@@ -3,7 +3,7 @@ import logging
 import yaml
 
 from petd.config import Config
-from petd.io.face import reboot_detected
+from petd.io.face import parse_status, reboot_detected, wifi_drop_message
 from petd.log import prune_runs, start_run_log
 
 
@@ -58,3 +58,10 @@ def test_a_face_reboot_is_uptime_going_backwards():
     assert not reboot_detected(500, 502)
     assert not reboot_detected(None, 20)      # first poll
     assert not reboot_detected(500, None)     # unreachable, or old firmware
+
+
+def test_the_face_wifi_section_is_read_and_explained():
+    state = parse_status({"wifi": {"rssi": -71, "disconnects": 2, "last_disconnect_reason": 15}})
+    assert (state.wifi_rssi, state.wifi_disconnects, state.wifi_last_reason) == (-71, 2, 15)
+    assert "key handshake timed out" in wifi_drop_message(state)
+    assert parse_status({}).wifi_disconnects is None          # older firmware

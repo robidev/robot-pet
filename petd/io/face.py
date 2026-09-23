@@ -98,12 +98,16 @@ class FaceDeviceState:
     time_synced: bool = False
     uptime_s: Optional[int] = None
     reset_reason: Optional[str] = None
+    wifi_rssi: Optional[int] = None           # dBm (firmware from 2026-09-23 on)
+    wifi_disconnects: Optional[int] = None    # since the board booted
+    wifi_last_reason: Optional[int] = None
     updated: float = 0.0
 
 
 def parse_status(status: dict) -> FaceDeviceState:
     eye = status.get("eye", {})
     servo = status.get("servo", {})
+    wifi = status.get("wifi", {})
     return FaceDeviceState(
         reachable=True,
         face_enabled=bool(status.get("face_enabled")),
@@ -115,8 +119,25 @@ def parse_status(status: dict) -> FaceDeviceState:
         motion=bool(status.get("motion")),
         time_synced=bool(status.get("time", {}).get("synced")),
         uptime_s=status.get("uptime_s"), reset_reason=status.get("reset_reason"),
+        wifi_rssi=wifi.get("rssi"), wifi_disconnects=wifi.get("disconnects"),
+        wifi_last_reason=wifi.get("last_disconnect_reason"),
         updated=time.time(),
     )
+
+
+# ESP-IDF wifi_err_reason_t, the ones a router or the radio tends to give.
+WIFI_REASONS = {
+    1: "unspecified", 2: "authentication expired", 3: "deauthenticated: leaving",
+    4: "disassociated: inactivity", 8: "disassociated: leaving", 15: "key handshake timed out",
+    200: "beacon timeout (lost the router)", 201: "router not found", 202: "authentication failed",
+    203: "association failed", 204: "handshake timed out", 205: "connection failed",
+}
+
+
+def wifi_drop_message(state: FaceDeviceState) -> str:
+    reason = state.wifi_last_reason
+    return (f"last reason {reason} ({WIFI_REASONS.get(reason, 'see wifi_err_reason_t')}), "
+            f"signal now {state.wifi_rssi} dBm, {state.wifi_disconnects} drops since it booted")
 
 
 def reboot_detected(previous_uptime: Optional[int], uptime: Optional[int]) -> bool:
@@ -224,6 +245,7 @@ class RobotFace(FaceAdapter):
         self._last_init_attempt = float("-inf")
         # Survives unreachable polls, which is what a reboot looks like from here.
         self._last_uptime: Optional[int] = None
+        self._last_wifi_drops: Optional[int] = None
 
     async def start(self) -> None:
         await super().start()
@@ -272,6 +294,14 @@ class RobotFace(FaceAdapter):
                                 self._state.reset_reason, self._state.uptime_s)
                 if self._state.uptime_s is not None:
                     self._last_uptime = self._state.uptime_s
+                drops = self._state.wifi_disconnects
+                if drops is not None:
+                    if self._last_wifi_drops is None:
+                        log.info("face WiFi: %s", wifi_drop_message(self._state))
+                    elif drops > self._last_wifi_drops:
+                        # The board reconnects by itself now; this says how often, and why.
+                        log.warning("face WiFi dropped and came back: %s", wifi_drop_message(self._state))
+                    self._last_wifi_drops = drops
                 if not was_reachable:
                     self.bus.publish(FaceDeviceConnection(connected=True))
                 needs_init = not self._state.audio_configured or not self._state.face_enabled
