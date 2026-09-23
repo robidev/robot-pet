@@ -164,9 +164,12 @@ async def test_be_quiet_hushes_without_stopping_the_wheels(pet):
 
 
 async def test_go_home_needs_attention(pet):
+    pet.vacuum._update(status="idle")
+    pet.dock.poll_s = pet.dock.start_grace_s = 0.02
     await hear(pet, "go home")
     assert not any(c[0] == "dock" for c in pet.vacuum.commands)
     await hear(pet, "Gladys, go home")
+    await asyncio.wait_for(pet.motion_task, 5)
     assert any(c[0] == "dock" for c in pet.vacuum.commands)
     assert pet.brain.told[-1][1] == "event"
 

@@ -87,11 +87,8 @@ def log_changes(old: VacuumState, new: VacuumState, changed: tuple) -> None:
     """The run log's account of the base: status, errors, the dock's position,
     and (at DEBUG) the robot's position whenever it's off the dock, so a trip
     that went wrong can be followed afterwards."""
-    if "reachable" in changed:
-        if new.reachable:
-            log.info("vacuum reachable")
-        else:
-            log.warning("vacuum unreachable")
+    if "reachable" in changed and new.reachable:
+        log.info("vacuum reachable")        # going unreachable is logged with its cause
     if "status" in changed:
         log.info("vacuum %s -> %s (battery %s%%, at %s)",
                  old.status, new.status, new.battery_level, _where(new.pose))

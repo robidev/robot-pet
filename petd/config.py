@@ -192,6 +192,13 @@ class MotionConfig:
     turn_timeout_s: float = 15.0
     # Leaving the dock on a low battery would only mean coming back.
     min_battery_to_leave: int = 40
+    # Going home (spatial/dock.py): drive to a point this far straight out in
+    # front of the dock first, unless already within dock_near_cm of it, then
+    # dock from there. Not docked after dock_timeout_s: stop, go round again.
+    dock_approach_cm: float = 60.0
+    dock_near_cm: float = 30.0
+    dock_timeout_s: float = 90.0
+    dock_attempts: int = 2
 
 
 @dataclass

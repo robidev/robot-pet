@@ -36,6 +36,7 @@ class App:
         self.db = None
         self.people = None
         self.motion = None
+        self.dock = None
         self.motion_task: Optional[asyncio.Task] = None
         self.tools = None
         self.brain = None
@@ -86,6 +87,11 @@ class App:
             self.people = People(self, self.db)
             await self.people.start()
 
+        if self.vacuum is not None:
+            from .spatial.dock import Dock
+            self.dock = Dock(self)
+            await self.dock.start()
+
         from .brain.tools import build_registry
         self.tools = build_registry(self)
         if not self.echo:
@@ -116,8 +122,8 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.people, self.motion, self.stt, self.speaker,
-                     self.face, self.vacuum):
+        for part in (self.listener, self.brain, self.people, self.dock, self.motion, self.stt,
+                     self.speaker, self.face, self.vacuum):
             if part is not None:
                 try:
                     await part.close()
@@ -172,6 +178,11 @@ class App:
             return outcome, ok
         self.motion_task = asyncio.create_task(run(), name="motion")
         return self.motion_task
+
+    async def go_home(self) -> asyncio.Task:
+        """Back onto the charger, whatever else was under way (spatial/dock.py)."""
+        await self._cancel_motion()
+        return self.start_motion(self.dock.go_home(), "go home")
 
     @property
     def moving(self) -> bool:

@@ -253,9 +253,9 @@ class Listener:
             if brain is not None:
                 brain.note(f'Someone said "{text}", so you stopped talking mid-sentence.')
         elif reflex in ("home", "sleep"):
-            if pet.vacuum is None:
+            if pet.vacuum is None or pet.dock is None:
                 return
-            await pet.vacuum.dock()
+            await pet.go_home()
             if brain is not None:
                 brain.tell(f'Someone said "{text}". You are already driving back to your dock.',
                            kind="event")

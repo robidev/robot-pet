@@ -205,10 +205,12 @@ def build_registry(pet: "App") -> ToolRegistry:
         "Drive back to my charging dock. Use it when my battery is low, when I'm told to go "
         "home or to sleep, or when I've finished what I was doing.")
     async def go_home(args: dict) -> str:
-        if pet.vacuum is None:
+        if pet.vacuum is None or pet.dock is None:
             raise ToolError("my wheels aren't connected")
-        await pet.vacuum.dock()
-        return "heading to the dock"
+        if pet.vacuum.state.docked:
+            return "I'm already on my dock"
+        await pet.go_home()
+        return "heading to the dock; I'm told when I'm on it, or if I couldn't find it"
 
     @registry.tool(
         "stop",
@@ -227,6 +229,8 @@ def build_registry(pet: "App") -> ToolRegistry:
 def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
     """Turning, moving and named places (PLAN.md 4.5; cluster C4)."""
     import asyncio
+
+    from ..spatial.dock import await_arrival
     motion, vacuum, cfg = pet.motion, pet.vacuum, pet.cfg.motion
 
     def check_can_move(leaving_dock_ok: bool = False) -> None:
@@ -344,28 +348,9 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         async def run():
             await motion.disarm()
             await vacuum.go_to(*target)
-            return await _await_arrival(vacuum, name)
+            return await await_arrival(vacuum, name)
         pet.start_motion(run(), f"go to {name}")
         return f"on my way to {name}"
-
-
-async def _await_arrival(vacuum, name: str, timeout_s: float = 180.0):
-    """Valetudo reports the trip through its status: moving, then idle (or an error)."""
-    import asyncio
-    deadline = time.monotonic() + timeout_s
-    started = False
-    while time.monotonic() < deadline:
-        state = await vacuum.refresh()
-        if state.status == "error":
-            return f"couldn't get to {name}: my base reported an error ({state.error})", False
-        if state.moving:
-            started = True
-        elif started:
-            return f"arrived at {name}", True
-        elif time.monotonic() > deadline - timeout_s + 8:
-            return f"never set off for {name}: I may already be there, or my base ignored me", True
-        await asyncio.sleep(1.0)
-    return f"gave up on getting to {name}: it took too long", False
 
 
 def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
