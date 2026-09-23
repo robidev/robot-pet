@@ -55,7 +55,7 @@ class App:
         if cfg.speaker.enabled:
             self.speaker, self._piper = build_speaker(cfg, self.bus, fake)
         if cfg.stt.enabled:
-            gate = self.speaker.overlaps if self.speaker else None
+            gate = self.speaker.overlap_fraction if self.speaker else None
             self.stt = FakeStt(cfg, self.bus, gate) if fake else SttAdapter(cfg, self.bus, gate)
 
         if self._piper:

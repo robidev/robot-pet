@@ -77,3 +77,29 @@ async def test_cancelling_sends_a_stop_vector():
     assert vacuum.commands[-1][:3] == ("manual_move", 0.0, 0.0)
     await motion.disarm()
     assert vacuum.commands[-1] == ("manual_end",)
+
+
+async def test_off_the_dock_only_straight_forward(caplog):
+    # 2026-09-23: with no named places yet, nothing could get the pet off its
+    # dock. Driving straight forward does, as it did by hand.
+    import logging
+
+    from petd.app import App
+    from petd.config import Config
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    cfg.motion.warmup_s, cfg.motion.settle_s, cfg.motion.idle_disarm_s = 0.0, 0.2, 0.3
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        assert app.vacuum.state.docked
+        for name, args in (("turn", {"degrees": 90}), ("move", {"cm": -20})):
+            result = await app.tools.call(name, args)
+            assert result.is_error and "dock" in result.text
+        with caplog.at_level(logging.INFO, logger="petd.io.vacuum"):
+            result = await app.tools.call("move", {"cm": 20})
+        assert not result.is_error, result.text
+        assert not app.vacuum.state.docked
+        assert any("docked -> " in r.getMessage() for r in caplog.records)   # in the run log
+    finally:
+        await app.close()

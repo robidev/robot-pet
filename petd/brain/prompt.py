@@ -137,18 +137,30 @@ def memory_sections(pet: "App") -> str:
     return "\n\n".join(parts)
 
 
+# Overrides what body.md says about faces while recognition is switched off.
+RECOGNITION_OFF = """
+My face recognition is switched off for now; it is moving to a better system. I can
+see that someone is there, but not who. So I never claim to recognise anyone, from
+their face or from a photo, and I can't learn new faces. If it matters who I'm
+talking to, I ask. A name someone gives me, I can still remember.
+"""
+
+
 def build_system_prompt(pet: "App") -> str:
     memory_dir = pet.cfg.path(pet.cfg.brain.memory_dir)
     persona = load_persona(memory_dir, pet.cfg.pet.name)
     memory = memory_sections(pet)
     if memory:
         persona += "\n\n" + memory
-    return persona + "\n\n" + f"""\
+    now = f"""\
 # Right now
 
 The date is {time.strftime('%A %d %B %Y')}. Each message I receive describes what I
 sense, then what was said to me (or what just happened). I reply as myself, out loud.
 """
+    if not pet.cfg.face.enable_recognition:
+        now += RECOGNITION_OFF
+    return persona + "\n\n" + now
 
 
 def senses_line(pet: "App") -> str:

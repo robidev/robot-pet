@@ -85,6 +85,10 @@ class SttConfig:
     threads: int = 8
     extra_args: list = field(default_factory=list)
     max_no_speech_prob: float = 0.6
+    # An utterance is the pet's own echo when at least this share of it
+    # overlaps its audible speech (plus gate_tail_s). Any overlap at all used
+    # to count, which dropped answers begun as the pet's voice died away.
+    echo_overlap: float = 0.5
     # Whisper's initial prompt. Without it "GLaDOS" comes out as "Gladys",
     # "G let us" or "Clovis". None = the pet's name.
     prompt: Optional[str] = None
@@ -200,7 +204,8 @@ class ConverseConfig:
     # After the pet speaks, or after being addressed, it keeps listening
     # without its name for this long.
     window_s: float = 20.0
-    # A known person in view counts as talking to the pet.
+    # A known person in view counts as talking to the pet (with recognition
+    # off, anyone in view).
     gaze_opens: bool = True
     # Motor noise makes junk transcripts; while driving, only reflexes and
     # speech that names the pet get through.

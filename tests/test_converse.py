@@ -4,6 +4,7 @@ import time
 import pytest
 
 from petd.app import App
+from petd.behavior import converse
 from petd.behavior.converse import (Listener, NameMatcher, barge_in, match_reflex,
                                     repeats_own_speech)
 from petd.config import Config
@@ -104,6 +105,11 @@ async def hear(pet, text):
         await asyncio.sleep(0)
 
 
+async def until_audible(pet):
+    while not pet.speaker.speaking:
+        await asyncio.sleep(0.01)
+
+
 async def test_only_speech_meant_for_the_pet_reaches_the_brain(pet):
     await hear(pet, "did you feed the cat")
     assert pet.brain.told == []
@@ -145,7 +151,8 @@ async def test_stop_works_unaddressed_and_mid_sentence(pet):
     # didn't say ourselves still counts.
     pet.vacuum.commands.clear()
     pet.speaker.say("I have been thinking about the nature of cake.")
-    await asyncio.sleep(0.2)
+    await until_audible(pet)
+    await asyncio.sleep(1.1)        # the injected second is all inside our voice
     pet.stt.inject("the nature of stop cake")
     await asyncio.sleep(0.05)
     assert ("stop",) in pet.vacuum.commands
@@ -176,9 +183,30 @@ async def test_driving_noise_is_ignored_unless_named(pet):
 
 async def test_a_late_echo_is_not_a_conversation(pet):
     pet.speaker.say("Consider yourself officially remembered.")
-    while not pet.speaker.said_recently():
-        await asyncio.sleep(0.01)
+    await until_audible(pet)
     pet.listener.window_until = time.time() + 60
     await hear(pet, "officially remembered")
     assert pet.brain.told == []
     assert (await asyncio.wait_for(pet.dropped.get(), 1)).reason.startswith("echo")
+
+
+async def test_quoting_the_pet_later_is_not_an_echo(pet):
+    # 11:28 on 2026-09-23: "Please get Claudia", 12 s after "...or should I get
+    # Claudia?", was dropped for repeating the pet's words.
+    pet.cfg.speaker.gate_tail_s = 0.0
+    pet.speaker.say("Do you need to sit down, or should I get Claudia?")
+    await until_audible(pet)
+    while pet.speaker.speaking:
+        await asyncio.sleep(0.01)
+    await asyncio.sleep(converse.ECHO_START_S + 1.2)   # hear() starts the utterance 1 s back
+    pet.listener.window_until = time.time() + 60
+    await hear(pet, "Please get Claudia")
+    assert pet.brain.told[-1][0] == "Please get Claudia"
+
+
+async def test_any_face_opens_the_gate_without_recognition(pet):
+    pet.cfg.face.enable_recognition = False
+    pet.face.show(Face(-1, 0.9, 0.4, 0.3, 0.6, 0.6))
+    await asyncio.sleep(0.05)
+    await hear(pet, "can you hear me?")
+    assert pet.brain.told[-1][0] == "can you hear me?"

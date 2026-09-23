@@ -237,8 +237,9 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
             raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
         if state.docked:
             if not leaving_dock_ok:
-                raise ToolError("I'm on my dock, and turning or shuffling here would scrape my "
-                                "contacts. Send me to a named place instead, and I'll undock.")
+                raise ToolError("I'm on my dock: turning or backing up here would scrape my "
+                                "contacts. To leave it, drive straight forward first (move with "
+                                "positive cm), or go to a named place.")
             if (state.battery_level or 0) < cfg.min_battery_to_leave:
                 raise ToolError(f"my battery is at {state.battery_level}%, too low to leave the "
                                 "dock; I'd only have to come straight back")
@@ -282,7 +283,7 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         "move",
         "Drive straight: positive centimetres forward, negative backward, up to 100. Slow (about "
         "12 cm/s) and only my bumpers see obstacles, so only when the way looks clear. Returns "
-        "when I've stopped. " + warmup,
+        "when I've stopped. Driving forward is also how I leave my dock. " + warmup,
         {"type": "object",
          "properties": {"cm": {"type": "number", "minimum": -100, "maximum": 100}},
          "required": ["cm"]})
@@ -290,7 +291,10 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         cm = float(args.get("cm") or 0)
         if abs(cm) < 3:
             raise ToolError("too small to bother the wheels with")
-        check_can_move()
+        # Straight forward is how the robot leaves its dock (driven by hand
+        # it came off cleanly); turning or reversing on it would scrape the
+        # contacts.
+        check_can_move(leaving_dock_ok=cm > 0)
 
         async def run():
             result = await motion.move_by(cm)

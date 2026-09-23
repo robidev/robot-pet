@@ -262,6 +262,22 @@ class Speaker:
     def is_audible(self, t: float) -> bool:
         return self.overlaps(t, t)
 
+    def overlap_fraction(self, t_start: float, t_end: float) -> float:
+        """How much of [t_start, t_end] our own audible speech (+ echo tail) covers, 0..1."""
+        if t_end <= t_start:
+            return 1.0 if self.overlaps(t_start, t_start) else 0.0
+        tail = self.cfg.gate_tail_s
+        spans = list(self._spans)
+        if self._open_span_start is not None:
+            spans.append((self._open_span_start, max(self._open_span_end, time.time())))
+        covered, cursor = 0.0, t_start
+        for start, end in sorted((s, e + tail) for s, e in spans):
+            start, end = max(start, cursor), min(end, t_end)
+            if end > start:
+                covered += end - start
+                cursor = end
+        return covered / (t_end - t_start)
+
     def overlaps(self, t_start: float, t_end: float) -> bool:
         """True if [t_start, t_end] overlaps our own audible speech (+ echo tail)."""
         tail = self.cfg.gate_tail_s

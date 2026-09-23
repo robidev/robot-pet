@@ -83,6 +83,33 @@ def parse_state(map_json: Optional[dict], attributes: Optional[list]) -> dict:
     return out
 
 
+def log_changes(old: VacuumState, new: VacuumState, changed: tuple) -> None:
+    """The run log's account of the base: status, errors, the dock's position,
+    and (at DEBUG) the robot's position whenever it's off the dock, so a trip
+    that went wrong can be followed afterwards."""
+    if "reachable" in changed:
+        if new.reachable:
+            log.info("vacuum reachable")
+        else:
+            log.warning("vacuum unreachable")
+    if "status" in changed:
+        log.info("vacuum %s -> %s (battery %s%%, at %s)",
+                 old.status, new.status, new.battery_level, _where(new.pose))
+    if "error" in changed and new.error:
+        log.warning("vacuum error: %s", new.error)
+    if "charger" in changed:
+        log.info("vacuum's dock at %s (was %s)", _where(new.charger), _where(old.charger))
+    if "pose" in changed and not new.docked:
+        log.debug("vacuum at %s (%s)", _where(new.pose), new.status)
+
+
+def _where(pose: Optional[MapPose]) -> str:
+    if pose is None:
+        return "?"
+    heading = "" if pose.angle is None else f", heading {pose.angle:.0f}"
+    return f"({pose.x:.0f}, {pose.y:.0f}{heading})"
+
+
 def changed_fields(old: VacuumState, new: VacuumState) -> tuple:
     return tuple(
         f.name for f in dataclasses.fields(VacuumState)
@@ -109,6 +136,7 @@ class VacuumAdapter(ABC):
         old, self._state = self._state, new
         changed = changed_fields(old, new)
         if changed:
+            log_changes(old, new, changed)
             self.bus.publish(VacuumStateChanged(state=new, changed=changed))
 
     async def start(self) -> None: ...

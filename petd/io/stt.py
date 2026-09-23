@@ -3,9 +3,11 @@ Speech-to-text: supervises whisper-udp-stream in --json mode and turns its
 output into bus events.
 
 Filtering happens here, before anything reaches the brain:
-- echo: the utterance overlaps the pet's own playback (the mic is on the
-  same body as the speaker), judged by the utterance's own timestamps since
-  transcription lands ~1-2 s after the speech ended;
+- echo: most of the utterance overlaps the pet's own playback (the mic is on
+  the same body as the speaker), judged by the utterance's own timestamps
+  since transcription lands ~1-2 s after the speech ended. Only most: an
+  answer begun just before the pet's voice had quite died away is still
+  someone talking (behavior/converse.py catches echoes by their words);
 - Whisper hallucinations on noise: bracketed tags ("[BLANK_AUDIO]"),
   a configurable ignore list, too-short text, high no_speech_prob.
 Dropped transcripts are published as HeardDropped for debugging.
@@ -27,8 +29,8 @@ from ..procs import ManagedProcess
 
 log = logging.getLogger(__name__)
 
-# (t_start, t_end) -> True if that span overlaps the pet's own speech.
-EchoGate = Callable[[float, float], bool]
+# (t_start, t_end) -> how much of that span the pet's own speech covers, 0..1.
+EchoGate = Callable[[float, float], float]
 
 _BRACKETED = re.compile(r"^\s*[\[\(\*].*[\]\)\*]\s*$")
 _PUNCT = str.maketrans("", "", string.punctuation)
@@ -75,8 +77,8 @@ class SttAdapter:
     async def close(self) -> None:
         await self.process.stop()
 
-    def _echo(self, t_start: float, t_end: float) -> bool:
-        return self.echo_gate is not None and self.echo_gate(t_start, t_end)
+    def _echo_share(self, t_start: float, t_end: float) -> float:
+        return float(self.echo_gate(t_start, t_end)) if self.echo_gate is not None else 0.0
 
     def handle_line(self, line: str) -> None:
         try:
@@ -88,7 +90,7 @@ class SttAdapter:
         if kind == "speech_start":
             t = msg["t_utc"]
             # Our own voice starting up shouldn't make the pet "listen".
-            if not self._echo(t, t):
+            if not self._echo_share(t, t):
                 self.bus.publish(SpeechStarted(t_utc=t))
         elif kind == "speech_end":
             self.bus.publish(SpeechEnded(t_utc=msg["t_utc"], discarded=msg.get("discarded", False)))
@@ -101,9 +103,13 @@ class SttAdapter:
     def handle_text(self, text: str, t_start: float, t_end: float, no_speech_prob: float = 0.0,
                     source: str = "mic") -> None:
         text = text.strip()
-        reason = "echo of own speech" if self._echo(t_start, t_end) else drop_reason(text, no_speech_prob, self.cfg)
+        share = self._echo_share(t_start, t_end)
+        reason = ("echo of own speech" if share >= self.cfg.echo_overlap
+                  else drop_reason(text, no_speech_prob, self.cfg))
         if reason:
-            log.debug("dropped %r: %s", text, reason)
+            # An echo drop may well be someone talking over the pet: worth seeing.
+            level = logging.INFO if share >= self.cfg.echo_overlap else logging.DEBUG
+            log.log(level, "dropped %r: %s (%.0f%% over my own voice)", text, reason, share * 100)
             self.bus.publish(HeardDropped(text=text, reason=reason))
             return
         log.info("heard: %r", text)

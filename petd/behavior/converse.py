@@ -10,7 +10,8 @@ then the attention gate, then the brain.
   attention, since they move it.
 - The gate lets speech through to the brain when the pet's name is in it,
   when a conversation window is open (it spoke, or was addressed, in the
-  last `window_s`), or when a known person is in view. Everything else is
+  last `window_s`), or when a known person is in view (any face, while
+  recognition is off). Everything else is
   published as HeardDropped("not addressed") and left alone.
 - Echo is filtered twice: by time in io/stt.py (while the pet talks, plus
   a tail), and here by content, for echoes that outlast that estimate:
@@ -54,6 +55,10 @@ BARGE_IN = {"stop": "stop", "halt": "stop", "freeze": "stop",
             "quiet": "quiet", "shut": "quiet", "silence": "quiet", "enough": "quiet"}
 # How far back our own words count when recognizing an echo by its text.
 ECHO_WINDOW_S = 20.0
+# An echo starts while our voice is audible or just after; a transcript that
+# starts later than this after it is someone talking, even in our words
+# ("Please get Claudia" to "should I get Claudia?").
+ECHO_START_S = 3.0
 FILLERS = {"please", "now", "right", "ok", "okay", "hey", "just", "oh", "come", "on", "you",
            "yes", "no", "i", "said"}
 
@@ -190,7 +195,8 @@ class Listener:
 
     async def on_heard(self, event: Heard) -> None:
         speaker = self.pet.speaker
-        if speaker is not None and repeats_own_speech(event.text, speaker.said_recently(ECHO_WINDOW_S)):
+        if (speaker is not None and speaker.overlaps(event.t_start - ECHO_START_S, event.t_end)
+                and repeats_own_speech(event.text, speaker.said_recently(ECHO_WINDOW_S))):
             log.info("ignoring %r: repeats what I just said", event.text)
             self.pet.bus.publish(HeardDropped(text=event.text, reason="echo (repeats own words)"))
             return   # HeardDropped("echo...") still gets its barge-in check
@@ -218,9 +224,11 @@ class Listener:
             brain.tell(event.text, kind="heard", speaker=person.name if person else None)
 
     def _gaze(self) -> bool:
-        if not self.cfg.gaze_opens or self.pet.people is None or self.pet.face is None:
+        if not self.cfg.gaze_opens or self.pet.face is None or not self.pet.face.presence.present:
             return False
-        return bool(self.pet.people.present) and self.pet.face.presence.present
+        if not self.pet.cfg.face.enable_recognition:
+            return True     # nobody can be known without it: a face in view will do
+        return self.pet.people is not None and bool(self.pet.people.present)
 
     def _ignore(self, text: str, reason: str) -> None:
         log.info("ignoring %r: %s", text, reason)

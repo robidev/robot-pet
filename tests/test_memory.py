@@ -222,6 +222,8 @@ async def test_without_recognition_nobody_is_a_stranger(pet):
     await asyncio.sleep(0.15)
     assert pet.told == []
     assert "sees 2 people]" in build_turn(pet, "hello")
+    # The model is told, or it "recognizes" people from photos and memory.
+    assert "never claim to recognise anyone" in build_system_prompt(pet)
     with pytest.raises(Exception, match="switched off"):
         await pet.people.enroll("Noah")
     assert pet.face.enrolled == []

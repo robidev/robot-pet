@@ -8,7 +8,10 @@ from petd.io.stt import SttAdapter, drop_reason
 
 def make(echo_spans=()):
     bus = EventBus()
-    gate = lambda a, b: any(a <= e and b >= s for s, e in echo_spans)  # noqa: E731
+    def gate(a, b):     # the share of [a, b] the spans cover
+        if b <= a:
+            return float(any(s <= a <= e for s, e in echo_spans))
+        return sum(max(0.0, min(b, e) - max(a, s)) for s, e in echo_spans) / (b - a)
     return SttAdapter(Config(), bus, gate), bus
 
 
@@ -36,13 +39,22 @@ def test_echo_of_own_speech_is_dropped():
     stt, bus = make(echo_spans=[(99.0, 101.0)])
     sub = bus.subscribe()
     stt.handle_line(line(type="speech_start", t_utc=100.5))          # suppressed
-    stt.handle_line(line(type="text", text="The cake is a lie", t_start_utc=100.5,
-                         t_end_utc=103.0, no_speech_prob=0.0))
+    stt.handle_line(line(type="text", text="The cake is a lie", t_start_utc=99.5,
+                         t_end_utc=101.2, no_speech_prob=0.0))
     stt.handle_line(line(type="text", text="Are you still there", t_start_utc=110.0,
                          t_end_utc=111.0, no_speech_prob=0.0))
     first, second = sub.get_nowait(), sub.get_nowait()
     assert isinstance(first, HeardDropped) and first.reason == "echo of own speech"
     assert isinstance(second, Heard) and second.text == "Are you still there"
+
+
+def test_an_answer_begun_as_the_voice_dies_away_is_kept():
+    # 11:40 on 2026-09-23: a whole question dropped for overlapping the tail.
+    stt, bus = make(echo_spans=[(99.0, 101.0)])
+    sub = bus.subscribe()
+    stt.handle_line(line(type="text", text="Yes, move back to the dock first", t_start_utc=100.6,
+                         t_end_utc=105.0, no_speech_prob=0.0))
+    assert isinstance(sub.get_nowait(), Heard)
 
 
 def test_hallucination_filters():
