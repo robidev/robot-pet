@@ -228,6 +228,17 @@ class MemoryConfig:
 
 
 @dataclass
+class LogConfig:
+    """A log folder per run of petd (petd/log.py)."""
+    enabled: bool = True
+    dir: str = "runtime/logs"
+    keep_runs: int = 30                       # newest run folders kept; older ones deleted
+    file_level: str = "DEBUG"                 # the console keeps --log-level
+    max_file_mb: float = 20.0                 # petd.log rotates at this size...
+    keep_files: int = 3                       # ...keeping this many older ones
+
+
+@dataclass
 class ApiConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -249,6 +260,7 @@ class Config:
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
+    log: LogConfig = field(default_factory=LogConfig)
 
     def path(self, relative: str) -> Path:
         """Resolves a config path against the project root."""

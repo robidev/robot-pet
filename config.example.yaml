@@ -60,3 +60,11 @@ memory:
 api:
   host: 127.0.0.1
   port: 8765
+
+log:
+  enabled: true
+  dir: runtime/logs            # a folder per run: petd.log (DEBUG) and run.yaml (the config); latest -> newest
+  keep_runs: 30                # older run folders are deleted
+  file_level: DEBUG            # the console keeps --log-level
+  max_file_mb: 20              # petd.log rotates at this size,
+  keep_files: 3                # keeping this many older ones

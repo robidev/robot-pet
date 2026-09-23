@@ -7,6 +7,7 @@ Async adapter around face-api's FaceApiClient + FaceEventStream.
 - /api/status is polled for servo/eye state. Whenever the device reports
   its audio destination as unconfigured (e.g. after a reboot), the init
   sequence (detection, recognition, audio destination, gain) is re-applied.
+  A reboot is logged as a warning, with the board's reset reason.
 - current_faces() prefers GET /api/face/current (fresh boxes) and falls
   back to the last pushed event on firmware without that endpoint.
 """
@@ -95,6 +96,8 @@ class FaceDeviceState:
     eye_mode: Optional[str] = None
     motion: bool = False
     time_synced: bool = False
+    uptime_s: Optional[int] = None
+    reset_reason: Optional[str] = None
     updated: float = 0.0
 
 
@@ -111,8 +114,16 @@ def parse_status(status: dict) -> FaceDeviceState:
         eye_x=eye.get("x"), eye_y=eye.get("y"), aperture=eye.get("aperture"), eye_mode=eye.get("mode"),
         motion=bool(status.get("motion")),
         time_synced=bool(status.get("time", {}).get("synced")),
+        uptime_s=status.get("uptime_s"), reset_reason=status.get("reset_reason"),
         updated=time.time(),
     )
+
+
+def reboot_detected(previous_uptime: Optional[int], uptime: Optional[int]) -> bool:
+    """The board's uptime went backwards between two polls. Its own reboots
+    (a panic, the watchdog, a brownout) are otherwise silent: it just comes
+    back, and petd re-initializes it."""
+    return previous_uptime is not None and uptime is not None and uptime < previous_uptime
 
 
 class PresenceDebouncer:
@@ -211,6 +222,8 @@ class RobotFace(FaceAdapter):
         self._poll_task: Optional[asyncio.Task] = None
         self._has_current_endpoint: Optional[bool] = None
         self._last_init_attempt = float("-inf")
+        # Survives unreachable polls, which is what a reboot looks like from here.
+        self._last_uptime: Optional[int] = None
 
     async def start(self) -> None:
         await super().start()
@@ -254,6 +267,11 @@ class RobotFace(FaceAdapter):
             else:
                 was_reachable = self._state.reachable
                 self._state = parse_status(status)
+                if reboot_detected(self._last_uptime, self._state.uptime_s):
+                    log.warning("face board rebooted (reset reason: %s, up %s s)",
+                                self._state.reset_reason, self._state.uptime_s)
+                if self._state.uptime_s is not None:
+                    self._last_uptime = self._state.uptime_s
                 if not was_reachable:
                     self.bus.publish(FaceDeviceConnection(connected=True))
                 needs_init = not self._state.audio_configured or not self._state.face_enabled

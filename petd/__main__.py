@@ -4,6 +4,9 @@ python -m petd [--config config.yaml] [--fake] [--echo] [--log-level DEBUG]
 --fake   in-memory hardware: no robot, face, mic or speaker needed.
 --echo   repeat back whatever is heard (tests mic -> STT -> TTS -> robot speaker
          and the self-hearing gate before the brain exists).
+
+Every run also logs, at DEBUG, to runtime/logs/<start time>/petd.log, next to
+a run.yaml with its config; runtime/logs/latest is the newest (petd/log.py).
 """
 
 from __future__ import annotations
@@ -15,14 +18,13 @@ import signal
 from pathlib import Path
 
 from .app import App
-from .config import load_config
+from .config import Config, load_config
 from .log import setup_logging
 
 log = logging.getLogger("petd")
 
 
-async def main_async(args: argparse.Namespace) -> None:
-    cfg = load_config(Path(args.config) if args.config else None)
+async def main_async(args: argparse.Namespace, cfg: Config) -> None:
     app = App(cfg, fake=args.fake, echo=args.echo)
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -43,8 +45,15 @@ def main() -> None:
     parser.add_argument("--echo", action="store_true", help="say back what is heard (audio path test)")
     parser.add_argument("--log-level", default="INFO")
     args = parser.parse_args()
-    setup_logging(args.log_level)
-    asyncio.run(main_async(args))
+    cfg = load_config(Path(args.config) if args.config else None)
+    tags = tuple(tag for tag, on in (("fake", args.fake), ("echo", args.echo)) if on)
+    setup_logging(args.log_level, cfg, tags)
+    try:
+        asyncio.run(main_async(args, cfg))
+    except Exception:
+        log.exception("petd crashed")
+        raise
+    log.info("petd stopped")
 
 
 if __name__ == "__main__":
