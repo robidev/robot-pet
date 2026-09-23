@@ -11,10 +11,15 @@ and sent round again, dock_attempts times in all.
 
 The approach point is computed, not taught: `approach_cm` out from the
 charger (Valetudo's charger_location) along the line through where the
-robot's centre sits when it's docked, which is the way it backs in. That
-docked position is remembered whenever the robot is on the dock, in the
-memory database's kv table, so it survives restarts; the charger position
-comes from the live map, so moving the dock is picked up on the next dock.
+robot's centre sits when it's docked, which is the way it backs in.
+
+Both are learned while the robot is on the dock, and kept in the memory
+database's kv table, because only then are they both right: once the robot
+leaves, Valetudo moves charger_location to where the robot's centre was on
+the dock (seen 2026-09-23: (2548, 2540) -> (2564, 2551), and back on
+docking), which leaves no direction to go by. A live charger far from both
+learned points means the dock has moved; then it docks from where it is,
+and learns the new place on arrival.
 """
 
 from __future__ import annotations
@@ -33,9 +38,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-DOCKED_POSE_KEY = "dock.docked_pose"
-# A docked position further than this from the charger is stale: the dock moved.
+DOCK_KEY = "dock.docked_and_charger"      # "x,y,charger_x,charger_y"
+# A robot docked further than this from the charger is a map glitch.
 MAX_DOCKED_OFFSET_CM = 60.0
+# A live charger further than this from both learned points: the dock moved.
+DOCK_MOVED_CM = 40.0
 
 
 def distance(a: MapPose, b: MapPose) -> float:
@@ -78,6 +85,7 @@ class Dock:
         self.pet = pet
         self.cfg = pet.cfg.motion
         self.docked_pose: Optional[MapPose] = None
+        self.charger: Optional[MapPose] = None     # as seen while docked
         # Pace of the status polling while going home (tests shorten these).
         self.poll_s = 1.0
         self.start_grace_s = 8.0
@@ -85,17 +93,15 @@ class Dock:
 
     async def start(self) -> None:
         db = self.pet.db
-        stored = db.kv_get(DOCKED_POSE_KEY) if db is not None else None
+        stored = db.kv_get(DOCK_KEY) if db is not None else None
         if stored:
-            x, y = (float(v) for v in stored.split(","))
-            self.docked_pose = MapPose(x, y)
+            x, y, cx, cy = (float(v) for v in stored.split(","))
+            self.docked_pose, self.charger = MapPose(x, y), MapPose(cx, cy)
         sub = self.pet.bus.subscribe(VacuumStateChanged)
         self._task = asyncio.create_task(self._watch(sub), name="dock")
         # The vacuum's first poll ran before this subscribed: on the dock at
         # start-up is only in its current state.
-        state = self.pet.vacuum.state
-        if state.docked and state.pose is not None:
-            self._remember_docked(state.pose)
+        self._remember_docked(self.pet.vacuum.state)
 
     async def close(self) -> None:
         if self._task:
@@ -103,20 +109,38 @@ class Dock:
 
     async def _watch(self, sub) -> None:
         async for event in sub:
-            state: VacuumState = event.state
-            if state.docked and state.pose is not None:
-                self._remember_docked(state.pose)
+            self._remember_docked(event.state)
 
-    def _remember_docked(self, pose: MapPose) -> None:
-        if self.docked_pose is not None and distance(self.docked_pose, pose) < 2.0:
+    def _remember_docked(self, state: VacuumState) -> None:
+        """While docked, the robot's centre and the charger say which way the dock faces."""
+        pose, charger = state.pose, state.charger
+        if not state.docked or pose is None or charger is None:
             return
-        self.docked_pose = MapPose(pose.x, pose.y)
-        log.info("docked at (%.0f, %.0f): the approach point follows from it", pose.x, pose.y)
+        if approach_point(charger, pose, self.cfg.dock_approach_cm) is None:
+            return          # on top of each other, or implausibly far apart
+        if (self.docked_pose is not None and self.charger is not None
+                and distance(self.docked_pose, pose) < 2.0 and distance(self.charger, charger) < 2.0):
+            return
+        self.docked_pose, self.charger = MapPose(pose.x, pose.y), MapPose(charger.x, charger.y)
+        point = self.approach_point()
+        log.info("docked at (%.0f, %.0f), charger at (%.0f, %.0f): approach point (%.0f, %.0f)",
+                 pose.x, pose.y, charger.x, charger.y, point.x, point.y)
         if self.pet.db is not None:
-            self.pet.db.kv_set(DOCKED_POSE_KEY, f"{pose.x:.1f},{pose.y:.1f}")
+            self.pet.db.kv_set(DOCK_KEY, f"{pose.x:.1f},{pose.y:.1f},{charger.x:.1f},{charger.y:.1f}")
+
+    def approach_point(self) -> Optional[MapPose]:
+        return approach_point(self.charger, self.docked_pose, self.cfg.dock_approach_cm)
 
     def approach(self, state: VacuumState) -> Optional[MapPose]:
-        return approach_point(state.charger, self.docked_pose, self.cfg.dock_approach_cm)
+        """The approach point, unless the live map says the dock has moved since."""
+        point = self.approach_point()
+        live = state.charger
+        if point is None or live is None:
+            return point
+        if min(distance(live, self.charger), distance(live, self.docked_pose)) > DOCK_MOVED_CM:
+            log.info("going home: the dock seems to have moved to (%.0f, %.0f)", live.x, live.y)
+            return None
+        return point
 
     async def go_home(self) -> tuple[str, bool]:
         """The whole trip: approach point, dock sequence, retries. For App.start_motion."""

@@ -5,7 +5,7 @@ import pytest
 from petd.app import App
 from petd.config import Config
 from petd.io.vacuum import MapPose
-from petd.spatial.dock import DOCKED_POSE_KEY, approach_point
+from petd.spatial.dock import DOCK_KEY, approach_point
 
 
 def test_the_approach_point_is_straight_out_in_front_of_the_dock():
@@ -38,7 +38,7 @@ def away(pet, x=2800, y=2700):
 
 
 async def test_goes_to_the_front_of_the_dock_then_docks(pet):
-    pet.dock.docked_pose = MapPose(2560, 2550)       # fake charger is at (2560, 2530)
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2560, 2550), MapPose(2560, 2530)
     away(pet)
     outcome, ok = await (await pet.go_home())
     assert ok and outcome == "back on my dock"
@@ -48,14 +48,14 @@ async def test_goes_to_the_front_of_the_dock_then_docks(pet):
 
 
 async def test_already_in_front_of_it_docks_straight_away(pet):
-    pet.dock.docked_pose = MapPose(2560, 2550)
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2560, 2550), MapPose(2560, 2530)
     away(pet, 2560, 2580)
     outcome, ok = await (await pet.go_home())
     assert ok and [c[0] for c in pet.vacuum.commands] == ["dock"]
 
 
 async def test_a_lost_search_is_stopped_and_tried_again_from_the_front(pet):
-    pet.dock.docked_pose = MapPose(2560, 2550)
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2560, 2550), MapPose(2560, 2530)
     away(pet)
     real_dock, tries = pet.vacuum.dock, []
 
@@ -75,13 +75,32 @@ async def test_a_lost_search_is_stopped_and_tried_again_from_the_front(pet):
 
 async def test_the_docked_position_is_learned_and_kept(pet):
     pet.vacuum._update(status="idle", pose=MapPose(2600, 2600))
-    pet.vacuum._update(status="docked", pose=MapPose(2561, 2552))
+    pet.vacuum._update(status="docked", pose=MapPose(2561, 2552), charger=MapPose(2548, 2540))
     await asyncio.sleep(0.05)
-    assert pet.dock.docked_pose == MapPose(2561, 2552)
-    assert pet.db.kv_get(DOCKED_POSE_KEY) == "2561.0,2552.0"
+    assert pet.dock.docked_pose == MapPose(2561, 2552) and pet.dock.charger == MapPose(2548, 2540)
+    assert pet.db.kv_get(DOCK_KEY) == "2561.0,2552.0,2548.0,2540.0"
 
 
 async def test_docked_at_start_up_counts_too(pet):
     # The fake starts on its dock, before the dock routine is listening.
     pose = pet.vacuum.state.pose
     assert (pet.dock.docked_pose.x, pet.dock.docked_pose.y) == (pose.x, pose.y)
+
+
+async def test_the_charger_jumping_to_the_docked_spot_is_not_a_move(pet):
+    # 2026-09-23 12:47: leaving the dock, Valetudo moved charger_location from
+    # (2548, 2540) to the robot's docked centre (2564, 2551).
+    pet.vacuum._update(status="docked", pose=MapPose(2564, 2551), charger=MapPose(2548, 2540))
+    await asyncio.sleep(0.05)
+    pet.vacuum._update(status="idle", pose=MapPose(2643, 2605), charger=MapPose(2564, 2551))
+    await asyncio.sleep(0.05)
+    outcome, ok = await (await pet.go_home())
+    assert ok and pet.vacuum.commands[0][0] == "go_to"
+    assert pet.vacuum.commands[0][1:] == pytest.approx((2597.4, 2574.0), abs=0.5)
+
+
+async def test_a_moved_dock_is_docked_from_where_the_robot_is(pet):
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2564, 2551), MapPose(2548, 2540)
+    pet.vacuum._update(status="idle", pose=MapPose(2900, 2900), charger=MapPose(3000, 3000))
+    outcome, ok = await (await pet.go_home())
+    assert ok and [c[0] for c in pet.vacuum.commands] == ["dock"]
