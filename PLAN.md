@@ -103,6 +103,8 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 
 `resize_scale` is settable at runtime (`/api/face/detector?resize_scale=`), and a `framesize` change re-initializes the camera, keeping every other setting. petd starts the head with recognition off (E6 moves it to the PC).
 
+**Face tracking (2026-09-23).** Tilt overshot into a nod up close. `scripts/tracking_log.py` showed each frame matching the previous pass's pose: frames reach detection ~0.3 s after capture (the camera driver queues them), but the pose was sampled at copy time. The firmware now looks the pose up at the frame's capture timestamp, keeps an axis's target inside the deadband (aiming at the older capture pose there caused a two-pass ping-pong on pan), and gives tilt its own gain (30 at VGA, pan 55). Stable on both axes at 0.6 and 2 m. Reaction time is still ~1 s: frame age ~280 ms + detection ~370 ms + up to one pass. Fresher frames (one buffer, or skipping stale frames) measured no better overall; the numbers are in the firmware's `docs/camera-settings.md`.
+
 **Next up (in order):**
 
 1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic. Enrolling a second face, recognition after a restart and A3's single delete (`forget_person`) wait for E6, now that recognition is off.

@@ -69,7 +69,8 @@ def record(args) -> None:
             if cur.frame_seq != last_seq:
                 last_seq = cur.frame_seq
                 row = {"seq": cur.frame_seq, "t": time.time(), "age_ms": cur.age_ms,
-                       "pan": cur.servo.pan_deg, "tilt": cur.servo.tilt_deg, "faces": len(cur.faces)}
+                       "pan": cur.servo.pan_deg, "tilt": cur.servo.tilt_deg, "faces": len(cur.faces),
+                       **cur.timing}
                 if cur.faces:
                     box = cur.faces[0]["box"]
                     row.update(cx=(box["left"] + box["right"]) / 2, cy=(box["top"] + box["bottom"]) / 2,
@@ -107,12 +108,20 @@ def summarize(rows: list[dict], servo: dict) -> None:
     faces = [r for r in rows if r.get("faces") == 1]
     print(f"passes: {len(rows)}, with exactly one face: {len(faces)}, "
           f"with none: {sum(r.get('faces') == 0 for r in rows)}")
-    if len(faces) < 3:
-        print("not enough single-face passes to say anything")
-        return
     ages = [r["age_ms"] for r in rows if r.get("age_ms", -1) >= 0]
     if ages:
         print(f"frame age when read: median {statistics.median(ages):.0f} ms")
+    timed = [r for r in rows if "frame_age_ms" in r]
+    if timed:
+        med = lambda key: statistics.median(r[key] for r in timed)
+        times = [r["t"] for r in rows]
+        rate = (len(rows) - 1) / (times[-1] - times[0]) if len(rows) > 1 and times[-1] > times[0] else 0
+        print(f"per pass (median): frame {med('frame_age_ms'):.0f} ms old when copied, "
+              f"waited {med('wait_ms'):.0f} ms for it, "
+              f"detection {med('process_ms'):.0f} ms; {rate:.2f} passes/s")
+    if len(faces) < 3:
+        print("not enough single-face passes to say anything")
+        return
     for axis, centre, gain_key in AXES:
         summarize_axis(rows, faces, axis, centre, servo.get(gain_key))
 

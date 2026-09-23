@@ -123,6 +123,9 @@ class CurrentFaces:
     servo: ServoPose
     utc: str
     received_monotonic: float = field(default_factory=time.monotonic)
+    # Where the pass's time went (firmware from 2026-09-23 on, else {}):
+    # frame_age_ms (frame's age when copied), wait_ms, process_ms.
+    timing: dict = field(default_factory=dict)
 
 
 def parse_utc(utc: str) -> Optional[float]:
@@ -247,6 +250,7 @@ class FaceApiClient:
             faces=data.get("faces", []),
             servo=ServoPose(data["servo"]["pan"], data["servo"]["tilt"]),
             utc=data["utc"],
+            timing=data.get("timing", {}),
         )
 
     def list_enrolled_faces(self) -> list[int]:
@@ -398,6 +402,14 @@ class FaceApiClient:
         to actually receive/play it.
         """
         self._get_ok("/api/audio", {"host": host, "port": port})
+
+    def probe_camera(self, frames: int = 10) -> dict:
+        """
+        GET /api/camera/probe: grabs `frames` (2-20) back to back. Returns
+        first_age_ms (how stale the first frame handed out was), interval_ms
+        (between captures) and wait_ms (per grab). Detection pauses meanwhile.
+        """
+        return self._get_json("/api/camera/probe", {"frames": frames})
 
     def set_camera(self, **settings: int) -> None:
         """
