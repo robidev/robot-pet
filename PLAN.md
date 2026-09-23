@@ -388,28 +388,120 @@ If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, i
 | 0–1 | Calls out their name when they appear (once per N hours) | Approaches after they confirm | Name plus notes |
 | 2–3 | Name or nickname, references past conversations and running jokes, GLaDOS-style "fondness" | Approaches directly when called | Name, nickname, notes, last 3 facts, last-seen summary |
 
-**Recognition moves to the PC (planned, E6).** Since 2026-09-23 the head only
+**Face recognition on the PC (E6, planned).** Since 2026-09-23 the head only
 detects: recognizing every face on every pass cost the tracking loop time and
 bought nothing (tracking needs only the box), and the head's 112x112 recognizer
-is unreliable on the small faces that longer-range detection now finds. Until E6
-lands, `face.enable_recognition` is off: the pet doesn't know who anyone is, no
-stranger notes are sent, and `remember_face` refuses. The design:
+flickered even up close (similarity ~0.55). Until E6 lands, `face.enable_recognition`
+is off: the pet doesn't know who anyone is, no stranger notes are sent, and
+`remember_face` refuses. The design below borrows from Frigate's face recognition
+(the matching and voting) and Immich (grouping unknown faces); see "Prior art".
 
-- **When:** once per arrival, not per frame. A new face in `FacesChanged`
-  (nobody sticky-recognized yet) triggers a `/api/snapshot`, retried a few times
-  over the first seconds while the person is in view, then left alone until
-  presence is lost. Identity stays sticky per presence episode, as now.
-- **How:** crop each detected box from the snapshot (boxes from
-  `/api/face/current` near the snapshot's time, or re-detect on the PC) and embed
-  it with a PC model (e.g. OpenCV YuNet + SFace, or InsightFace/ArcFace). Match
-  by cosine similarity against stored embeddings, with a margin between the best
-  and second-best person.
-- **Storage:** a `face_embeddings(person_id, t_utc, vector BLOB)` table, several
-  per person (angles, lighting), instead of `people.face_slot`. No 7-slot limit.
-  `remember_face` stores embeddings from a few snapshots; `forget_person`
-  deletes them. The device's enrolled slots are retired (people re-enroll once).
-- **Acceptance:** greets a known person by name after a restart, at 2-3 m; a
-  stranger is called a stranger; a known face is never greeted as someone else.
+*Stack.* `onnxruntime` + `numpy`: 122 MB installed, measured from the wheels
+(onnxruntime 64, numpy 56, protobuf/flatbuffers/packaging 2), no build step.
+Pillow, already a dependency, decodes, crops and warps. Two OpenCV Zoo models,
+downloaded by a setup script into a git-ignored folder (`*.onnx` already is):
+
+| model | job | size | licence |
+|---|---|---|---|
+| YuNet 2023mar | faces + 5 landmarks in the snapshot | 0.23 MB | MIT |
+| SFace 2021dec int8 | aligned 112x112 face -> 128-d fingerprint | 9.9 MB (fp32: 38.7 MB) | Apache 2.0 |
+
+Rejected: OpenCV itself (216 MB with numpy; it would save ~100 lines), insightface
+(a Cython build, and its model packs are non-commercial), dlib/face_recognition
+(a C++ build), DeepFace (TensorFlow, a 274 MB download alone). Speed is not a
+concern: both models together should take well under 50 ms per snapshot on the
+PC's i7-1185G7 (AVX-512 VNNI, good for int8), against 0.38 s to fetch the
+snapshot, and they run on arrivals, not per frame.
+
+*One attempt* (`petd/vision/faces.py`):
+
+1. `GET /api/snapshot`: a VGA JPEG, with the pose it was taken at.
+2. YuNet on that image: boxes and landmarks from the same frame. The head's own
+   landmarks come from a different frame, and alignment from those would suffer.
+3. Gates, skipping rather than guessing: face at least `min_face_px` tall (start
+   at 60: ~2 m at VGA), detection score, too dark, too blurry (Laplacian variance
+   of the aligned crop). Frigate docks blurry crops 0.01-0.06 instead; start
+   with a hard gate and see.
+4. Align: fit all 5 landmarks to the standard 112 px template (least-squares
+   similarity transform, ~20 lines of numpy), warp with Pillow. All 5 points,
+   not the eyes alone, which slip on small faces.
+5. SFace: a 128-d fingerprint, normalized.
+6. Compare with each known person's centre (below): cosine similarity. Below
+   `unknown_sim`, or within `margin` of the second-best person: "unknown".
+
+*Deciding who it is*, per presence episode, as Frigate does per tracked person:
+
+- Attempts start when a face appears and nobody in view is known yet: one
+  snapshot every ~1.5 s while a face is in view and passes the gates, up to 12,
+  and up to 6 more after a name is given, to confirm it.
+- The name is a weighted vote over the episode's attempts: each counts by its
+  face area (capped) times how far its similarity is above `unknown_sim`, so a
+  close, clear look outweighs several distant ones. A name only when at least
+  `min_agree` (2) attempts agree, their weighted mean reaches `accept_sim`, and
+  no other name has as many votes. Otherwise nobody, not a guess: greeting a
+  guest by someone else's name is the failure that matters, and "unknown" is
+  the safe side of it.
+- Several faces: each gets its own vote, matched between snapshots by position
+  (people in a living room mostly sit still); a face that can't be matched
+  starts afresh.
+- Identity stays sticky for the episode, as now; greetings, sightings and
+  familiarity work as they do.
+
+*Fingerprints.* `face_embeddings(id, person_id, t_utc, vector BLOB, face_px,
+blur, brightness, source)`: 512 bytes each, as many per person as useful, and
+no 7-slot limit. Each person's centre is a trimmed mean (15%), after dropping
+fingerprints whose similarity to the person's mean is below 0.30 once there are
+5 or more, so one bad or mislabeled sample doesn't drag it off (Frigate's
+`build_class_mean`). `people.face_slot` and the head's flash slots are retired;
+people re-enroll once.
+
+*Enrollment and growth.*
+
+- `remember_face(name)`, as now, needs exactly one face in view. It collects ~5
+  crops that pass the gates, from different frames over ~5 s, and says "come a
+  bit closer" when they don't.
+- Variety matters more than count (Frigate: 20-30 varied images; no more than 4-6
+  near-identical ones). So the set grows by itself: a confident recognition
+  (well above `accept_sim`) adds its fingerprint unless it's a near-duplicate of
+  one already kept, up to ~30 per person. Daylight, lamp light and new angles
+  come with ordinary use. Uncertain attempts are never added: a wrong face in a
+  person's set is what spoils it.
+- `forget_person` deletes the fingerprints with the person.
+
+*Kept attempts.* The last ~200 aligned crops, as small JPEGs under
+`runtime/faces/attempts/` named by time, verdict and score. `show_memory.py`
+shows them, which also gives it its first images, and a misread can be deleted
+or given the right name. They stay on the PC.
+
+*Night and light.* The models are trained on colour images; the OV2640 has no
+IR mode, so night here means noise, blur and a colour cast from the camera
+raising its gain, and by day a backlit person is a silhouette. The gates keep
+the worst out, the varied fingerprints cover the rest, and the head's exposure
+settings (the firmware's `docs/camera-settings.md`) matter as much as the model.
+
+*Later, not E6: unknown faces.* Keep the fingerprints of unknown faces; once 3
+or more from different episodes are close to each other (Immich's rule), they're
+someone the pet keeps seeing, and it can ask their name the next time.
+
+*Measure before building (E6a).* The thresholds above are placeholders. In a
+throwaway venv, outside the project: snapshots of Robin (and Claudia, if she's
+up for it) at 0.6, 1.5 and 2.5 m, in daylight and lamp light. Same-person and
+other-person similarities, face sizes, blur and timings set `unknown_sim`,
+`accept_sim`, `margin` and `min_face_px`, and say how far recognition reaches.
+OpenCV's reference cosine threshold for SFace is 0.363.
+
+*Acceptance.* Greets a known person by name after a restart, day and evening,
+within a couple of seconds of them facing it, out to the measured range. A
+guest is never greeted as someone known. Recognition costs nothing while
+nobody new is in view.
+
+*Prior art.* [Frigate](https://docs.frigate.video/configuration/face_recognition/):
+voting over attempts weighted by face area, `unknown_score`/`recognition_threshold`/
+`min_faces`, `min_area` (750 px²), blur penalty, trimmed-mean class centres,
+saved attempts, 20-30 varied training images, no IR. [Immich](https://docs.immich.app/features/facial-recognition/):
+clustering unknown faces into new people once 3 are alike. Small YuNet + SFace
+projects on GitHub do enrollment with exactly one face and cosine matching with
+an unknown threshold, and stop there.
 
 **Markdown files (`memory/`):**
 
@@ -560,7 +652,9 @@ Concurrency, state machines, and where the "feel" lives.
 | E3 | Enrollment flow and the people tools (`remember_face`, `who_do_i_know`, `recall_person`, `note_about_person`), plus the greeting-on-recognition behavior (once per person per N hours, via an `[event]` turn). **This gives M2.** | Introduce yourself. It enrolls you, then greets you by name after a restart. |
 | E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 0.7 m, facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
-| E6 | Face recognition on the PC (4.7): snapshot on arrival, PC embedding model, `face_embeddings` table, `remember_face`/`forget_person` on top of it; the head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, at 2-3 m. A stranger is never greeted as someone known. |
+| E6a | Measure first (4.7), in a throwaway venv outside the project: YuNet + SFace on head snapshots of Robin (and Claudia) at 0.6/1.5/2.5 m, day and lamp light. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim`, `accept_sim`, `margin` and `min_face_px` chosen from them. |
+| E6b | Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
+| E6c | Kept attempts (4.7): the last ~200 aligned crops under `runtime/faces/attempts/`, shown by `show_memory.py`, a misread deletable or renamable. | A wrong or unsure attempt can be found and corrected after a session. |
 
 ### Cluster F: personality and content (Opus 5, medium). Creative writing, best done in one sitting.
 
