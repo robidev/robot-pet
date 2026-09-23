@@ -28,6 +28,7 @@ vac.get_position()          # Pose(x=2560, y=2549, angle=342)
 vac.get_charger_position()  # Pose(x=2560, y=2530, angle=None)
 vac.get_map()                # raw ValetudoMap JSON
 vac.get_map_image()          # PIL.Image bitmap rendered from the map JSON
+vac.get_map_image(markers=[(2699, 2558, "kitchen")])   # plus labeled points, in map cm
 
 # commands (THESE MOVE THE ROBOT)
 vac.start_cleaning()

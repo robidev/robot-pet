@@ -183,7 +183,8 @@ class ValetudoClient:
         """
         return self._get("/robot/state/map")
 
-    def get_map_image(self, scale: int = 8, crop_to_content: bool = True, padding: int = 15):
+    def get_map_image(self, scale: int = 8, crop_to_content: bool = True, padding: int = 15,
+                      markers: Optional[list] = None):
         """
         Rasterize the current map into a Pillow Image (bitmap), since
         Valetudo doesn't expose one directly. Requires `pillow`
@@ -191,11 +192,16 @@ class ValetudoClient:
 
         Colors: floor = light grey, walls = dark grey, segments = a
         rotating palette, robot = blue dot, charger = green dot.
+        `markers`: extra (x, y, label) points in map cm (the units of the
+        robot's position and go_to), drawn as labeled orange dots.
+
+        Layers are in map pixels, entities in cm (pixelSize cm per pixel):
+        e.g. the charger at x=2547 cm sits among floor pixels 448..633.
 
         By default the image is cropped to the bounding box of the actual
-        floor/wall/segment layers (+ `padding` map units), then scaled up
+        floor/wall/segment layers (+ `padding` pixels), then scaled up
         by `scale`. Without this, the room is a tiny speck in the middle
-        of Valetudo's full (e.g. 5120x5120) coordinate space. Pass
+        of Valetudo's full (e.g. 1024x1024 pixel) canvas. Pass
         `crop_to_content=False` to get the raw full-canvas image instead.
 
         Note: the bounding box intentionally ignores the `path` entity
@@ -211,8 +217,10 @@ class ValetudoClient:
             ) from exc
 
         map_data = self.get_map()
-        size = map_data["size"]
-        img = Image.new("RGB", (size["x"], size["y"]), (20, 20, 20))
+        pixel_size = map_data.get("pixelSize") or 5
+        width = map_data["size"]["x"] // pixel_size
+        height = map_data["size"]["y"] // pixel_size
+        img = Image.new("RGB", (width, height), (20, 20, 20))
         draw = ImageDraw.Draw(img)
 
         segment_palette = [
@@ -244,23 +252,34 @@ class ValetudoClient:
                     ys_min.append(dims["y"]["min"])
                     ys_max.append(dims["y"]["max"])
 
-        for entity in map_data.get("entities", []):
-            if entity["type"] == ENTITY_TYPE_ROBOT_POSITION:
-                x, y = entity["points"]
-                draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(0, 120, 255))
-            elif entity["type"] == ENTITY_TYPE_CHARGER_LOCATION:
-                x, y = entity["points"]
-                draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=(0, 200, 0))
-
+        x0 = y0 = 0
         if crop_to_content and xs_min:
             x0 = max(0, min(xs_min) - padding)
             y0 = max(0, min(ys_min) - padding)
-            x1 = min(size["x"], max(xs_max) + padding)
-            y1 = min(size["y"], max(ys_max) + padding)
+            x1 = min(width, max(xs_max) + padding)
+            y1 = min(height, max(ys_max) + padding)
             img = img.crop((x0, y0, x1, y1))
-
         if scale != 1:
             img = img.resize((img.width * scale, img.height * scale), Image.NEAREST)
+
+        # Points go on after scaling, so dots and labels stay crisp.
+        draw = ImageDraw.Draw(img)
+
+        def dot(x_cm: float, y_cm: float, fill, label: Optional[str] = None) -> None:
+            x = (x_cm / pixel_size - x0) * scale
+            y = (y_cm / pixel_size - y0) * scale
+            r = max(3, scale)
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=fill, outline=(0, 0, 0))
+            if label:
+                draw.text((x + r + 2, y - r - 2), label, fill=(0, 0, 0))
+
+        for entity in map_data.get("entities", []):
+            if entity["type"] == ENTITY_TYPE_ROBOT_POSITION:
+                dot(*entity["points"][:2], (0, 120, 255))
+            elif entity["type"] == ENTITY_TYPE_CHARGER_LOCATION:
+                dot(*entity["points"][:2], (0, 200, 0))
+        for x_cm, y_cm, label in markers or []:
+            dot(x_cm, y_cm, (255, 140, 0), label)
         return img
 
     def _find_point_entity(self, entity_type: str) -> Optional[dict]:
