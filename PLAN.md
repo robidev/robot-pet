@@ -35,14 +35,16 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 ## 0.2 Progress
 
-| Cluster | Status (2026-09-22) |
+| Cluster | Status (2026-09-24) |
 |---|---|
-| **A: firmware and C++** | **Done.** A1–A3 are committed in `~/LilyGo-Cam-RobotFace` (`edc6f87`, then `e6102eb` and `b3066da`), flashed, and verified read-only on the device at 192.168.101.40. `delete` hasn't been exercised on hardware because it's destructive. A4 (`--json`) is built into `stt/udp-stream/whisper-udp-stream` and tested with `jfk.wav` over UDP. It also fixes a bug that was already there: SIGINT/SIGTERM were ignored while no audio arrived. |
-| **D: brain** | **Done and verified on hardware** (`886de32`). Persistent `claude -p` per episode (stream-json, isolated: own cwd, no inherited settings, `--tools ""`, only `mcp__robot__*`), the tool registry behind the local API, the `robot_mcp` stdio shim, the streaming tag/sentence parser, expressions, prompt assembly, and an untested ollama backend. On the robot it called `look()`, saw the room through MCP and described it correctly. Turn latency 7–10 s on Haiku 4.5, plus ~2 s for STT. D5 (ollama) needs a real ollama to verify. |
-| **F1: persona** | **Done** (`a816850`). `memory/{persona,backstory,body,style}.md`. Checked in conversation: in character, refuses what the body can't do, drops the act when someone is upset. `emotions.yaml` keyframes still belong to E. |
-| **E1–E3: memory, listening, people** | **Done with fakes and the real model, not yet on hardware** (`5b74e4c`, `44356fd`). E1: `memory/db.py` (SQLite, migrations; people, sightings, conversations, utterances, facts, places, kv). E3: `memory/people.py` (sticky identity, greetings, a lingering stranger, enrollment that diffs `/api/face/list`, forget, slot reconciliation) and the people tools; idle episodes end with a journal line. E2: `behavior/converse.py` (reflexes, barge-in, attention gate). Deferred: the priority **arbiter** moves to E4, where the first competing behaviors (approach, search) arrive and there is something to arbitrate; **`emotions.yaml` keyframes** move to E5 (the single-pose emotes work). |
-| **C: spatial** | **C4 done on hardware; C1, C5 and the face half of C3 to go.** `spatial/motion.py`: closed-loop `turn_by`/`move_by` over Valetudo manual control with Player odometry as feedback, landing within 3 deg and 2–3 cm. Tools: `turn`, `move`, `remember_place`, `go_to_place`. `scripts/calibrate_motion.py` probes the drive vector. **C2 shrinks:** Player only streams while manual control is armed, so there is no odometry during Valetudo's own trips and nothing to fuse; the odom→map transform and the clock-offset estimate are dropped. Stop-and-look uses the map pose at rest. |
-| **B: foundations and I/O** | **Done and verified on hardware**, apart from the `/tool/{name}` route, which moves to D2. All five smoke tests pass: vacuum polling, face events and presence, STT, TTS out of the robot's speaker, and `echo` — where the pet heard itself zero times (the gate caught its own utterances) and answered every real one. |
+| **Milestones** | **M1 (It talks) works on the robot. M2 (It knows you) is back** with face recognition on the PC (E6b; one person verified live, two people and daylight still to check). **M3 and M4 not started.** |
+| **A: firmware and C++** | **Done**, and the face firmware (`~/LilyGo-Cam-RobotFace`) has moved on since, all flashed: A1–A3 (`edc6f87`, `e6102eb`, `b3066da`); tilt clamp 58–105° (`6b6d3c7`); **detection-only head**: raw RGB565, VGA with stage one at 0.5, faces detected out to 2.7 m (`5bc6dca`); **stable tracking**: pose looked up at the frame's capture time, tilt's own gain (`95da934`); per-pass timing and a camera probe (`90eaf76`); WiFi reconnects whatever the reason, drops in `/api/status` (`0ec26d4`). A4 (`--json`) and `--prompt` are in `stt/udp-stream`. |
+| **B: foundations and I/O** | **Done and verified on hardware.** Since: a **log folder per run** (`runtime/logs/<run>/`: `petd.log` at DEBUG, `run.yaml` with the config, `events.jsonl` with every bus event); short network stalls no longer count as offline (`offline_after_s`); face-board reboots and WiFi drops are logged with their reason. |
+| **C: spatial** | **C4 done on hardware** (`spatial/motion.py`: `turn`/`move`, `remember_place`/`go_to_place`); a straight forward `move` leaves the dock. **Docking** (`spatial/dock.py`): `go_home` drives to a point 60 cm in front of the dock first, then docks, retrying once; verified live. **Open: C1** (map geometry), **the face half of C3** (worth retrying now detection reaches 2.7 m), **C5**. C2 shrank to nothing (see 4.1). |
+| **D: brain** | **D1–D4 done and verified on hardware.** The claude process now starts before anyone speaks (`brain.prestart`). D5 (ollama) written, never run against a real ollama. |
+| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** built and verified live with Robin (enrollment, recognition on return and after a restart); growth and the step back fixed after the first live runs. **Open:** E6's live checks (Next up, item 0), **E6c** (kept attempts), **E4** (approach, search, the arbiter: M3), **E5** (drives, sleep, explore: M4). |
+| **F: personality** | **F1 done.** F2 (games) open. |
+| **G: polish and ops** | **G4 done** (turn timings on the bus, `scripts/latency.py`); real numbers still to take from a live run. G1–G3 open. Also `scripts/show_memory.py` (what the pet stored, places on the map). |
 
 **Findings from the first hardware smoke tests (2026-09-20):**
 
@@ -94,7 +96,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **Faces aren't detected much beyond ~1.5 m**, even in full room light: stage one of the detector (`HumanFaceDetectMSR01(..., 0.2F)`) runs on the VGA frame scaled to 20%, 128×96, where a face 2 m away is ~8 px. Robin was only detected at 1.5 m when bending their knees.
 - **So there's no distance at which a standing adult is both high enough in the frame and big enough to detect.** The face-distance calibration wasn't possible; `scripts/calibrate_face.py` (fixed-tilt captures, no tracking) is ready for when it is. Options, roughly in order of payoff for "come here": (1) **a person/feet detector on the PC**, run on `/snapshot`: legs are in view at tilt 90, the bearing comes from the box, and the distance from where the feet meet the floor (camera 0.20 m up, known tilt) needs no face height at all; face recognition stays for *who*, up close; (2) the detector's resize scale 0.2 → 0.3–0.4 for range, at a CPU cost to measure against the vision duty cycle; (3) tilting the camera up on its mount by 15–20°.
 
-**Detection-only head (2026-09-23).** The face firmware (uncommitted in `~/LilyGo-Cam-RobotFace`) captures raw RGB565 and feeds it to the detector directly, with no JPEG decode on the detection path; JPEG is encoded only for `/stream` and `/api/snapshot`. Stage one now gets a 320×240 input instead of 128×96. Measured on the device:
+**Detection-only head (2026-09-23).** The face firmware (`~/LilyGo-Cam-RobotFace`, `5bc6dca`) captures raw RGB565 and feeds it to the detector directly, with no JPEG decode on the detection path; JPEG is encoded only for `/stream` and `/api/snapshot`. Stage one now gets a 320×240 input instead of 128×96. Measured on the device:
 
 - **Range 2.7 m** (was ~1.5 m) in good indoor light; close range fine.
 - **QVGA × 1.0: 2.17 passes/s** with nobody in view (was 1.9 at VGA × 0.2 with a face): the JPEG decode saved paid for the 6.25× larger stage-one input.
@@ -109,15 +111,16 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 
 0. **E6, face recognition on the PC: finish the live checks** (backlog, 2026-09-23). Built (E6b) and first tried live: Robin enrolled in 11 s (5 close, 5 a step back), left and came back, and was named after 2 attempts (~2 s, similarity 0.76). Still open:
    - **Two people live:** Claudia's enrollment, then both in view (told apart, each named, neither greeted as the other), and a guest who must stay unknown.
-   - **After a petd restart:** recognized and greeted from the stored fingerprints alone.
+   - ~~After a petd restart~~ **Done:** recognized from the stored fingerprints alone (2026-09-23).
    - **E6a in daylight and backlit** (someone in front of the window), then revisit `unknown_sim` / `accept_sim` / `margin`, which come from lamp light only.
    - ~~Growth is too eager~~ **Fixed:** the first visits kept every attempt (20 grown in three visits, the 30 full); after a visit's first look the rest were 0.89-0.95 alike. Now a look is kept only if under `duplicate_sim` (0.90) to every one kept, at most `grow_per_visit` (2) a visit, and a full set trades its most redundant grown fingerprint for a newer look (replayed on the real data: 6 of the 20 kept). Enrollment now also checks the step back happened (both sets were ~220 px): the second set must be at most 80% of the close-up height, it asks once more if not, and keeps only the close set otherwise.
    - **The head's "nobody in view"** while Robin faced the camera, just before enrollment found his face on the PC's snapshot at once: check whether the head's detector missed him there (tracking was off).
    - Whisper heard "GLaDOS" as "Class" three times; the wake word needed a "Hey" to get through.
-1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic. Enrolling a second face, recognition after a restart and A3's single delete (`forget_person`) wait for E6, now that recognition is off.
-2. **Flash the tilt clamp** (58–105). Then decide how "come here" finds a standing person (see the calibration findings): a PC-side person detector is the recommendation. Then C1 map geometry, C5 person localization on whatever that gives, and E4 (`approach_person`, search, the arbiter) for M3.
-3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
-4. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
+1. **C1, map geometry** (`spatial/mapgeo.py`, cluster C): the next thing to build. Pure code, tested on a saved map; no hardware time.
+2. **The face half of C3, with Robin in the room:** stop-and-look gave up because a standing adult was never both in view and detectable (faces then stopped at ~1.5 m). Detection now reaches 2.7 m, and the PC's YuNet found a face the head missed: measure again whether a standing person can be seen and their distance estimated. Then **C5** (person on the map) and **E4** (`approach_person`, search, "come here", the arbiter): **M3**.
+3. **First real latency numbers (G4):** a few questions in a live session, then `scripts/latency.py`. Before E4, which adds model round trips per request.
+4. Later: **E6c** (kept attempts, which also gives `show_memory.py` images), **E5** + `emotions.yaml` (**M4**), **F2** games, **G1** README, **G2** one-command start, **G3** dashboard extras.
+5. Loose ends: barge-in on the real mic (E2's hardware check); D5 against a real ollama; the face-clock offset (see the findings below).
 
 **Running it:**
 
@@ -126,6 +129,10 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - `--echo` repeats back what it hears, to test the audio path and the echo gate.
 - `scripts/smoke.py {vacuum,face,stt,say,echo}` exercises each adapter on its own.
 - `.venv/bin/python -m pytest` runs the tests.
+- Each run logs to `runtime/logs/<start time>/` (`latest` is the newest): `petd.log`, `run.yaml`, `events.jsonl`.
+- `scripts/latency.py [run]`: where each turn's time went. `scripts/show_memory.py [conversation N | map]`: what the pet has stored.
+- `scripts/tracking_log.py`: the head's tracking, pass by pass. `scripts/fetch_face_models.py`: the face recognition models (git-ignored).
+- `runtime/e6a/`: E6a's face captures of Robin and Claudia (photos of people: never into git) and the probe that took them.
 
 ---
 
