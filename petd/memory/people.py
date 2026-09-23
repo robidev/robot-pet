@@ -1,31 +1,33 @@
 """
-Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3).
+Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3, E6).
 
-- Identity is sticky per presence episode. Recognition flickers between an
-  id and -1 from frame to frame (similarity sits close to the threshold),
-  so once a face is recognized the person counts as present until the
+- Faces are recognized on the PC (memory/recognition.py), which calls
+  recognized() when a visit's vote names someone. Identity is sticky per
+  presence episode: once named, the person counts as present until the
   debounced FacesPresence says nobody is there any more.
-- The database owns the face slot -> person mapping. The device's ids are
-  neither contiguous nor reused in order after a delete, so the mapping is
-  reconciled against /api/face/list rather than assumed.
-- Enrollment diffs /api/face/list before and after arming, instead of
-  trusting whichever id shows up next in a face event.
+- A face is known by its fingerprints in the database (face_embeddings), as
+  many per person as useful. The head's own recognizer and its 7 face slots
+  are retired: people enrolled there enroll again.
+- Enrollment takes ~5 good crops close up, asks the person to step back, and
+  takes ~5 more: a face's fingerprint drifts with its size (E6a).
 - Arrivals turn into `[event]` turns for the brain (a greeting at most once
-  per `greet_every_h`), and so does a stranger who stays in view.
-- With recognition off (face.enable_recognition) every face is unknown, so
-  nobody counts as a stranger and no new faces can be learned.
+  per `greet_every_h`), and so does a stranger: a face seen clearly several
+  times that the recognizer couldn't name.
+- With recognition off (no models, or recognition.enabled false) every face
+  is unknown, so nobody counts as a stranger and no new faces can be learned.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import statistics
 import time
-from collections import Counter
 from typing import TYPE_CHECKING, Callable, Optional
 
 from ..brain.tools import ToolError
 from ..events import FacesChanged, FacesPresence, PersonArrived, PersonLeft
+from ..vision.matching import class_centre, classify, normalized, to_blob
 from .db import MemoryDB, Person
 
 if TYPE_CHECKING:
@@ -37,6 +39,9 @@ log = logging.getLogger(__name__)
 # "new" made the pet tell someone it had recognized that they were new.
 FAMILIARITY_WORDS = ("not familiar yet", "acquaintance", "regular", "favourite test subject")
 SIGHTING_EVERY_S = 30.0
+# Enrollment's second set counts as a step back when faces are at most this
+# share of the close-up height (a real step from ~0.6 m is well under it).
+STEP_BACK = 0.8
 
 
 class People:
@@ -51,26 +56,17 @@ class People:
         self._notify: Optional[Callable[[str], None]] = None
         self._pending: list[str] = []
         self._last_sighting: dict[Optional[int], float] = {}
-        self._stranger_timer: Optional[asyncio.TimerHandle] = None
         self._last_stranger_note = float("-inf")
         self._enrolling = asyncio.Lock()
-        # Pace of enrollment's frame sampling and slot polling (tests set 0).
-        self.poll_s = 0.2
         self._task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
         sub = self.pet.bus.subscribe(FacesChanged, FacesPresence)
         self._task = asyncio.create_task(self._watch(sub), name="people")
-        try:
-            await self.reconcile()
-        except Exception as exc:  # noqa: BLE001 - the head may still be booting
-            log.warning("could not reconcile face slots yet: %s", exc)
 
     async def close(self) -> None:
         if self._task:
             self._task.cancel()
-        if self._stranger_timer:
-            self._stranger_timer.cancel()
 
     # --- who is here ------------------------------------------------------------
 
@@ -98,27 +94,20 @@ class People:
 
     def _on_faces(self, event: FacesChanged) -> None:
         self.faces_in_view = len(event.faces)
-        now = event.t
-        for face in event.faces:
-            if not face.recognized:
-                continue
-            person = self.db.person_by_slot(face.id)
-            if person is None:
-                continue
-            self._sighting(person.id, now, face.confidence)
-            if person.id not in self.present:
-                self._arrived(person, now)
         if event.faces and not self.present:
-            self._sighting(None, now, max(f.confidence for f in event.faces))
-            if self._stranger_timer is None:
-                loop = asyncio.get_running_loop()
-                self._stranger_timer = loop.call_later(self.cfg.stranger_after_s, self._stranger)
+            self._sighting(None, event.t, max(f.confidence for f in event.faces))
+
+    def recognized(self, person_id: int, t: float, similarity: float) -> None:
+        """The recognizer named a face in view."""
+        person = self.db.person(person_id)
+        if person is None:
+            return                      # forgotten meanwhile
+        self._sighting(person.id, t, similarity)
+        if person.id not in self.present:
+            self._arrived(person, t)
 
     def _on_nobody(self) -> None:
         self.faces_in_view = 0
-        if self._stranger_timer:
-            self._stranger_timer.cancel()
-            self._stranger_timer = None
         now = time.time()
         for person in self.present.values():
             self.db.mark_seen(person.id, now)
@@ -126,9 +115,6 @@ class People:
         self.present.clear()
 
     def _arrived(self, person: Person, now: float) -> None:
-        if self._stranger_timer:
-            self._stranger_timer.cancel()
-            self._stranger_timer = None
         away_s = None if person.last_seen_at is None else now - person.last_seen_at
         x, y = self._where()
         self.db.mark_seen(person.id, now, x, y)
@@ -137,7 +123,7 @@ class People:
         if away_s is None or away_s > 3600:
             person = self.db.count_interaction(person.id, self._thresholds())
         self.present[person.id] = person
-        log.info("recognized %s (slot %s)", person.name, person.face_slot)
+        log.info("recognized %s", person.name)
         self.pet.bus.publish(PersonArrived(person_id=person.id, name=person.name))
 
         greeted_ago = None if person.last_greeted_at is None else now - person.last_greeted_at
@@ -145,10 +131,10 @@ class People:
             self.db.mark_greeted(person.id, now)
             self._tell(f"{person.name} just came into view. {describe(person, now, away_s)}")
 
-    def _stranger(self) -> None:
-        self._stranger_timer = None
+    def stranger_seen(self) -> None:
+        """The recognizer saw a face clearly, several times, and couldn't name it."""
         now = time.time()
-        if not self.pet.cfg.face.enable_recognition:
+        if not self.pet.recognition_on:
             return
         if self.present or not self.pet.face or not self.pet.face.presence.present:
             return
@@ -187,138 +173,105 @@ class People:
         else:
             self._pending.append(text)
 
-    # --- face slots -------------------------------------------------------------
-
-    async def reconcile(self) -> list[int]:
-        """
-        Drops DB slots the device no longer has (the person keeps their name
-        and notes, just not their face) and returns device ids no one is
-        attached to.
-        """
-        face = self.pet.face
-        if face is None:
-            return []
-        on_device = set(await face.list_enrolled())
-        for person in self.db.people():
-            if person.face_slot is not None and person.face_slot not in on_device:
-                log.warning("face slot %d of %s is gone from the device; unlinking",
-                            person.face_slot, person.name)
-                self.db.set_face_slot(person.id, None)
-        known = {p.face_slot for p in self.db.people() if p.face_slot is not None}
-        orphans = sorted(on_device - known)
-        if orphans:
-            log.info("enrolled on the device but unnamed: %s", orphans)
-        return orphans
+    # --- faces -------------------------------------------------------------------
 
     async def enroll(self, name: str, insist: bool = False) -> str:
         name = " ".join(name.split())
         if not name:
             raise ToolError("I need a name to file the face under")
-        face = self.pet.face
-        if not self.pet.cfg.face.enable_recognition:
+        recognizer = self.pet.recognizer
+        if recognizer is None:
             raise ToolError("face recognition is switched off, so I can't learn or recognize "
                             "faces at the moment")
+        face = self.pet.face
         if face is None or not face.state.reachable:
             raise ToolError("my head is offline, so I can't see anyone to remember")
         if self._enrolling.locked():
             raise ToolError("I'm already memorizing a face; one at a time")
         async with self._enrolling:
-            return await self._enroll(face, name, insist)
+            recognizer.paused = True
+            try:
+                return await self._enroll(recognizer, name, insist)
+            finally:
+                recognizer.paused = False
 
-    async def _enroll(self, face, name: str, insist: bool) -> str:
+    async def _enroll(self, recognizer, name: str, insist: bool) -> str:
+        rc = self.pet.cfg.recognition
         existing = self.db.person_by_name(name)
-        if existing and existing.face_slot is not None and not insist:
+        if existing and self.db.face_count(existing.id) and not insist:
             raise ToolError(f"I already have {existing.name}'s face stored. If I keep failing to "
                             "recognize them, call again with insist=true to take a fresh one.")
 
-        counts, ids = await self._look_closely(face)
-        if max(counts, default=0) == 0:
-            raise ToolError("I can't see a face right now. They need to stand in front of my "
-                            "camera, facing me, fairly close.")
-        if max(counts) > 1:
+        close, trouble = await recognizer.collect(rc.enroll_samples, rc.enroll_timeout_s)
+        if trouble["crowd"] >= 2:
             raise ToolError("I can see more than one face. Only the person I should remember "
                             "can be in front of me, or I might store the wrong one.")
+        if len(close) < 3:
+            if trouble["small"] > trouble["none"]:
+                raise ToolError("I can see a face, but too small or too dark to learn. Ask them "
+                                "to come a bit closer, facing me, where there's some light.")
+            raise ToolError("I can't see a face right now. They need to stand in front of my "
+                            "camera, facing me, fairly close.")
 
-        seen_as = ids.most_common(1)[0][0] if ids else None
-        if seen_as is not None and ids[seen_as] >= 2:
-            match = self.db.person_by_slot(seen_as)
-            if match is None:
-                # Enrolled before the DB knew about it (or its row was lost).
-                return self._name_slot(name, existing, seen_as, adopted=True)
-            if existing and match.id == existing.id and not insist:
-                raise ToolError(f"that is {match.name}, and I already know their face")
-            if match.id != (existing.id if existing else None) and not insist:
-                raise ToolError(f"this face looks like {match.name} to me. If it really is "
-                                f"someone else, call again with insist=true.")
+        # Someone I know already? Their face goes to them, not to a new name.
+        others = {pid: c for pid, c in recognizer.centres.items()
+                  if existing is None or pid != existing.id}
+        mean = normalized(class_centre([s.embedding for s in close]))
+        guess = classify(mean, others, rc.unknown_sim, rc.margin)
+        if guess.person_id is not None and guess.similarity >= rc.accept_sim and not insist:
+            match = self.db.person(guess.person_id)
+            raise ToolError(f"this face looks like {match.name} to me. If it really is someone "
+                            "else, call again with insist=true.")
 
-        before = set(await face.list_enrolled())
-        if len(before) >= self.cfg.face_slots:
-            stored = [p.name for p in self.db.people() if p.face_slot in before]
-            raise ToolError(f"my face memory is full ({len(before)} faces: "
-                            f"{', '.join(stored) or 'none of them named'}). I'd have to forget "
-                            "someone first, and only if asked to.")
+        # A second set a step back: a face's fingerprint drifts with its size.
+        # Only crops that really are smaller count: the first live enrollment
+        # took both sets at ~220 px, which only added near-copies.
+        far: list = []
+        close_px = statistics.median(s.height for s in close)
+        if close_px >= 2 * rc.min_face_px and self.pet.speaker:
+            for prompt in ("Now take one step back, and keep looking at me.",
+                           "A bit further back, please. One more step."):
+                self.pet.speaker.say(prompt)
+                await asyncio.sleep(rc.enroll_step_back_s)
+                got, _ = await recognizer.collect(rc.enroll_samples, rc.enroll_timeout_s)
+                far = [s for s in got if s.height <= STEP_BACK * close_px]
+                if len(far) >= 3:
+                    break
+                log.info("enrollment: no step back yet (%s px against %.0f close up)",
+                         [round(s.height) for s in got], close_px)
+            else:
+                far = []
 
-        await face.enroll_next_face()
-        new_ids: set = set()
-        deadline = time.monotonic() + self.cfg.enroll_timeout_s
-        try:
-            while time.monotonic() < deadline and not new_ids:
-                await asyncio.sleep(self.poll_s)
-                new_ids = set(await face.list_enrolled()) - before
-        finally:
-            if not new_ids:
-                await face.cancel_enroll()
-        if not new_ids:
-            raise ToolError("I didn't manage to get a good look. Ask them to face me, "
-                            "hold still and come a little closer, then try again.")
-        slot = min(new_ids)
-        if existing and existing.face_slot is not None:
-            # A retake: the old enrollment was evidently not working.
-            try:
-                await face.delete_enrolled(existing.face_slot)
-            except Exception as exc:  # noqa: BLE001 - it's being replaced either way
-                log.warning("could not delete old slot %s: %s", existing.face_slot, exc)
-        return self._name_slot(name, existing, slot, adopted=False)
+        person = existing or self.db.add_person(name)
+        if existing:
+            self.db.delete_face_embeddings(person.id)       # a retake replaces the old face
+        for s in close + far:
+            self.db.add_face_embedding(person.id, to_blob(s.embedding), source="enroll",
+                                       face_px=s.height, sharpness=s.sharpness,
+                                       brightness=s.brightness)
+        recognizer.reload()
+        recognizer.mark_current(person.id)
 
-    async def _look_closely(self, face, samples: int = 5) -> tuple[list[int], Counter]:
-        """A second of frames: how many faces each had, and which ids they were seen as."""
-        counts: list[int] = []
-        ids: Counter = Counter()
-        for index in range(samples):
-            frame = await face.current_faces()
-            counts.append(len(frame.faces))
-            ids.update(f.id for f in frame.faces if f.recognized)
-            if index < samples - 1:
-                await asyncio.sleep(self.poll_s)
-        return counts, ids
-
-    def _name_slot(self, name: str, existing: Optional[Person], slot: int, adopted: bool) -> str:
-        if existing is not None:
-            self.db.set_face_slot(existing.id, slot)
-            person = self.db.person(existing.id)
-        else:
-            person = self.db.add_person(name, slot)
         now = time.time()
         self.db.mark_seen(person.id, now, *self._where())
         # They're in front of me and we're mid-conversation: no greeting now.
         self.db.mark_greeted(person.id, now)
         self.present[person.id] = self.db.person(person.id)
-        log.info("face slot %d is now %s%s", slot, person.name, " (adopted)" if adopted else "")
-        if adopted:
-            return (f"I already had this face stored, just without a name. It's {person.name} "
-                    "now, and I'll recognize them from here on.")
-        return f"Done: I've stored {person.name}'s face and will recognize them from now on."
+        log.info("enrolled %s: %d close, %d a step back", person.name, len(close), len(far))
+        stored = (f"Done: I've stored {person.name}'s face ({len(close) + len(far)} views) and will "
+                  "recognize them from now on.")
+        if self.pet.speaker and close_px >= 2 * rc.min_face_px and not far:
+            stored += (" Only close up, though: they didn't step back. From further away it may "
+                       "take me a moment longer, until I've seen them there.")
+        return stored
 
     async def forget(self, name: str) -> str:
         person = self.db.person_by_name(name)
         if person is None:
             raise ToolError(f"I don't know anyone called {name}")
-        if person.face_slot is not None and self.pet.face is not None:
-            try:
-                await self.pet.face.delete_enrolled(person.face_slot)
-            except Exception as exc:  # noqa: BLE001 - the slot may already be gone
-                log.warning("deleting slot %s for %s: %s", person.face_slot, person.name, exc)
-        self.db.delete_person(person.id)
+        self.db.delete_person(person.id)            # fingerprints go with them
+        if self.pet.recognizer is not None:
+            self.pet.recognizer.reload()
         self.present.pop(person.id, None)
         log.warning("forgot %s", person.name)
         return f"Forgotten: {person.name}'s face and everything I knew about them."

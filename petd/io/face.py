@@ -322,11 +322,12 @@ class RobotFace(FaceAdapter):
         pc_ip = self._pc_ip
         if pc_ip == "auto":
             pc_ip = local_ip_towards(self.cfg.host, self.cfg.port)
-        log.info("initializing face: detection on, recognition %s, audio -> %s:%d",
-                 self.cfg.enable_recognition, pc_ip, self.cfg.audio_port)
+        log.info("initializing face: detection on, audio -> %s:%d", pc_ip, self.cfg.audio_port)
         try:
             await asyncio.to_thread(self._client.set_face_detection, True)
-            await asyncio.to_thread(self._client.set_recognition, self.cfg.enable_recognition)
+            # Recognition happens on the PC (memory/recognition.py); on the head it
+            # only cost the tracking loop time.
+            await asyncio.to_thread(self._client.set_recognition, False)
             await asyncio.to_thread(self._client.set_audio_destination, pc_ip, self.cfg.audio_port)
             if self.cfg.audio_gain is not None:
                 await asyncio.to_thread(self._client.set_audio_gain, self.cfg.audio_gain)
@@ -382,6 +383,20 @@ class RobotFace(FaceAdapter):
         return await asyncio.to_thread(self._client.delete_enrolled_face, face_id)
 
 
+_TINY_JPEG: Optional[bytes] = None
+
+
+def _tiny_jpeg() -> bytes:
+    global _TINY_JPEG
+    if _TINY_JPEG is None:
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (1, 1)).save(buf, "JPEG")
+        _TINY_JPEG = buf.getvalue()
+    return _TINY_JPEG
+
+
 class FakeFace(FaceAdapter):
     """In-memory stand-in. Tests/--fake mode inject faces with show()."""
 
@@ -406,8 +421,11 @@ class FakeFace(FaceAdapter):
                          time.time(), 0, fresh=True)
 
     async def snapshot(self):
+        """A 1x1 black JPEG: something for the recognizer's (fake) engine to look at."""
         self.commands.append(("snapshot",))
-        return None
+        from face_client import Snapshot
+        return Snapshot(jpeg=_tiny_jpeg(), utc=None, age_ms=0,
+                        servo_pan_deg=self._state.pan_deg, servo_tilt_deg=self._state.tilt_deg)
 
     async def set_servo(self, *, mode=None, pan_deg=None, tilt_deg=None) -> None:
         self.commands.append(("servo", mode, pan_deg, tilt_deg))

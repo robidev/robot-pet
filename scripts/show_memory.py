@@ -12,9 +12,9 @@ map from Valetudo and marks the named places, and where the robot was when
 it last saw each person (not where they stood: petd doesn't place faces on
 the map yet); the dock is green, the robot blue.
 
-Faces aren't images here: the head stores its own face encodings, and the
-database only knows which slot is whose. Photos show up under "photos"
-once petd keeps some (the observations table).
+Faces are stored as fingerprints (128 numbers each), not images; the count
+per person is shown, by source (enroll, or grown from confident recognitions).
+Photos show up under "photos" once petd keeps some (the observations table).
 """
 
 from __future__ import annotations
@@ -45,12 +45,21 @@ def where(x, y) -> str:
 
 def overview(db: sqlite3.Connection) -> None:
     people = db.execute("SELECT * FROM people ORDER BY name").fetchall()
+    face_counts: dict = {}
+    has_faces = db.execute("SELECT 1 FROM sqlite_master WHERE name = 'face_embeddings'").fetchone()
+    if has_faces:           # created by petd on its next start after E6 (read-only here)
+        for row in db.execute("SELECT person_id, source, count(*) AS n FROM face_embeddings "
+                              "GROUP BY person_id, source"):
+            face_counts.setdefault(row["person_id"], {})[row["source"]] = row["n"]
     print(f"== People ({len(people)})")
     for p in people:
         sightings = db.execute("SELECT count(*) FROM sightings WHERE person_id = ?", (p["id"],)).fetchone()[0]
         bits = [f"familiarity: {FAMILIARITY_WORDS[min(p['familiarity'], 3)]}",
                 f"{p['interactions']} interactions", f"{sightings} sightings"]
-        face = f"face in slot {p['face_slot']} on the head" if p["face_slot"] is not None else "no face stored"
+        faces = face_counts.get(p["id"], {})
+        face = (f"face stored: {sum(faces.values())} fingerprints "
+                f"({', '.join(f'{n} {src}' for src, n in sorted(faces.items()))})" if faces
+                else "no face stored")
         print(f"- {p['name']}" + (f' ("{p["nickname"]}")' if p["nickname"] else "") + f": {face}")
         print(f"    {', '.join(bits)}")
         print(f"    last seen {when(p['last_seen_at'])}, from {where(p['last_seen_x'], p['last_seen_y'])}, "

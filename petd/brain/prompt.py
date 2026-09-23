@@ -107,7 +107,7 @@ def memory_sections(pet: "App") -> str:
         details = []
         if person.familiarity > 0:
             details.append(FAMILIARITY_WORDS[min(person.familiarity, 3)])
-        details.append("I know their face" if person.face_slot is not None
+        details.append("I know their face" if db.face_count(person.id)
                        else "face not stored")
         line += ": " + ", ".join(details)
         if person.last_seen_at is not None:
@@ -158,7 +158,7 @@ def build_system_prompt(pet: "App") -> str:
 The date is {time.strftime('%A %d %B %Y')}. Each message I receive describes what I
 sense, then what was said to me (or what just happened). I reply as myself, out loud.
 """
-    if not pet.cfg.face.enable_recognition:
+    if not pet.recognition_on:
         now += RECOGNITION_OFF
     return persona + "\n\n" + now
 
@@ -189,7 +189,7 @@ def senses_line(pet: "App") -> str:
 
 
 def _who_is_here(pet: "App") -> str:
-    if not pet.cfg.face.enable_recognition:
+    if not pet.recognition_on:
         # Every face is unknown without recognition; that says nothing about who it is.
         faces = pet.face.last_faces.faces if pet.face.last_faces else ()
         return f"{len(faces)} people" if len(faces) > 1 else "someone"

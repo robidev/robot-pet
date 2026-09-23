@@ -19,7 +19,6 @@ face:
   host: 192.168.101.40
   audio_port: 5000
   audio_gain: null         # e.g. 1.5; null leaves the device setting alone
-  enable_recognition: false    # detection only; recognition is to move to the PC
   faces_lost_debounce_s: 5.0   # recognition drops out for seconds with a face in view
 
 stt:
@@ -56,6 +55,19 @@ memory:
   stranger_every_min: 30       # mention an unrecognized face at most this often
   familiarity_thresholds: [[1, 1], [10, 3], [40, 10]]   # [interactions, days seen] per tier
   journal_in_prompt: 5         # recent conversation summaries in each new episode
+
+recognition:                   # face recognition on the PC (PLAN.md 4.7); models: scripts/fetch_face_models.py
+  enabled: true
+  min_face_px: 45              # ~2.5 m at VGA
+  unknown_sim: 0.35            # below: unknown (E6a: the other person scored at most 0.29)
+  accept_sim: 0.45             # a visit's vote needs this weighted mean to name someone
+  margin: 0.15                 # over the second-best person
+  min_agree: 2                 # agreeing attempts before a name
+  attempt_every_s: 1.5
+  max_attempts: 12
+  grow_sim: 0.55               # confident attempts become more fingerprints...
+  max_per_person: 30           # ...up to this many per person
+  enroll_samples: 5            # crops close up, then as many a step back
 
 api:
   host: 127.0.0.1

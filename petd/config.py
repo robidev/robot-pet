@@ -63,10 +63,6 @@ class FaceConfig:
     port: int = 80
     audio_port: int = 5000
     audio_gain: Optional[float] = None       # None = leave the device setting alone
-    # Off: the head only detects faces (and tracks them), which keeps each
-    # pass short. Recognition is to move to the PC (PLAN.md 4.7); until
-    # then the pet can't tell who anyone is, or learn new faces.
-    enable_recognition: bool = False
     status_poll_s: float = 0.5
     offline_after_s: float = 10.0             # see VacuumConfig
     # A face set going empty only counts as "nobody here" after this long,
@@ -239,9 +235,6 @@ class MemoryConfig:
     stranger_after_s: float = 10.0
     # familiarity tier N is reached at thresholds[N-1] = [interactions, days seen].
     familiarity_thresholds: list = field(default_factory=lambda: [[1, 1], [10, 3], [40, 10]])
-    # The device's face slots (face_id_save_number in the firmware).
-    face_slots: int = 7
-    enroll_timeout_s: float = 6.0
     journal_in_prompt: int = 5
     facts_in_prompt: int = 15
 
@@ -255,6 +248,54 @@ class LogConfig:
     file_level: str = "DEBUG"                 # the console keeps --log-level
     max_file_mb: float = 20.0                 # petd.log rotates at this size...
     keep_files: int = 3                       # ...keeping this many older ones
+
+
+@dataclass
+class RecognitionConfig:
+    """
+    Face recognition on the PC (PLAN.md 4.7, E6; petd/vision/). The head only
+    detects. Thresholds are SFace cosine similarities, set from E6a
+    (runtime/e6a/: Robin and Claudia at 0.6-2.5 m, lamp light): the other
+    person never scored above 0.29 against someone's centre, the person
+    themselves never below 0.43.
+    """
+    enabled: bool = True                      # also needs the models: scripts/fetch_face_models.py
+    models_dir: str = "models/face"
+    detector_model: str = "face_detection_yunet_2023mar.onnx"
+    recognizer_model: str = "face_recognition_sface_2021dec.onnx"
+    # Gates: skip rather than guess. 45 px is ~2.5 m at VGA, where E6a still
+    # told two people apart. No blur gate: sharpness varies too much with
+    # person and distance to have one cut-off (E6a).
+    min_face_px: float = 45.0
+    min_detection_score: float = 0.8         # YuNet scored real faces 0.86-0.95
+    min_brightness: float = 40.0             # mean of the aligned face, 0-255
+    # One attempt: below unknown_sim, or within margin of the next person: unknown.
+    unknown_sim: float = 0.35
+    margin: float = 0.15
+    # The vote over a visit's attempts (Frigate-style): a name needs min_agree
+    # agreeing attempts, no tie, and a weighted mean of at least accept_sim.
+    accept_sim: float = 0.45
+    min_agree: int = 2
+    # Attempts: one snapshot every attempt_every_s while someone in view is
+    # unknown, at most max_attempts a visit (plus confirm_attempts once named).
+    attempt_every_s: float = 1.5
+    max_attempts: int = 12
+    confirm_attempts: int = 6
+    # Growth: a confident attempt (at least grow_sim to the person it was voted
+    # as) is kept as another fingerprint if it's a new look: less than
+    # duplicate_sim to every one kept. At most grow_per_visit a visit; once a
+    # person has max_per_person, a newer look replaces their most redundant
+    # grown one. The first live visits kept every attempt: after its first look,
+    # a visit's looks were 0.89-0.95 alike to one kept (same place, same light),
+    # and 30 were full within three visits.
+    grow_sim: float = 0.55
+    duplicate_sim: float = 0.90
+    grow_per_visit: int = 2
+    max_per_person: int = 30
+    # Enrollment: this many crops close up, then as many a step back.
+    enroll_samples: int = 5
+    enroll_timeout_s: float = 10.0
+    enroll_step_back_s: float = 3.0          # after "take one step back", before the second set
 
 
 @dataclass
@@ -278,6 +319,7 @@ class Config:
     motion: MotionConfig = field(default_factory=MotionConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     log: LogConfig = field(default_factory=LogConfig)
 

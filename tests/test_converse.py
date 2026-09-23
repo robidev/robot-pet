@@ -135,8 +135,9 @@ async def test_the_pet_speaking_opens_the_window(pet):
 
 
 async def test_a_known_face_in_view_opens_the_gate(pet):
-    pet.db.add_person("Robin", face_slot=0)
-    pet.face.show(Face(0, 0.9, 0.4, 0.3, 0.6, 0.7))
+    robin = pet.db.add_person("Robin")
+    pet.face.show(Face(-1, 0.9, 0.4, 0.3, 0.6, 0.7))
+    pet.people.recognized(robin.id, time.time(), 0.8)
     await asyncio.sleep(0.05)
     await hear(pet, "what do you think about that")
     assert pet.brain.told[-1] == ("what do you think about that", "heard", "Robin")
@@ -208,7 +209,8 @@ async def test_quoting_the_pet_later_is_not_an_echo(pet):
 
 
 async def test_any_face_opens_the_gate_without_recognition(pet):
-    pet.cfg.face.enable_recognition = False
+    await pet.recognizer.close()
+    pet.recognizer = None
     pet.face.show(Face(-1, 0.9, 0.4, 0.3, 0.6, 0.6))
     await asyncio.sleep(0.05)
     await hear(pet, "can you hear me?")

@@ -1,6 +1,7 @@
 import asyncio
 import time
 
+import numpy as np
 import pytest
 
 from petd.app import App
@@ -11,10 +12,34 @@ from petd.config import Config
 from petd.events import PersonArrived, PersonLeft
 from petd.io.face import Face
 from petd.memory.db import MemoryDB
+from petd.memory.recognition import sample
+from petd.vision.matching import normalized, to_blob
+
+RNG = np.random.default_rng(7)
 
 
 def face(id=-1, cx=0.5):
     return Face(id, 0.9, cx - 0.1, 0.3, cx + 0.1, 0.6)
+
+
+def someone() -> np.ndarray:
+    """A made-up person: a random direction in fingerprint space (unrelated ones score ~0)."""
+    return normalized(RNG.normal(size=128))
+
+
+def view(person: np.ndarray, noise: float = 0.5) -> np.ndarray:
+    """One look at them: ~0.9 similar to the person, ~0.8 to another look."""
+    wobble = RNG.normal(size=128)
+    return normalized(person + wobble * noise / np.linalg.norm(wobble))
+
+
+def store_face(pet, name: str, person: np.ndarray, n: int = 5):
+    """Someone already enrolled, with n fingerprints."""
+    record = pet.db.add_person(name)
+    for _ in range(n):
+        pet.db.add_face_embedding(record.id, to_blob(view(person)), source="enroll")
+    pet.recognizer.reload()
+    return record
 
 
 @pytest.fixture
@@ -25,14 +50,14 @@ async def pet():
     cfg.stt.enabled = False
     cfg.speaker.enabled = False
     cfg.face.faces_lost_debounce_s = 0.1
-    cfg.memory.enroll_timeout_s = 0.5
-    # These test recognition itself, which is off by default for now.
-    cfg.face.enable_recognition = True
+    cfg.recognition.attempt_every_s = 0.01
+    cfg.recognition.enroll_timeout_s = 0.3
+    cfg.recognition.enroll_step_back_s = 0.0
     app = App(cfg, fake=True)
     await app.start()
+    app.recognizer.collect_every_s = 0.0
     told: list[str] = []
     app.people.set_notify(told.append)
-    app.people.poll_s = 0
     app.told = told
     try:
         yield app
@@ -98,126 +123,210 @@ def test_migrations_are_idempotent(tmp_path):
 
 # --- enrollment and forgetting -------------------------------------------------
 
-async def test_enroll_stores_the_new_slot_and_skips_the_greeting(pet):
-    pet.face.show(face())
+async def test_enroll_stores_fingerprints_and_skips_the_greeting(pet):
+    noah = someone()
+    pet.recognizer.engine.frames = [[sample(view(noah))] for _ in range(10)]
     result = await pet.people.enroll("Noah")
-    assert "Noah" in result
-    noah = pet.db.person_by_name("Noah")
-    assert noah.face_slot == 0 and pet.face.enrolled == [0]
+    assert "Noah" in result and "5 views" in result
+    person = pet.db.person_by_name("Noah")
+    assert pet.db.face_count(person.id) == 5 and pet.recognizer.knows_face(person.id)
     assert pet.people.who_is_here() == (["Noah"], 0)
 
-    # The device now recognizes them: no greeting, they're mid-conversation.
-    pet.face.show(face(id=0))
-    await settle()
+    # Still in view afterwards: known, and no greeting mid-conversation.
+    pet.recognizer.engine.default = [sample(view(noah))]
+    pet.face.show(face())
+    await asyncio.sleep(0.1)
     assert pet.told == []
 
 
-async def test_enroll_refuses_nobody_crowds_and_lookalikes(pet):
+async def test_enroll_asks_for_a_step_back_and_takes_a_second_set(pet):
+    said = []
+
+    class Voice:
+        def say(self, text):
+            said.append(text)
+    pet.speaker = Voice()
+    noah = someone()
+    pet.recognizer.engine.frames = ([[sample(view(noah), height=190)] for _ in range(5)]
+                                    + [[sample(view(noah), height=75)] for _ in range(5)])
+    result = await pet.people.enroll("Noah")
+    assert "10 views" in result and "step back" in said[0] and len(said) == 1
+
+
+async def test_enroll_asks_again_and_keeps_only_real_step_backs(pet):
+    said = []
+
+    class Voice:
+        def say(self, text):
+            said.append(text)
+    pet.speaker = Voice()
+    noah = someone()
+    close = [[sample(view(noah), height=190)] for _ in range(5)]
+    # First ask: still in place. Second: mid-step (180 px), then really back (90 px).
+    pet.recognizer.engine.frames = (close + [[sample(view(noah), height=188)] for _ in range(5)]
+                                    + [[sample(view(noah), height=h)] for h in (180, 90, 88, 86, 85)])
+    result = await pet.people.enroll("Noah")
+    assert len(said) == 2 and "further back" in said[1]
+    assert "9 views" in result                        # 5 close + the 4 really back
+    assert "didn't step back" not in result
+
+
+async def test_enroll_without_a_step_back_keeps_the_close_set_only(pet):
+    said = []
+
+    class Voice:
+        def say(self, text):
+            said.append(text)
+    pet.speaker = Voice()
+    pet.recognizer.engine.default = [sample(view(someone()), height=190)]
+    result = await pet.people.enroll("Noah")
+    assert len(said) == 2 and "5 views" in result and "didn't step back" in result
+    assert pet.db.face_count(pet.db.person_by_name("Noah").id) == 5
+
+
+async def test_enroll_refuses_nobody_crowds_small_faces_and_lookalikes(pet):
+    engine = pet.recognizer.engine
     with pytest.raises(Exception, match="can't see a face"):
         await pet.people.enroll("Noah")
 
-    pet.face.show(face(cx=0.3), face(cx=0.7))
+    engine.default = [sample(view(someone()), centre=(0.3, 0.4)),
+                      sample(view(someone()), centre=(0.7, 0.4))]
     with pytest.raises(Exception, match="more than one face"):
         await pet.people.enroll("Noah")
 
-    pet.face.enrolled = [4]
-    pet.db.add_person("Robin", face_slot=4)
-    pet.face.show(face(id=4))
+    engine.default = [sample(view(someone()), height=30)]
+    with pytest.raises(Exception, match="too small"):
+        await pet.people.enroll("Noah")
+
+    robin = someone()
+    store_face(pet, "Robin", robin)
+    engine.default = [sample(view(robin))]
     with pytest.raises(Exception, match="looks like Robin"):
         await pet.people.enroll("Noah")
     assert pet.db.person_by_name("Noah") is None
 
     # ...unless the model insists, after the person does.
     await pet.people.enroll("Noah", insist=True)
-    assert pet.db.person_by_name("Noah").face_slot == 5
+    assert pet.db.face_count(pet.db.person_by_name("Noah").id) == 5
 
 
-async def test_enroll_adopts_a_face_stored_without_a_name(pet):
-    pet.face.enrolled = [1]
-    pet.face.show(face(id=1))
-    result = await pet.people.enroll("Robin")
-    assert "already had this face" in result
-    assert pet.db.person_by_name("Robin").face_slot == 1
-    assert ("enroll",) not in pet.face.commands
+async def test_a_second_enrollment_needs_insist_and_replaces_the_face(pet):
+    noah = someone()
+    person = store_face(pet, "Noah", noah, n=3)
+    pet.recognizer.engine.default = [sample(view(noah))]
+    with pytest.raises(Exception, match="already have Noah's face"):
+        await pet.people.enroll("noah")
+    await pet.people.enroll("Noah", insist=True)
+    assert pet.db.face_count(person.id) == 5
 
 
-async def test_enroll_when_full_and_when_nothing_happens(pet):
-    pet.face.enrolled = list(range(7))
-    pet.face.show(face())
-    with pytest.raises(Exception, match="full"):
-        await pet.people.enroll("Noah")
-
-    pet.face.enrolled = []
-    real_enroll = pet.face.enroll_next_face
-
-    async def never_enrolls():
-        pet.face.commands.append(("enroll",))
-    pet.face.enroll_next_face = never_enrolls
-    with pytest.raises(Exception, match="didn't manage"):
-        await pet.people.enroll("Noah")
-    assert pet.face.commands[-1] == ("enroll_cancel",)
-    pet.face.enroll_next_face = real_enroll
-
-
-async def test_forget_deletes_slot_and_row(pet):
-    pet.face.show(face())
-    await pet.people.enroll("Noah")
+async def test_forget_deletes_the_fingerprints_with_the_person(pet):
+    person = store_face(pet, "Noah", someone())
     result = await pet.people.forget("noah")
     assert "Noah" in result
-    assert pet.face.enrolled == [] and pet.db.person_by_name("Noah") is None
+    assert pet.db.face_embeddings() == {} and pet.db.person_by_name("Noah") is None
+    assert not pet.recognizer.knows_face(person.id)
     with pytest.raises(Exception, match="don't know anyone"):
         await pet.people.forget("Noah")
 
 
-async def test_reconcile_unlinks_vanished_slots(pet):
-    pet.db.add_person("Robin", face_slot=2)
-    pet.face.enrolled = [5]
-    assert await pet.people.reconcile() == [5]
-    assert pet.db.person_by_name("Robin").face_slot is None
+# --- recognition, sticky identity and greetings ------------------------------------
 
-
-# --- sticky identity and greetings ---------------------------------------------
-
-async def test_identity_sticks_through_flicker_and_greets_once(pet):
-    robin = pet.db.add_person("Robin", face_slot=1)
+async def test_a_known_face_is_named_greeted_once_and_sticks(pet):
+    robin_face = someone()
+    robin = store_face(pet, "Robin", robin_face)
     arrived = pet.bus.subscribe(PersonArrived)
     left = pet.bus.subscribe(PersonLeft)
+    pet.recognizer.engine.default = [sample(view(robin_face))]
 
-    pet.face.show(face(id=1))
-    assert (await asyncio.wait_for(arrived.get(), 1)).name == "Robin"
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Robin"
     await settle()
     assert len(pet.told) == 1 and pet.told[0].startswith("Robin just came into view")
 
-    pet.face.show(face(id=-1))              # recognition flickers...
-    await settle()
-    assert pet.people.who_is_here() == (["Robin"], 0)
-    assert pet.people.sole_person().id == robin.id
-
-    pet.face.show(face(id=-1), face(id=-1, cx=0.8))
+    pet.face.show(face(), face(cx=0.8))     # someone else joins
     await settle()
     assert pet.people.who_is_here() == (["Robin"], 1)
     assert pet.people.sole_person() is None
 
-    pet.face.show()                         # ...and only nobody-in-view ends it
+    pet.face.show()                         # only nobody-in-view ends it
     assert (await asyncio.wait_for(left.get(), 1)).name == "Robin"
     assert pet.people.who_is_here() == ([], 0)
 
-    pet.face.show(face(id=1))               # back within greet_every_h: no second greeting
-    await asyncio.wait_for(arrived.get(), 1)
+    pet.face.show(face())                   # back within greet_every_h: no second greeting
+    assert (await asyncio.wait_for(arrived.get(), 2)).person_id == robin.id
     await settle()
     assert len(pet.told) == 1
 
 
-async def test_a_lingering_stranger_is_mentioned(pet):
-    pet.cfg.memory.stranger_after_s = 0.05
+async def test_a_stranger_is_mentioned_after_a_few_clear_looks(pet):
+    pet.cfg.memory.stranger_after_s = 0
+    store_face(pet, "Robin", someone())
+    pet.recognizer.engine.default = [sample(view(someone()))]
     pet.face.show(face())
-    await asyncio.sleep(0.15)
+    await asyncio.sleep(0.3)
     assert len(pet.told) == 1 and "don't recognize" in pet.told[0]
+    assert pet.people.who_is_here() == ([], 1)
+
+
+async def test_between_two_lookalikes_nobody_is_named(pet):
+    robin_face = someone()
+    twin = normalized(robin_face + 0.25 * someone())       # ~0.97 alike
+    store_face(pet, "Robin", robin_face)
+    store_face(pet, "Rob", twin)
+    pet.recognizer.engine.default = [sample(normalized(robin_face + twin))]
+    pet.face.show(face())
+    await asyncio.sleep(0.3)
+    assert pet.people.who_is_here() == ([], 1)          # the margin rule: not sure, so nobody
+
+
+async def test_confident_looks_grow_the_fingerprints_but_not_duplicates(pet):
+    robin_face = someone()
+    robin = store_face(pet, "Robin", robin_face)
+    arrived = pet.bus.subscribe(PersonArrived)
+    pet.recognizer.engine.frames = [[sample(view(robin_face))] for _ in range(8)]
+    pet.face.show(face())
+    await asyncio.wait_for(arrived.get(), 2)
+    await asyncio.sleep(0.3)
+    grown = pet.db.face_count(robin.id) - 5
+    assert grown == pet.cfg.recognition.grow_per_visit        # 8 new looks, 2 kept a visit
+
+    # The same look over and over is one more fingerprint, not many.
+    pet.face.show()
+    await asyncio.sleep(0.3)
+    same = sample(view(robin_face))
+    pet.recognizer.engine.frames = []           # left over from the first visit
+    pet.recognizer.engine.default = [same]
+    before = pet.db.face_count(robin.id)
+    pet.face.show(face())
+    await asyncio.wait_for(arrived.get(), 2)
+    await asyncio.sleep(0.3)
+    assert pet.db.face_count(robin.id) - before <= 1
+
+
+async def test_a_full_set_trades_its_most_redundant_grown_look_for_a_new_one(pet):
+    pet.cfg.recognition.max_per_person = 6
+    robin_face = someone()
+    robin = store_face(pet, "Robin", robin_face)
+    rows = pet.db.face_rows(robin.id)
+    copy = normalized(np.frombuffer(rows[0][2], np.float32) + 0.05 * someone())   # ~0.999 alike
+    pet.db.add_face_embedding(robin.id, to_blob(copy), source="grown")
+    arrived = pet.bus.subscribe(PersonArrived)
+    pet.recognizer.engine.frames = [[sample(view(robin_face))] for _ in range(4)]
+    pet.face.show(face())
+    await asyncio.wait_for(arrived.get(), 2)
+    await asyncio.sleep(0.3)
+    rows = pet.db.face_rows(robin.id)
+    kept = [np.frombuffer(blob, np.float32) for _, _, blob in rows]
+    assert len(rows) == 6                                          # full, but fresher:
+    assert not any(np.allclose(v, copy.astype(np.float32)) for v in kept)   # the near-copy is gone
+    assert [source for _, source, _ in rows].count("enroll") == 5  # enrolled ones stay
 
 
 async def test_without_recognition_nobody_is_a_stranger(pet):
-    pet.cfg.face.enable_recognition = False
-    pet.cfg.memory.stranger_after_s = 0.05
+    await pet.recognizer.close()
+    pet.recognizer = None
+    pet.cfg.memory.stranger_after_s = 0
     pet.face.show(face(), face(cx=0.8))
     await asyncio.sleep(0.15)
     assert pet.told == []
@@ -226,19 +335,16 @@ async def test_without_recognition_nobody_is_a_stranger(pet):
     assert "never claim to recognise anyone" in build_system_prompt(pet)
     with pytest.raises(Exception, match="switched off"):
         await pet.people.enroll("Noah")
-    assert pet.face.enrolled == []
 
 
 async def test_greetings_before_the_brain_is_up_are_kept():
     cfg = Config()
     cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
-    cfg.face.enable_recognition = True
     app = App(cfg, fake=True)
     await app.start()
     try:
-        app.db.add_person("Robin", face_slot=0)
-        app.face.show(face(id=0))
-        await settle()
+        robin = app.db.add_person("Robin")
+        app.people.recognized(robin.id, time.time(), 0.8)
         told: list[str] = []
         app.people.set_notify(told.append)
         assert told and told[0].startswith("Robin")
@@ -249,7 +355,7 @@ async def test_greetings_before_the_brain_is_up_are_kept():
 # --- the prompt ----------------------------------------------------------------
 
 async def test_prompt_lists_people_journal_and_facts(pet):
-    robin = pet.db.add_person("Robin", face_slot=1)
+    robin = store_face(pet, "Robin", someone())
     pet.db.add_fact("hates Mondays", about=robin.id)
     pet.db.add_fact("the dock is behind the couch")
     pet.db.end_conversation(pet.db.start_conversation(), "Robin asked about the weather.")
@@ -259,7 +365,8 @@ async def test_prompt_lists_people_journal_and_facts(pet):
     assert "Robin asked about the weather." in prompt
     assert "the dock is behind the couch" in prompt
 
-    pet.face.show(face(id=1), face(id=-1, cx=0.8))
+    pet.people.recognized(robin.id, time.time(), 0.8)
+    pet.face.show(face(), face(cx=0.8))
     await settle()
     turn = build_turn(pet, "hello", speaker="Robin")
     assert "sees Robin and someone I don't recognize" in turn

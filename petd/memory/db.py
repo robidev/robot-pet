@@ -83,6 +83,22 @@ MIGRATIONS = [
         value TEXT
     );
     """,
+    # Face recognition moved to the PC (PLAN.md 4.7, E6): fingerprints here,
+    # as many per person as useful. people.face_slot (the head's own
+    # recognizer) is no longer used.
+    """
+    CREATE TABLE face_embeddings (
+        id INTEGER PRIMARY KEY,
+        person_id INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+        t_utc REAL NOT NULL,
+        vector BLOB NOT NULL,                -- SFace: 128 float32, normalized
+        face_px REAL,                        -- face height in the snapshot
+        sharpness REAL,
+        brightness REAL,
+        source TEXT NOT NULL                 -- 'enroll' | 'grown'
+    );
+    CREATE INDEX face_embeddings_person ON face_embeddings(person_id);
+    """,
 ]
 
 MAX_NOTES_CHARS = 1000
@@ -178,6 +194,40 @@ class MemoryDB:
 
     def delete_person(self, person_id: int) -> None:
         self._db.execute("DELETE FROM people WHERE id = ?", (person_id,))
+
+    # --- face fingerprints (petd/vision) ------------------------------------------
+
+    def add_face_embedding(self, person_id: int, vector: bytes, *, source: str,
+                           face_px: Optional[float] = None, sharpness: Optional[float] = None,
+                           brightness: Optional[float] = None, t: Optional[float] = None) -> None:
+        self._db.execute(
+            "INSERT INTO face_embeddings (person_id, t_utc, vector, face_px, sharpness, "
+            "brightness, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (person_id, time.time() if t is None else t, vector, face_px, sharpness,
+             brightness, source))
+
+    def face_embeddings(self) -> dict[int, list[bytes]]:
+        """person id -> their fingerprints, raw."""
+        out: dict[int, list[bytes]] = {}
+        for row in self._db.execute("SELECT person_id, vector FROM face_embeddings ORDER BY id"):
+            out.setdefault(row["person_id"], []).append(row["vector"])
+        return out
+
+    def face_rows(self, person_id: int) -> list[tuple[int, str, bytes]]:
+        """One person's fingerprints: (id, source, vector)."""
+        return [(row["id"], row["source"], row["vector"]) for row in self._db.execute(
+            "SELECT id, source, vector FROM face_embeddings WHERE person_id = ? ORDER BY id",
+            (person_id,))]
+
+    def delete_face_embedding(self, embedding_id: int) -> None:
+        self._db.execute("DELETE FROM face_embeddings WHERE id = ?", (embedding_id,))
+
+    def face_count(self, person_id: int) -> int:
+        return self._db.execute("SELECT count(*) FROM face_embeddings WHERE person_id = ?",
+                                (person_id,)).fetchone()[0]
+
+    def delete_face_embeddings(self, person_id: int) -> None:
+        self._db.execute("DELETE FROM face_embeddings WHERE person_id = ?", (person_id,))
 
     def add_note(self, person_id: int, note: str) -> None:
         """Notes are a running paragraph; the oldest text falls off past the cap."""

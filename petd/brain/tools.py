@@ -145,8 +145,8 @@ def build_registry(pet: "App") -> ToolRegistry:
                 for face in frame.faces
             ]
             out["someone_present"] = pet.face.presence.present
-            out["face_recognition"] = pet.cfg.face.enable_recognition
-            if pet.people is not None and pet.cfg.face.enable_recognition:
+            out["face_recognition"] = pet.recognition_on
+            if pet.people is not None and pet.recognition_on:
                 names, strangers = pet.people.who_is_here()
                 # Recognition flickers frame to frame; this is who was
                 # recognized at any point since they came into view.
@@ -369,7 +369,9 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         "remember_face",
         "Memorize the face of the person in front of me, under their name, so I recognize them "
         "from now on. Only when they ask me to remember them or agree to it. Exactly one person "
-        "must be in view, facing me. Takes a few seconds; the result says whether it worked.",
+        "must be in view, facing me, fairly close. Takes about ten seconds: halfway, I ask them "
+        "to take a step back (that's said for me). Tell them to hold still before calling it; "
+        "the result says whether it worked.",
         {"type": "object",
          "properties": {"name": name_arg,
                         "insist": {"type": "boolean", "description":
@@ -395,7 +397,7 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
     async def who_do_i_know(args: dict) -> list:
         now = time.time()
         return [{"name": p.name, "nickname": p.nickname,
-                 "face_stored": p.face_slot is not None,
+                 "face_stored": db.face_count(p.id) > 0,
                  "familiarity": FAMILIARITY_WORDS[min(p.familiarity, 3)],
                  "last_seen": None if p.last_seen_at is None else ago(now - p.last_seen_at) + " ago"}
                 for p in db.people()]
@@ -409,7 +411,7 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         person = require_person(args.get("name", ""))
         now = time.time()
         return {"name": person.name, "nickname": person.nickname, "notes": person.notes or None,
-                "face_stored": person.face_slot is not None,
+                "face_stored": db.face_count(person.id) > 0,
                 "familiarity": FAMILIARITY_WORDS[min(person.familiarity, 3)],
                 "times_met": person.interactions,
                 "last_seen": (None if person.last_seen_at is None

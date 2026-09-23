@@ -235,7 +235,7 @@ class Listener:
     def _gaze(self) -> bool:
         if not self.cfg.gaze_opens or self.pet.face is None or not self.pet.face.presence.present:
             return False
-        if not self.pet.cfg.face.enable_recognition:
+        if not self.pet.recognition_on:
             return True     # nobody can be known without it: a face in view will do
         return self.pet.people is not None and bool(self.pet.people.present)
 

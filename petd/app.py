@@ -35,6 +35,7 @@ class App:
         self.stt = None
         self.db = None
         self.people = None
+        self.recognizer = None
         self.motion = None
         self.dock = None
         self.motion_task: Optional[asyncio.Task] = None
@@ -86,6 +87,9 @@ class App:
             self.db = MemoryDB(":memory:" if fake else cfg.path(cfg.memory.db_path))
             self.people = People(self, self.db)
             await self.people.start()
+            self.recognizer = self._build_recognizer()
+            if self.recognizer is not None:
+                await self.recognizer.start()
 
         if self.vacuum is not None:
             from .spatial.dock import Dock
@@ -122,7 +126,7 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.people, self.dock, self.motion, self.stt,
+        for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.stt,
                      self.speaker, self.face, self.vacuum):
             if part is not None:
                 try:
@@ -183,6 +187,27 @@ class App:
         """Back onto the charger, whatever else was under way (spatial/dock.py)."""
         await self._cancel_motion()
         return self.start_motion(self.dock.go_home(), "go home")
+
+    def _build_recognizer(self):
+        """Face recognition on the PC, if it's on and its models are there (PLAN.md 4.7)."""
+        rc = self.cfg.recognition
+        if not rc.enabled or self.face is None:
+            return None
+        try:
+            from .memory.recognition import FakeEngine, Recognizer
+            if self.fake:
+                engine = FakeEngine()
+            else:
+                from .vision.faces import FaceEngine
+                engine = FaceEngine(self.cfg.path(rc.models_dir), rc.detector_model, rc.recognizer_model)
+        except Exception as exc:  # noqa: BLE001 - missing models or packages: run without it
+            log.warning("face recognition off: %s", exc)
+            return None
+        return Recognizer(self, engine)
+
+    @property
+    def recognition_on(self) -> bool:
+        return self.recognizer is not None
 
     @property
     def moving(self) -> bool:
