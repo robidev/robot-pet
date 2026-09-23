@@ -62,6 +62,7 @@ def test_hallucination_filters():
     assert drop_reason("[BLANK_AUDIO]", 0, cfg) == "non-speech tag"
     assert drop_reason("(wind blowing)", 0, cfg) == "non-speech tag"
     assert drop_reason("Thank you.", 0, cfg) == "ignore list"
+    assert drop_reason("Thank you for watching.", 0, cfg) == "ignore list"   # motor noise, 2026-09-23
     assert drop_reason("a", 0, cfg) == "too short"
     assert drop_reason("go to the kitchen", 0.9, cfg).startswith("no_speech_prob")
     assert drop_reason("go to the kitchen", 0.1, cfg) is None

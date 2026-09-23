@@ -213,3 +213,15 @@ async def test_any_face_opens_the_gate_without_recognition(pet):
     await asyncio.sleep(0.05)
     await hear(pet, "can you hear me?")
     assert pet.brain.told[-1][0] == "can you hear me?"
+
+
+async def test_the_lidar_left_on_between_moves_is_not_driving(pet):
+    # 2026-09-23 13:28: manual control stays armed for 20 s after a move, and
+    # Valetudo calls that manual_control; the robot stands still meanwhile.
+    pet.vacuum._update(status="manual_control")
+    await hear(pet, "drive one more meter")
+    assert pet.brain.told == []                  # not addressed: nothing open, nobody in view
+    assert (await asyncio.wait_for(pet.dropped.get(), 1)).reason == "not addressed"
+    pet.vacuum._update(status="returning")       # Valetudo driving by itself
+    await hear(pet, "thank god")
+    assert (await asyncio.wait_for(pet.dropped.get(), 1)).reason == "driving"

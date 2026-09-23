@@ -207,9 +207,7 @@ class Listener:
             await self.reflex(reflex, event.text)
             return
 
-        vacuum = self.pet.vacuum
-        if (self.cfg.ignore_while_driving and vacuum is not None and vacuum.state.moving
-                and not addressed):
+        if self.cfg.ignore_while_driving and self._driving() and not addressed:
             return self._ignore(event.text, "driving")
         if not (addressed or self.window_open(event.t) or self._gaze()):
             return self._ignore(event.text, "not addressed")
@@ -222,6 +220,17 @@ class Listener:
         if brain is not None:
             person = self.pet.people.sole_person() if self.pet.people else None
             brain.tell(event.text, kind="heard", speaker=person.name if person else None)
+
+    def _driving(self) -> bool:
+        """
+        Wheels turning: a turn or move under way, or Valetudo driving by
+        itself. Not manual control left armed between motions (the lidar keeps
+        spinning for idle_disarm_s): Valetudo reports that as manual_control
+        while the robot stands still, and 20 s after every move went unheard.
+        """
+        vacuum = self.pet.vacuum
+        return self.pet.moving or (vacuum is not None
+                                   and vacuum.state.status in ("moving", "returning", "cleaning"))
 
     def _gaze(self) -> bool:
         if not self.cfg.gaze_opens or self.pet.face is None or not self.pet.face.presence.present:

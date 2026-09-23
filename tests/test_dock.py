@@ -104,3 +104,12 @@ async def test_a_moved_dock_is_docked_from_where_the_robot_is(pet):
     pet.vacuum._update(status="idle", pose=MapPose(2900, 2900), charger=MapPose(3000, 3000))
     outcome, ok = await (await pet.go_home())
     assert ok and [c[0] for c in pet.vacuum.commands] == ["dock"]
+
+
+async def test_the_charger_on_top_of_the_robot_is_not_learned(pet):
+    # 2026-09-23 13:30: on docking, Valetudo still had the charger at the
+    # robot's centre for 2 s, which gave an approach point behind the dock.
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2564, 2551), MapPose(2548, 2540)
+    pet.vacuum._update(status="docked", pose=MapPose(2562, 2552), charger=MapPose(2564, 2551))
+    await asyncio.sleep(0.05)
+    assert pet.dock.charger == MapPose(2548, 2540)          # the good pair, kept

@@ -99,7 +99,7 @@ class SttConfig:
     min_chars: int = 2
     # Compared after lowercasing and stripping punctuation.
     ignore_phrases: list = field(default_factory=lambda: [
-        "you", "thank you", "thanks for watching", "bye", "okay",
+        "you", "thank you", "thanks for watching", "thank you for watching", "bye", "okay",
     ])
 
 

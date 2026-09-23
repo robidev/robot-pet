@@ -39,7 +39,11 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DOCK_KEY = "dock.docked_and_charger"      # "x,y,charger_x,charger_y"
-# A robot docked further than this from the charger is a map glitch.
+# The robot's centre sits ~20 cm out from the charger when docked. Closer is
+# Valetudo mid-update: on docking it reports the charger at the robot's
+# centre for a moment (2 cm away on 2026-09-23 13:30), which gave a point
+# behind the dock. Further is a map glitch.
+MIN_DOCKED_OFFSET_CM = 10.0
 MAX_DOCKED_OFFSET_CM = 60.0
 # A live charger further than this from both learned points: the dock moved.
 DOCK_MOVED_CM = 40.0
@@ -55,7 +59,7 @@ def approach_point(charger: Optional[MapPose], docked: Optional[MapPose],
     if charger is None or docked is None:
         return None
     offset = distance(charger, docked)
-    if offset < 1.0 or offset > MAX_DOCKED_OFFSET_CM:
+    if offset < MIN_DOCKED_OFFSET_CM or offset > MAX_DOCKED_OFFSET_CM:
         return None
     return MapPose(charger.x + (docked.x - charger.x) / offset * distance_cm,
                    charger.y + (docked.y - charger.y) / offset * distance_cm)
