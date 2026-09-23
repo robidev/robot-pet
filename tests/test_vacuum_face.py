@@ -65,3 +65,27 @@ async def test_presence_is_debounced():
     face.show()
     assert not (await asyncio.wait_for(sub.get(), 1)).present
     await face.close()
+
+
+async def test_a_missed_poll_or_two_is_not_offline():
+    # 2026-09-23 13:08: one missed poll in a WiFi stall told the brain its
+    # body was offline, and it refused a command. It came back 3 s later.
+    import asyncio
+
+    from petd.bus import EventBus
+    from petd.config import VacuumConfig
+    from petd.io.vacuum import ValetudoVacuum
+    vacuum = ValetudoVacuum(VacuumConfig(offline_after_s=0.2), EventBus())
+    answer = (None, [{"__class": "StatusStateAttribute", "value": "idle", "flag": "none"}])
+
+    def stalled():
+        raise TimeoutError("read timed out")
+    vacuum._fetch = lambda: answer
+    assert (await vacuum.refresh()).reachable
+    vacuum._fetch = stalled
+    state = await vacuum.refresh()
+    assert state.reachable and state.status == "idle"      # the last state, kept
+    await asyncio.sleep(0.25)
+    assert not (await vacuum.refresh()).reachable          # silent too long: offline
+    vacuum._fetch = lambda: answer
+    assert (await vacuum.refresh()).reachable

@@ -246,6 +246,7 @@ class RobotFace(FaceAdapter):
         # Survives unreachable polls, which is what a reboot looks like from here.
         self._last_uptime: Optional[int] = None
         self._last_wifi_drops: Optional[int] = None
+        self._last_answer = float("-inf")       # time.monotonic() of the last good poll
 
     async def start(self) -> None:
         await super().start()
@@ -282,11 +283,17 @@ class RobotFace(FaceAdapter):
             try:
                 status = await asyncio.to_thread(self._status_client.get_status)
             except Exception as exc:  # noqa: BLE001 - any failure means unreachable
-                if self._state.reachable:
-                    log.warning("face unreachable: %s", exc)
-                    self.bus.publish(FaceDeviceConnection(connected=False, detail=str(exc)))
-                self._state = FaceDeviceState(reachable=False, updated=time.time())
+                silent_s = time.monotonic() - self._last_answer
+                if silent_s < self.cfg.offline_after_s:
+                    # A WiFi stall: keep the last state rather than tell everyone it's gone.
+                    log.debug("face didn't answer (%s); %.0f s since it last did", exc, silent_s)
+                else:
+                    if self._state.reachable:
+                        log.warning("face unreachable for %.0f s: %s", silent_s, exc)
+                        self.bus.publish(FaceDeviceConnection(connected=False, detail=str(exc)))
+                    self._state = FaceDeviceState(reachable=False, updated=time.time())
             else:
+                self._last_answer = time.monotonic()
                 was_reachable = self._state.reachable
                 self._state = parse_status(status)
                 if reboot_detected(self._last_uptime, self._state.uptime_s):

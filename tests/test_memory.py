@@ -293,6 +293,7 @@ class ScriptedBackend:
 
 async def test_idle_episode_writes_a_journal_entry(pet):
     pet.cfg.brain.episode_idle_timeout_s = 0.2
+    pet.cfg.brain.prestart = False          # counts backend starts per episode
     backend = ScriptedBackend()
     brain = Brain(pet, backend)
     await brain.start()
@@ -309,5 +310,23 @@ async def test_idle_episode_writes_a_journal_entry(pet):
         brain.tell("Robin just came into view.", kind="event")
         await asyncio.sleep(0.6)
         assert backend.episodes == 2 and len(pet.db.journal()) == 1
+    finally:
+        await brain.close()
+
+
+async def test_the_backend_is_started_before_anyone_speaks(pet):
+    pet.cfg.brain.episode_idle_timeout_s = 0.2
+    backend = ScriptedBackend()
+    brain = Brain(pet, backend)
+    await brain.start()
+    try:
+        await asyncio.sleep(0.05)
+        assert backend.episodes == 1 and backend.turns == []      # up, and waiting
+        assert pet.db.journal() == []                             # no conversation yet
+        brain.tell("hi there", speaker="Noah")
+        await asyncio.sleep(0.1)
+        assert backend.episodes == 1                              # the first turn used it
+        await asyncio.sleep(0.5)                                  # idle: journal, then close
+        assert backend.ended >= 1 and backend.episodes == 2       # the next one is up already
     finally:
         await brain.close()

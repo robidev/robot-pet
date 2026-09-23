@@ -4,7 +4,9 @@ speech, expression and tool calls.
 
 One "episode" is one LLM conversation. It starts on the first turn and
 ends after `episode_idle_timeout_s` of quiet, so context stays small and
-the persona reloads. Before it ends, the model writes a line for its
+the persona reloads. With `brain.prestart`, the model's process for the
+next episode is started ahead of it (at start-up, and after an episode
+closes): starting it on the first turn added ~4 s to the first reply. Before it ends, the model writes a line for its
 journal (never spoken), and the next episode's system prompt carries the
 most recent entries: long-term memory without a long context.
 
@@ -44,6 +46,7 @@ class Brain:
         self._tasks: list[asyncio.Task] = []
         self._last_turn_at = 0.0
         self._episode_open = False
+        self._prestarted = False      # the backend is up, waiting for an episode's first turn
         self._conversation_id: Optional[int] = None
         self._heard_this_episode = 0
         # Things that happened without a turn (reflexes), told with the next one.
@@ -107,6 +110,7 @@ class Brain:
     # --- the turn loop --------------------------------------------------------
 
     async def _run_turns(self) -> None:
+        await self._prestart()
         while True:
             try:
                 text, kind, speaker = await asyncio.wait_for(self._queue.get(), self._idle_left())
@@ -125,10 +129,23 @@ class Brain:
             return None
         return max(0.0, self._last_turn_at + self.cfg.episode_idle_timeout_s - time.time())
 
+    async def _prestart(self) -> None:
+        """Starts the next episode's backend now, so its first turn doesn't wait for it."""
+        if not self.cfg.prestart or self._episode_open or self._prestarted:
+            return
+        try:
+            await self.backend.start_episode(prompt_module.build_system_prompt(self.pet))
+            self._prestarted = True
+        except Exception:  # noqa: BLE001 - the first turn will try again
+            log.exception("could not start the brain ahead of time")
+
     async def _ensure_episode(self) -> None:
         if self._episode_open:
             return
-        await self.backend.start_episode(prompt_module.build_system_prompt(self.pet))
+        # A process started ahead may have died waiting; then start afresh.
+        if not (self._prestarted and getattr(self.backend, "running", True)):
+            await self.backend.start_episode(prompt_module.build_system_prompt(self.pet))
+        self._prestarted = False
         self._episode_open = True
         self._heard_this_episode = 0
         if self.pet.db is not None:
@@ -143,6 +160,8 @@ class Brain:
             except Exception:  # noqa: BLE001 - a lost journal line is not worth more
                 log.exception("journal summary failed")
         await self._end_episode(summary)
+        # After the journal line, so the next episode's prompt already has it.
+        await self._prestart()
 
     async def _summarize(self) -> Optional[str]:
         """Asks the model for its journal line. Collected, never spoken."""
@@ -161,6 +180,7 @@ class Brain:
             self.pet.db.end_conversation(self._conversation_id, summary)
         self._conversation_id = None
         self._episode_open = False
+        self._prestarted = False
         await self.backend.end_episode()
 
     async def _run_turn(self, text: str, kind: str, speaker: Optional[str]) -> None:

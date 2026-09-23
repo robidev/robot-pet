@@ -172,6 +172,7 @@ class ValetudoVacuum(VacuumAdapter):
         super().__init__(bus)
         from valetudo_client import ValetudoClient
         self.cfg = cfg
+        self._last_answer = float("-inf")    # time.monotonic() of the last good poll
         self._poll_client = ValetudoClient(cfg.host, cfg.port, timeout=5.0)
         self._cmd_client = ValetudoClient(cfg.host, cfg.port, timeout=5.0)
         # Manual moves are resent every 200 ms: one stuck behind a WiFi stall
@@ -194,10 +195,16 @@ class ValetudoVacuum(VacuumAdapter):
         try:
             map_json, attrs = await asyncio.to_thread(self._fetch)
         except Exception as exc:  # noqa: BLE001 - network errors of any kind mean "unreachable"
+            silent_s = time.monotonic() - self._last_answer
+            if silent_s < self.cfg.offline_after_s:
+                # A WiFi stall: keep the last state rather than tell everyone it's gone.
+                log.debug("vacuum didn't answer (%s); %.0f s since it last did", exc, silent_s)
+                return self._state
             if self._state.reachable:
-                log.warning("vacuum unreachable: %s", exc)
+                log.warning("vacuum unreachable for %.0f s: %s", silent_s, exc)
             self._set_state(dataclasses.replace(self._state, reachable=False, updated=time.time()))
             return self._state
+        self._last_answer = time.monotonic()
         self._map = map_json
         self._set_state(VacuumState(reachable=True, updated=time.time(), **parse_state(map_json, attrs)))
         return self._state

@@ -44,6 +44,9 @@ class VacuumConfig:
     host: str = "192.168.101.43"
     port: int = 80
     poll_interval_s: float = 2.0
+    # Only after this long without an answer is the base offline: one missed
+    # poll in a WiFi stall made the brain refuse a command (2026-09-23).
+    offline_after_s: float = 10.0
     # Resend interval for Valetudo's manual-control dead-man's switch.
     drive_update_interval_s: float = 0.15
 
@@ -65,6 +68,7 @@ class FaceConfig:
     # then the pet can't tell who anyone is, or learn new faces.
     enable_recognition: bool = False
     status_poll_s: float = 0.5
+    offline_after_s: float = 10.0             # see VacuumConfig
     # A face set going empty only counts as "nobody here" after this long,
     # to ride out detection dropouts (over 1.5 s with a face held still in
     # view; 3 s still lost a seated person several times a minute).
@@ -146,6 +150,9 @@ class BrainConfig:
     # A conversation ends after this much quiet, so context stays small.
     episode_idle_timeout_s: float = 600.0
     turn_timeout_s: float = 120.0
+    # Start the model's process before anyone speaks (at start-up, and after
+    # a conversation closes), so the first reply isn't also waiting for it.
+    prestart: bool = True
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
     max_tool_iterations: int = 8
