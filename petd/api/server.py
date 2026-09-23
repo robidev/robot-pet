@@ -7,13 +7,14 @@ The brain's MCP shim will call tools through here too (PLAN.md step D2).
 
 from __future__ import annotations
 
-import dataclasses
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel
+
+from ..jsonable import event_record, to_jsonable
 
 if TYPE_CHECKING:
     from ..app import App
@@ -23,18 +24,6 @@ log = logging.getLogger(__name__)
 
 class TextBody(BaseModel):
     text: str
-
-
-def to_jsonable(obj: Any) -> Any:
-    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {f.name: to_jsonable(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
-    if isinstance(obj, (list, tuple)):
-        return [to_jsonable(v) for v in obj]
-    if isinstance(obj, dict):
-        return {k: to_jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, bytes):
-        return f"<{len(obj)} bytes>"
-    return obj
 
 
 def create_app(pet: "App") -> FastAPI:
@@ -59,7 +48,7 @@ def create_app(pet: "App") -> FastAPI:
     @api.get("/events")
     def events(n: int = 50) -> list:
         recent = list(pet.bus.history)[-n:]
-        return [{"type": type(e).__name__, **to_jsonable(e)} for e in reversed(recent)]
+        return [event_record(e) for e in reversed(recent)]
 
     @api.post("/say")
     def say(body: TextBody) -> dict:

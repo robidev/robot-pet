@@ -705,7 +705,7 @@ Concurrency, state machines, and where the "feel" lives.
 | G1 | `README.md` for petd: setup, the WSL `.wslconfig` note, how to run, config reference, and troubleshooting. Update `todo.txt`. | Someone else could set it up. |
 | G2 | `scripts/start.sh` or a systemd user unit, log rotation, and `runtime/` layout creation. | One command starts the pet. A reboot restores it. |
 | G3 | Dashboard extras (Sonnet): live event log, map with robot, people and target overlay, drives, and a manual tool console. | Useful for debugging M3 and M4. |
-| G4 | Latency instrumentation (4.9): publish the brain's turn and tool timings on the bus, time piper per sentence, a `--trace` flag appending every event to JSONL (the 300-event ring is for the last turn, not for a session), and `scripts/latency.py` to print a per-turn breakdown from `/events` or a trace. **Do this before E4.** | A spoken turn prints hear → think → synth → first word → done, with the numbers adding up to the wall clock. |
+| G4 | **Done 2026-09-23, with fakes; real numbers from the next live run.** The trace is always on, as `events.jsonl` in each run's log folder (`log.events`), rather than behind a `--trace` flag: the run folders came after this step was written. Latency instrumentation (4.9): publish the brain's turn and tool timings on the bus, time piper per sentence, a `--trace` flag appending every event to JSONL (the 300-event ring is for the last turn, not for a session), and `scripts/latency.py` to print a per-turn breakdown from `/events` or a trace. **Do this before E4.** | A spoken turn prints hear → think → synth → first word → done, with the numbers adding up to the wall clock. |
 
 ### Suggested run order
 

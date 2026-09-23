@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Optional
 
 from .bus import EventBus
@@ -24,11 +25,14 @@ log = logging.getLogger(__name__)
 
 
 class App:
-    def __init__(self, cfg: Config, *, fake: bool = False, echo: bool = False):
+    def __init__(self, cfg: Config, *, fake: bool = False, echo: bool = False,
+                 run_dir: Optional[Path] = None):
         self.cfg = cfg
         self.fake = fake
         self.echo = echo
+        self.run_dir = run_dir          # this run's log folder (petd/log.py), if any
         self.bus = EventBus()
+        self.trace = None
         self.vacuum: Optional[VacuumAdapter] = None
         self.face: Optional[FaceAdapter] = None
         self.speaker: Optional[Speaker] = None
@@ -49,6 +53,10 @@ class App:
     async def start(self) -> None:
         cfg, fake = self.cfg, self.fake
         self.bus.bind_loop(asyncio.get_running_loop())
+        if self.run_dir is not None and cfg.log.events:
+            from .trace import EventTrace
+            self.trace = EventTrace(self.bus, self.run_dir / "events.jsonl")
+            self.trace.start()
 
         if cfg.vacuum.enabled:
             self.vacuum = FakeVacuum(self.bus) if fake else ValetudoVacuum(cfg.vacuum, self.bus)
@@ -137,6 +145,8 @@ class App:
             await self._piper.stop()
         if self.db is not None:
             self.db.close()
+        if self.trace is not None:
+            await self.trace.close()
 
     async def run_until_stopped(self) -> None:
         await self._stopped.wait()

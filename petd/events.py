@@ -116,6 +116,59 @@ class SpeakingFinished(Event):
     interrupted: bool = False
 
 
+@dataclass(frozen=True, kw_only=True)
+class SentenceSynthesized(Event):
+    """Piper's work for one sentence (PLAN.md 4.9)."""
+    utterance_id: int
+    text: str
+    synth_s: float              # time piper took
+    audio_s: float              # how long it plays
+
+
+# --- the brain (PLAN.md 4.9: what the event history couldn't see) -------------
+
+@dataclass(frozen=True, kw_only=True)
+class TurnStarted(Event):
+    kind: str                   # heard | event
+    text: str
+    queued_at: float            # when it was handed to the brain (tell())
+
+
+@dataclass(frozen=True, kw_only=True)
+class TurnFirstText(Event):
+    """The model's first word of the turn: thinking (and any tools before it) are done."""
+
+
+@dataclass(frozen=True, kw_only=True)
+class BrainToolCall(Event):
+    """The model asked for a tool (when it finished writing the call)."""
+    name: str
+    arguments: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ToolRan(Event):
+    """A tool's own run, in petd (started..t)."""
+    name: str
+    started: float
+    duration_s: float
+    is_error: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class SentenceReady(Event):
+    """A sentence the brain handed to the speaker."""
+    text: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class TurnEnded(Event):
+    duration_s: float
+    cost_usd: Optional[float] = None
+    sentences: int = 0
+    tool_calls: int = 0
+
+
 # --- infrastructure ------------------------------------------------------------
 
 @dataclass(frozen=True, kw_only=True)

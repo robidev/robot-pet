@@ -38,7 +38,7 @@ from typing import Awaitable, Callable, Optional
 
 from ..bus import EventBus
 from ..config import Config, SpeakerConfig
-from ..events import SpeakingFinished, SpeakingStarted
+from ..events import SentenceSynthesized, SpeakingFinished, SpeakingStarted
 from ..net import tcp_port_open
 from ..procs import ManagedProcess
 
@@ -368,12 +368,16 @@ class Speaker:
             if sentence is None:
                 await out.put(None)
                 return
+            started = time.monotonic()
             try:
                 pcm = wav_to_pcm(await self.synthesize(sentence), self.cfg.sample_rate)
                 pcm = apply_gain(pcm, self.cfg.volume)
             except Exception:  # noqa: BLE001 - skip the sentence, keep talking
                 log.exception("synthesis failed for %r", sentence)
                 continue
+            self.bus.publish(SentenceSynthesized(
+                utterance_id=utt.id, text=sentence, synth_s=time.monotonic() - started,
+                audio_s=len(pcm) / (2 * self.cfg.sample_rate)))
             await out.put((sentence, pcm))
 
     def _close_span(self, interrupted: bool) -> None:

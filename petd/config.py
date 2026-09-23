@@ -248,6 +248,7 @@ class LogConfig:
     file_level: str = "DEBUG"                 # the console keeps --log-level
     max_file_mb: float = 20.0                 # petd.log rotates at this size...
     keep_files: int = 3                       # ...keeping this many older ones
+    events: bool = True                       # every bus event to events.jsonl (petd/trace.py)
 
 
 @dataclass

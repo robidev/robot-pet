@@ -80,3 +80,4 @@ log:
   file_level: DEBUG            # the console keeps --log-level
   max_file_mb: 20              # petd.log rotates at this size,
   keep_files: 3                # keeping this many older ones
+  events: true                 # every bus event to events.jsonl, for scripts/latency.py

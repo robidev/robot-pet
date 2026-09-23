@@ -23,7 +23,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ..events import SpeechEnded, SpeechStarted, StopRequested
+from ..events import (BrainToolCall, SentenceReady, SpeechEnded, SpeechStarted, StopRequested,
+                      TurnEnded, TurnFirstText, TurnStarted)
 from . import prompt as prompt_module
 from .backend import BrainError, LLMBackend, TextDelta, ToolFinished, ToolStarted, TurnDone
 from .expressions import Expressions
@@ -90,7 +91,7 @@ class Brain:
     def tell(self, text: str, kind: str = "heard", speaker: Optional[str] = None) -> None:
         """Queues a turn. Behaviors use kind='event' to report what happened."""
         try:
-            self._queue.put_nowait((text, kind, speaker))
+            self._queue.put_nowait((text, kind, speaker, time.time()))
         except asyncio.QueueFull:
             log.warning("brain is behind; dropping %s: %r", kind, text)
 
@@ -113,14 +114,14 @@ class Brain:
         await self._prestart()
         while True:
             try:
-                text, kind, speaker = await asyncio.wait_for(self._queue.get(), self._idle_left())
+                text, kind, speaker, queued_at = await asyncio.wait_for(self._queue.get(), self._idle_left())
             except asyncio.TimeoutError:
                 # Summarizing here, in the only task that runs turns, means a
                 # new turn can't race the episode's last one.
                 await self._close_idle_episode()
                 continue
             try:
-                await self._run_turn(text, kind, speaker)
+                await self._run_turn(text, kind, speaker, queued_at)
             except Exception:  # noqa: BLE001 - one bad turn must not kill the brain
                 log.exception("turn failed")
 
@@ -183,7 +184,11 @@ class Brain:
         self._prestarted = False
         await self.backend.end_episode()
 
-    async def _run_turn(self, text: str, kind: str, speaker: Optional[str]) -> None:
+    async def _run_turn(self, text: str, kind: str, speaker: Optional[str],
+                        queued_at: Optional[float] = None) -> None:
+        # Timings go on the bus (PLAN.md 4.9): scripts/latency.py reads them back.
+        bus = self.pet.bus
+        bus.publish(TurnStarted(kind=kind, text=text, queued_at=queued_at or time.time()))
         await self._ensure_episode()
         notes, self._notes = self._notes, []
         turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker, notes=notes)
@@ -199,13 +204,20 @@ class Brain:
         self._hushed = False
         self.busy = True
         started = time.monotonic()
+        first_text = ended = False
+        tool_calls = 0
         try:
             async for event in self.backend.send(turn):
                 if isinstance(event, TextDelta):
+                    if not first_text:
+                        first_text = True
+                        bus.publish(TurnFirstText())
                     log.debug("delta %r", event.text)
                     for piece in parser.feed(event.text):
                         utterance = await self._emit(piece, utterance, said)
                 elif isinstance(event, ToolStarted):
+                    tool_calls += 1
+                    bus.publish(BrainToolCall(name=event.name, arguments=event.arguments))
                     log.info("brain calls %s(%s)", event.name, event.arguments)
                 elif isinstance(event, ToolFinished):
                     if event.is_error:
@@ -215,9 +227,15 @@ class Brain:
                 elif isinstance(event, TurnDone):
                     for piece in parser.flush():
                         utterance = await self._emit(piece, utterance, said)
-                    log.info("turn done in %.1fs (cost %s)",
-                             event.duration_s or (time.monotonic() - started), event.cost_usd)
+                    duration = event.duration_s or (time.monotonic() - started)
+                    log.info("turn done in %.1fs (cost %s)", duration, event.cost_usd)
+                    ended = True
+                    bus.publish(TurnEnded(duration_s=duration, cost_usd=event.cost_usd,
+                                          sentences=len(said), tool_calls=tool_calls))
         finally:
+            if not ended:
+                bus.publish(TurnEnded(duration_s=time.monotonic() - started, sentences=len(said),
+                                      tool_calls=tool_calls))
             self.busy = False
             self._last_turn_at = time.time()
             if said:
@@ -242,6 +260,7 @@ class Brain:
         if isinstance(piece, Sentence):
             log.info("<- brain says: %s", piece.text)
             said.append(piece.text)
+            self.pet.bus.publish(SentenceReady(text=piece.text))
             if self.pet.speaker is not None:
                 if utterance is None:
                     utterance = self.pet.speaker.begin()

@@ -22,6 +22,8 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
+from ..events import ToolRan
+
 if TYPE_CHECKING:
     from ..app import App
 
@@ -55,8 +57,9 @@ class ToolResult:
 
 
 class ToolRegistry:
-    def __init__(self):
+    def __init__(self, bus=None):
         self._tools: dict[str, Tool] = {}
+        self.bus = bus              # each run is published as ToolRan (PLAN.md 4.9)
 
     def add(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
@@ -81,15 +84,23 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult(text=f"no such tool: {name}", is_error=True)
-        started = time.monotonic()
+        started, started_wall = time.monotonic(), time.time()
+
+        def ran(is_error: bool) -> None:
+            if self.bus is not None:
+                self.bus.publish(ToolRan(name=name, started=started_wall,
+                                         duration_s=time.monotonic() - started, is_error=is_error))
         try:
             value = await tool.handler(arguments or {})
         except ToolError as exc:
             log.info("tool %s refused: %s", name, exc)
+            ran(True)
             return ToolResult(text=str(exc), is_error=True)
         except Exception as exc:  # noqa: BLE001 - the model gets to hear about it
             log.exception("tool %s failed", name)
+            ran(True)
             return ToolResult(text=f"{type(exc).__name__}: {exc}", is_error=True)
+        ran(False)
         log.info("tool %s(%s) -> %.0fms", name, arguments or {}, (time.monotonic() - started) * 1000)
         if isinstance(value, dict) and "image" in value:
             return ToolResult(text=value.get("text"),
@@ -101,13 +112,13 @@ class ToolRegistry:
 def _as_json(value: Any) -> str:
     import json
 
-    from ..api.server import to_jsonable
+    from ..jsonable import to_jsonable
     return json.dumps(to_jsonable(value), default=str)
 
 
 def build_registry(pet: "App") -> ToolRegistry:
     """The MVP tool set (PLAN.md 4.5). Later clusters add movement and memory."""
-    registry = ToolRegistry()
+    registry = ToolRegistry(pet.bus)
 
     def _face_name(face) -> Optional[str]:
         if not face.recognized:

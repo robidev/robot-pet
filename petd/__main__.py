@@ -6,7 +6,8 @@ python -m petd [--config config.yaml] [--fake] [--echo] [--log-level DEBUG]
          and the self-hearing gate before the brain exists).
 
 Every run also logs, at DEBUG, to runtime/logs/<start time>/petd.log, next to
-a run.yaml with its config; runtime/logs/latest is the newest (petd/log.py).
+a run.yaml with its config and events.jsonl with every bus event (for
+scripts/latency.py); runtime/logs/latest is the newest (petd/log.py).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import asyncio
 import logging
 import signal
 from pathlib import Path
+from typing import Optional
 
 from .app import App
 from .config import Config, load_config
@@ -24,8 +26,8 @@ from .log import setup_logging
 log = logging.getLogger("petd")
 
 
-async def main_async(args: argparse.Namespace, cfg: Config) -> None:
-    app = App(cfg, fake=args.fake, echo=args.echo)
+async def main_async(args: argparse.Namespace, cfg: Config, run_dir: Optional[Path] = None) -> None:
+    app = App(cfg, fake=args.fake, echo=args.echo, run_dir=run_dir)
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, app.request_shutdown)
@@ -47,9 +49,9 @@ def main() -> None:
     args = parser.parse_args()
     cfg = load_config(Path(args.config) if args.config else None)
     tags = tuple(tag for tag, on in (("fake", args.fake), ("echo", args.echo)) if on)
-    setup_logging(args.log_level, cfg, tags)
+    run_dir = setup_logging(args.log_level, cfg, tags)
     try:
-        asyncio.run(main_async(args, cfg))
+        asyncio.run(main_async(args, cfg, run_dir))
     except Exception:
         log.exception("petd crashed")
         raise
