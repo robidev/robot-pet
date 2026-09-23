@@ -353,6 +353,7 @@ class FaceApiClient:
         tilt_deg: Optional[float] = None,
         tracking_gain: Optional[float] = None,
         tracking_rate: Optional[float] = None,
+        tilt_tracking_gain: Optional[float] = None,
     ) -> None:
         """
         MOVES THE SERVOS (if pan_deg/tilt_deg given, or mode="track" and a
@@ -362,8 +363,10 @@ class FaceApiClient:
         mode: "track" (face tracking) or "manual" (hold pan/tilt as set).
         pan_deg/tilt_deg: 0-180 degrees; only settable directly while
             mode is "manual" (face tracking drives them otherwise).
-        tracking_gain: degrees of pan/tilt per normalized face offset.
+        tracking_gain: degrees of pan per normalized face offset (and of
+            tilt, scaled by the frame's aspect ratio, unless tilt has its own).
         tracking_rate: smoothing speed in degrees/second.
+        tilt_tracking_gain: tilt's own gain; 0 derives it from tracking_gain again.
         """
         if mode is not None and mode not in ("track", "manual"):
             raise ValueError('mode must be "track" or "manual"')
@@ -378,6 +381,8 @@ class FaceApiClient:
             params["gain"] = tracking_gain
         if tracking_rate is not None:
             params["rate"] = tracking_rate
+        if tilt_tracking_gain is not None:
+            params["tilt_gain"] = tilt_tracking_gain
         if not params:
             raise ValueError("set_servo() needs at least one parameter")
         self._get_ok("/api/servo", params)
