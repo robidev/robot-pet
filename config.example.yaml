@@ -19,7 +19,7 @@ face:
   host: 192.168.101.40
   audio_port: 5000
   audio_gain: null         # e.g. 1.5; null leaves the device setting alone
-  enable_recognition: true
+  enable_recognition: false    # detection only; recognition is to move to the PC
   faces_lost_debounce_s: 5.0   # recognition drops out for seconds with a face in view
 
 stt:

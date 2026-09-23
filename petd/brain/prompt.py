@@ -177,6 +177,10 @@ def senses_line(pet: "App") -> str:
 
 
 def _who_is_here(pet: "App") -> str:
+    if not pet.cfg.face.enable_recognition:
+        # Every face is unknown without recognition; that says nothing about who it is.
+        faces = pet.face.last_faces.faces if pet.face.last_faces else ()
+        return f"{len(faces)} people" if len(faces) > 1 else "someone"
     if pet.people is not None:
         names, strangers = pet.people.who_is_here()
     else:

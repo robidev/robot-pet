@@ -314,6 +314,14 @@ class FaceApiClient:
             raise ValueError('mode must be "auto" or "manual"')
         self._get_ok("/api/eye", {"mode": mode})
 
+    def set_face_detector(self, resize_scale: float) -> None:
+        """
+        Sets the scale (0.1-1.0) of the frame the detector's first stage
+        searches, from the next pass (GET /api/face/detector). Higher finds
+        smaller, further faces; each pass takes longer. Not persisted.
+        """
+        self._get_ok("/api/face/detector", {"resize_scale": resize_scale})
+
     def set_recognition(self, enabled: bool) -> None:
         """Enables/disables face recognition; reports the matched id in status."""
         self._get_ok("/api/face/recognize", {"enable": int(enabled)})

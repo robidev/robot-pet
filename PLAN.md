@@ -94,9 +94,18 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **Faces aren't detected much beyond ~1.5 m**, even in full room light: stage one of the detector (`HumanFaceDetectMSR01(..., 0.2F)`) runs on the VGA frame scaled to 20%, 128×96, where a face 2 m away is ~8 px. Robin was only detected at 1.5 m when bending their knees.
 - **So there's no distance at which a standing adult is both high enough in the frame and big enough to detect.** The face-distance calibration wasn't possible; `scripts/calibrate_face.py` (fixed-tilt captures, no tracking) is ready for when it is. Options, roughly in order of payoff for "come here": (1) **a person/feet detector on the PC**, run on `/snapshot`: legs are in view at tilt 90, the bearing comes from the box, and the distance from where the feet meet the floor (camera 0.20 m up, known tilt) needs no face height at all; face recognition stays for *who*, up close; (2) the detector's resize scale 0.2 → 0.3–0.4 for range, at a CPU cost to measure against the vision duty cycle; (3) tilting the camera up on its mount by 15–20°.
 
+**Detection-only head (2026-09-23).** The face firmware (uncommitted in `~/LilyGo-Cam-RobotFace`) captures raw RGB565 and feeds it to the detector directly, with no JPEG decode on the detection path; JPEG is encoded only for `/stream` and `/api/snapshot`. Stage one now gets a 320×240 input instead of 128×96. Measured on the device:
+
+- **Range 2.7 m** (was ~1.5 m) in good indoor light; close range fine.
+- **QVGA × 1.0: 2.17 passes/s** with nobody in view (was 1.9 at VGA × 0.2 with a face): the JPEG decode saved paid for the 6.25× larger stage-one input.
+- **VGA × 1.0 rebooted the board:** stage one wanted one 2.4 MB buffer, the malloc failed. Stage one is now capped at 320×240 and the scale is lowered to fit, so no framesize can do that again.
+- **Default VGA × 0.5:** the same 320×240 stage-one input at **1.89 passes/s**, and `/api/snapshot` (the brain's `look()`) stays at 640×480, 0.38 s, correctly exposed. QVGA × 1.0 is the faster alternative with QVGA photos (`/api/camera?framesize=5`, `/api/face/detector?resize_scale=1.0`).
+
+`resize_scale` is settable at runtime (`/api/face/detector?resize_scale=`), and a `framesize` change re-initializes the camera, keeping every other setting. petd starts the head with recognition off (E6 moves it to the PC).
+
 **Next up (in order):**
 
-1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic, enrolling a second face, recognition after a restart, and A3's single delete (`forget_person`).
+1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic. Enrolling a second face, recognition after a restart and A3's single delete (`forget_person`) wait for E6, now that recognition is off.
 2. **Flash the tilt clamp** (58–105). Then decide how "come here" finds a standing person (see the calibration findings): a PC-side person detector is the recommendation. Then C1 map geometry, C5 person localization on whatever that gives, and E4 (`approach_person`, search, the arbiter) for M3.
 3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
 4. Loose ends: D5 against a real ollama; a `--prompt` option for udp-stream to bias whisper toward "GLaDOS"; face-clock offset estimation (see the findings below).
@@ -377,6 +386,29 @@ If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, i
 | 0–1 | Calls out their name when they appear (once per N hours) | Approaches after they confirm | Name plus notes |
 | 2–3 | Name or nickname, references past conversations and running jokes, GLaDOS-style "fondness" | Approaches directly when called | Name, nickname, notes, last 3 facts, last-seen summary |
 
+**Recognition moves to the PC (planned, E6).** Since 2026-09-23 the head only
+detects: recognizing every face on every pass cost the tracking loop time and
+bought nothing (tracking needs only the box), and the head's 112x112 recognizer
+is unreliable on the small faces that longer-range detection now finds. Until E6
+lands, `face.enable_recognition` is off: the pet doesn't know who anyone is, no
+stranger notes are sent, and `remember_face` refuses. The design:
+
+- **When:** once per arrival, not per frame. A new face in `FacesChanged`
+  (nobody sticky-recognized yet) triggers a `/api/snapshot`, retried a few times
+  over the first seconds while the person is in view, then left alone until
+  presence is lost. Identity stays sticky per presence episode, as now.
+- **How:** crop each detected box from the snapshot (boxes from
+  `/api/face/current` near the snapshot's time, or re-detect on the PC) and embed
+  it with a PC model (e.g. OpenCV YuNet + SFace, or InsightFace/ArcFace). Match
+  by cosine similarity against stored embeddings, with a margin between the best
+  and second-best person.
+- **Storage:** a `face_embeddings(person_id, t_utc, vector BLOB)` table, several
+  per person (angles, lighting), instead of `people.face_slot`. No 7-slot limit.
+  `remember_face` stores embeddings from a few snapshots; `forget_person`
+  deletes them. The device's enrolled slots are retired (people re-enroll once).
+- **Acceptance:** greets a known person by name after a restart, at 2-3 m; a
+  stranger is called a stranger; a known face is never greeted as someone else.
+
 **Markdown files (`memory/`):**
 
 - `persona.md`, `backstory.md` and `body.md` are written by a human (step F1).
@@ -526,6 +558,7 @@ Concurrency, state machines, and where the "feel" lives.
 | E3 | Enrollment flow and the people tools (`remember_face`, `who_do_i_know`, `recall_person`, `note_about_person`), plus the greeting-on-recognition behavior (once per person per N hours, via an `[event]` turn). **This gives M2.** | Introduce yourself. It enrolls you, then greets you by name after a restart. |
 | E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 0.7 m, facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
+| E6 | Face recognition on the PC (4.7): snapshot on arrival, PC embedding model, `face_embeddings` table, `remember_face`/`forget_person` on top of it; the head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, at 2-3 m. A stranger is never greeted as someone known. |
 
 ### Cluster F: personality and content (Opus 5, medium). Creative writing, best done in one sitting.
 

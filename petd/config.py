@@ -60,7 +60,10 @@ class FaceConfig:
     port: int = 80
     audio_port: int = 5000
     audio_gain: Optional[float] = None       # None = leave the device setting alone
-    enable_recognition: bool = True
+    # Off: the head only detects faces (and tracks them), which keeps each
+    # pass short. Recognition is to move to the PC (PLAN.md 4.7); until
+    # then the pet can't tell who anyone is, or learn new faces.
+    enable_recognition: bool = False
     status_poll_s: float = 0.5
     # A face set going empty only counts as "nobody here" after this long,
     # to ride out detection dropouts (over 1.5 s with a face held still in

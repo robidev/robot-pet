@@ -29,6 +29,7 @@ for jpeg in face.iter_stream_frames():
 
 # commands
 face.set_face_detection(True)
+face.set_face_detector(resize_scale=1.0)  # detector's first stage: 0.1-1.0 of the frame
 face.set_recognition(True)
 face.enroll_face(True)              # arms enrollment of the next face seen
 face.get_current_faces()            # CurrentFaces: fresh boxes + servo + ms UTC + age_ms

@@ -12,6 +12,8 @@ Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3).
   trusting whichever id shows up next in a face event.
 - Arrivals turn into `[event]` turns for the brain (a greeting at most once
   per `greet_every_h`), and so does a stranger who stays in view.
+- With recognition off (face.enable_recognition) every face is unknown, so
+  nobody counts as a stranger and no new faces can be learned.
 """
 
 from __future__ import annotations
@@ -146,6 +148,8 @@ class People:
     def _stranger(self) -> None:
         self._stranger_timer = None
         now = time.time()
+        if not self.pet.cfg.face.enable_recognition:
+            return
         if self.present or not self.pet.face or not self.pet.face.presence.present:
             return
         if now - self._last_stranger_note < self.cfg.stranger_every_min * 60:
@@ -211,6 +215,9 @@ class People:
         if not name:
             raise ToolError("I need a name to file the face under")
         face = self.pet.face
+        if not self.pet.cfg.face.enable_recognition:
+            raise ToolError("face recognition is switched off, so I can't learn or recognize "
+                            "faces at the moment")
         if face is None or not face.state.reachable:
             raise ToolError("my head is offline, so I can't see anyone to remember")
         if self._enrolling.locked():

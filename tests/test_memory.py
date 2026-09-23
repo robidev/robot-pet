@@ -26,6 +26,8 @@ async def pet():
     cfg.speaker.enabled = False
     cfg.face.faces_lost_debounce_s = 0.1
     cfg.memory.enroll_timeout_s = 0.5
+    # These test recognition itself, which is off by default for now.
+    cfg.face.enable_recognition = True
     app = App(cfg, fake=True)
     await app.start()
     told: list[str] = []
@@ -213,9 +215,22 @@ async def test_a_lingering_stranger_is_mentioned(pet):
     assert len(pet.told) == 1 and "don't recognize" in pet.told[0]
 
 
+async def test_without_recognition_nobody_is_a_stranger(pet):
+    pet.cfg.face.enable_recognition = False
+    pet.cfg.memory.stranger_after_s = 0.05
+    pet.face.show(face(), face(cx=0.8))
+    await asyncio.sleep(0.15)
+    assert pet.told == []
+    assert "sees 2 people]" in build_turn(pet, "hello")
+    with pytest.raises(Exception, match="switched off"):
+        await pet.people.enroll("Noah")
+    assert pet.face.enrolled == []
+
+
 async def test_greetings_before_the_brain_is_up_are_kept():
     cfg = Config()
     cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    cfg.face.enable_recognition = True
     app = App(cfg, fake=True)
     await app.start()
     try:

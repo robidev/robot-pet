@@ -145,7 +145,8 @@ def build_registry(pet: "App") -> ToolRegistry:
                 for face in frame.faces
             ]
             out["someone_present"] = pet.face.presence.present
-            if pet.people is not None:
+            out["face_recognition"] = pet.cfg.face.enable_recognition
+            if pet.people is not None and pet.cfg.face.enable_recognition:
                 names, strangers = pet.people.who_is_here()
                 # Recognition flickers frame to frame; this is who was
                 # recognized at any point since they came into view.
