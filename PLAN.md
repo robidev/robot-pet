@@ -107,6 +107,13 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 
 **Next up (in order):**
 
+0. **E6, face recognition on the PC: finish the live checks** (backlog, 2026-09-23). Built (E6b) and first tried live: Robin enrolled in 11 s (5 close, 5 a step back), left and came back, and was named after 2 attempts (~2 s, similarity 0.76). Still open:
+   - **Two people live:** Claudia's enrollment, then both in view (told apart, each named, neither greeted as the other), and a guest who must stay unknown.
+   - **After a petd restart:** recognized and greeted from the stored fingerprints alone.
+   - **E6a in daylight and backlit** (someone in front of the window), then revisit `unknown_sim` / `accept_sim` / `margin`, which come from lamp light only.
+   - ~~Growth is too eager~~ **Fixed:** the first visits kept every attempt (20 grown in three visits, the 30 full); after a visit's first look the rest were 0.89-0.95 alike. Now a look is kept only if under `duplicate_sim` (0.90) to every one kept, at most `grow_per_visit` (2) a visit, and a full set trades its most redundant grown fingerprint for a newer look (replayed on the real data: 6 of the 20 kept). Enrollment now also checks the step back happened (both sets were ~220 px): the second set must be at most 80% of the close-up height, it asks once more if not, and keeps only the close set otherwise.
+   - **The head's "nobody in view"** while Robin faced the camera, just before enrollment found his face on the PC's snapshot at once: check whether the head's detector missed him there (tracking was off).
+   - Whisper heard "GLaDOS" as "Class" three times; the wake word needed a "Hey" to get through.
 1. **Hardware check of E2 and E3 (you, ~15 min):** the gate and barge-in on the real mic. Enrolling a second face, recognition after a restart and A3's single delete (`forget_person`) wait for E6, now that recognition is off.
 2. **Flash the tilt clamp** (58–105). Then decide how "come here" finds a standing person (see the calibration findings): a PC-side person detector is the recommendation. Then C1 map geometry, C5 person localization on whatever that gives, and E4 (`approach_person`, search, the arbiter) for M3.
 3. **G4, the latency instrumentation (4.9), before E4** puts extra model round trips on the critical path. Then E4 (with the arbiter) and E5 (with `emotions.yaml`).
@@ -400,28 +407,34 @@ is off: the pet doesn't know who anyone is, no stranger notes are sent, and
 (onnxruntime 64, numpy 56, protobuf/flatbuffers/packaging 2), no build step.
 Pillow, already a dependency, decodes, crops and warps. Two OpenCV Zoo models,
 downloaded by a setup script into a git-ignored folder (`*.onnx` already is):
+about 161 MB in all.
 
 | model | job | size | licence |
 |---|---|---|---|
 | YuNet 2023mar | faces + 5 landmarks in the snapshot | 0.23 MB | MIT |
-| SFace 2021dec int8 | aligned 112x112 face -> 128-d fingerprint | 9.9 MB (fp32: 38.7 MB) | Apache 2.0 |
+| SFace 2021dec **fp32** | aligned 112x112 face -> 128-d fingerprint | 38.7 MB | Apache 2.0 |
 
-Rejected: OpenCV itself (216 MB with numpy; it would save ~100 lines), insightface
-(a Cython build, and its model packs are non-commercial), dlib/face_recognition
-(a C++ build), DeepFace (TensorFlow, a 274 MB download alone). Speed is not a
-concern: both models together should take well under 50 ms per snapshot on the
-PC's i7-1185G7 (AVX-512 VNNI, good for int8), against 0.38 s to fetch the
-snapshot, and they run on arrivals, not per frame.
+fp32, not the 9.9 MB int8 export: on the PC's i7-1185G7 it measured 2.4x faster
+(12.6 vs 30.4 ms; onnxruntime's int8 path isn't the fast one here) and scored
+0.02-0.03 higher throughout E6a. Rejected: OpenCV itself (216 MB with numpy; it
+would save ~100 lines), insightface (a Cython build, and its model packs are
+non-commercial), dlib/face_recognition (a C++ build), DeepFace (TensorFlow, a
+274 MB download alone). Speed is no concern, measured: YuNet 6.5 ms, alignment
+0.8 ms, SFace 12.6 ms per face, against ~0.42 s to fetch the snapshot, and only
+on arrivals, not per frame.
 
 *One attempt* (`petd/vision/faces.py`):
 
 1. `GET /api/snapshot`: a VGA JPEG, with the pose it was taken at.
 2. YuNet on that image: boxes and landmarks from the same frame. The head's own
    landmarks come from a different frame, and alignment from those would suffer.
-3. Gates, skipping rather than guessing: face at least `min_face_px` tall (start
-   at 60: ~2 m at VGA), detection score, too dark, too blurry (Laplacian variance
-   of the aligned crop). Frigate docks blurry crops 0.01-0.06 instead; start
-   with a hard gate and see.
+3. Gates, skipping rather than guessing: face at least `min_face_px` (45) tall,
+   which is ~2.5 m at VGA, where E6a still told Robin and Claudia apart;
+   detection score; too dark. No blur gate: the aligned crop's sharpness ranged
+   from 18 (Claudia at 2.5 m, recognized fine) to 661 (Robin at 0.6 m), so no
+   single cut-off tells a blurred face from a small one, and a motion-blurred
+   frame at 0.6 m still matched its own person (0.47) over the other (0.29).
+   The vote absorbs it; Frigate's mild score penalty is the fallback.
 4. Align: fit all 5 landmarks to the standard 112 px template (least-squares
    similarity transform, ~20 lines of numpy), warp with Pillow. All 5 points,
    not the eyes alone, which slip on small faces.
@@ -431,6 +444,11 @@ snapshot, and they run on arrivals, not per frame.
 
 *Deciding who it is*, per presence episode, as Frigate does per tracked person:
 
+- Thresholds, from E6a (evening, lamp light; daylight still to measure):
+  `unknown_sim` 0.35, just above the highest other-person score (0.29);
+  `accept_sim` 0.45 for the vote's weighted mean, under the own-person medians
+  even at 2.5 m (~0.50); `margin` 0.15 to the second-best person (the smallest
+  gap seen was 0.28).
 - Attempts start when a face appears and nobody in view is known yet: one
   snapshot every ~1.5 s while a face is in view and passes the gates, up to 12,
   and up to 6 more after a name is given, to confirm it.
@@ -458,8 +476,11 @@ people re-enroll once.
 *Enrollment and growth.*
 
 - `remember_face(name)`, as now, needs exactly one face in view. It collects ~5
-  crops that pass the gates, from different frames over ~5 s, and says "come a
-  bit closer" when they don't.
+  crops close up (~0.6 m) and ~5 at a step back (~1.5 m), from different frames,
+  asking the person to step back in between, and says "come a bit closer" when
+  crops don't pass the gates. Two distances because a face's fingerprint drifts
+  with its size: enrolled at 0.6 m alone, Robin at 2.5 m scored as low as 0.43
+  against his own centre; with 1.5 m added, 0.51.
 - Variety matters more than count (Frigate: 20-30 varied images; no more than 4-6
   near-identical ones). So the set grows by itself: a confident recognition
   (well above `accept_sim`) adds its fingerprint unless it's a near-duplicate of
@@ -483,12 +504,26 @@ settings (the firmware's `docs/camera-settings.md`) matter as much as the model.
 or more from different episodes are close to each other (Immich's rule), they're
 someone the pet keeps seeing, and it can ask their name the next time.
 
-*Measure before building (E6a).* The thresholds above are placeholders. In a
-throwaway venv, outside the project: snapshots of Robin (and Claudia, if she's
-up for it) at 0.6, 1.5 and 2.5 m, in daylight and lamp light. Same-person and
-other-person similarities, face sizes, blur and timings set `unknown_sim`,
-`accept_sim`, `margin` and `min_face_px`, and say how far recognition reaches.
-OpenCV's reference cosine threshold for SFace is 0.363.
+*Measured first (E6a, 2026-09-23 evening).* In a venv outside petd's, with a
+probe that follows OpenCV's own decoding and alignment for these models: 8
+snapshots each of Robin and Claudia at 0.6, 1.5 and 2.5 m, lamp light, head
+tracking on. The captures, the probe and the full numbers are in `runtime/e6a/`
+(git-ignored: they're photos of people). Faces were ~195, ~80 and ~47 px tall.
+Against each person's centre (trimmed mean, outlier filter):
+
+| enrolled at | lowest own | highest other | smallest margin |
+|---|---|---|---|
+| 0.6 m, recognized at 1.5 / 2.5 m | 0.43 | 0.22 | 0.34 |
+| 0.6 + 1.5 m, recognized at 2.5 m | 0.51 | 0.18 | 0.37 |
+| the enrolled distances themselves | 0.47 (a motion-blurred frame) | 0.29 | 0.28 |
+
+Capture against capture, the same person never scored below 0.38 and different
+people never above 0.30 (OpenCV's reference threshold for SFace is 0.363). So
+two people are told apart out to 2.5 m, the edge of detection. The thinnest
+margin is the 0.29 other-person score against `unknown_sim` 0.35, which is what
+the vote, the margin rule and "unsure means unknown" are for. Still to measure
+before E6b is called done: daylight, and a person backlit by the window; and
+only two faces are in it, so guests and look-alikes are untested.
 
 *Acceptance.* Greets a known person by name after a restart, day and evening,
 within a couple of seconds of them facing it, out to the measured range. A
@@ -652,8 +687,8 @@ Concurrency, state machines, and where the "feel" lives.
 | E3 | Enrollment flow and the people tools (`remember_face`, `who_do_i_know`, `recall_person`, `note_about_person`), plus the greeting-on-recognition behavior (once per person per N hours, via an `[event]` turn). **This gives M2.** | Introduce yourself. It enrolls you, then greets you by name after a restart. |
 | E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 0.7 m, facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
-| E6a | Measure first (4.7), in a throwaway venv outside the project: YuNet + SFace on head snapshots of Robin (and Claudia) at 0.6/1.5/2.5 m, day and lamp light. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim`, `accept_sim`, `margin` and `min_face_px` chosen from them. |
-| E6b | Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
+| E6a | Measure first (4.7), in a venv outside petd's: YuNet + SFace on head snapshots of Robin and Claudia at 0.6/1.5/2.5 m, day and lamp light. **Lamp light done 2026-09-23** (`runtime/e6a/`); daylight and backlight to go. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim` 0.35, `accept_sim` 0.45, `margin` 0.15, `min_face_px` 45 and SFace fp32 chosen from them. |
+| E6b | **Built 2026-09-23, with fakes and E6a's real snapshots; not yet tried live.** Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
 | E6c | Kept attempts (4.7): the last ~200 aligned crops under `runtime/faces/attempts/`, shown by `show_memory.py`, a misread deletable or renamable. | A wrong or unsure attempt can be found and corrected after a session. |
 
 ### Cluster F: personality and content (Opus 5, medium). Creative writing, best done in one sitting.
