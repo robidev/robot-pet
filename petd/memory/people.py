@@ -153,9 +153,11 @@ class People:
         self.db.add_sighting(person_id, t, x, y, pose_conf=None, face_conf=face_conf)
 
     def _where(self) -> tuple[Optional[float], Optional[float]]:
-        vacuum = self.pet.vacuum
+        """The robot's position in the reference map's frame (spatial/frame.py), if known."""
+        vacuum, frame = self.pet.vacuum, self.pet.frame
         pose = vacuum.state.pose if vacuum is not None else None
-        return (pose.x, pose.y) if pose else (None, None)
+        spot = frame.to_reference_now(pose.x, pose.y) if pose and frame else None
+        return spot if spot else (None, None)
 
     def _thresholds(self) -> list[tuple[int, int]]:
         return [tuple(t) for t in self.cfg.familiarity_thresholds]

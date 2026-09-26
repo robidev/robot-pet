@@ -98,6 +98,32 @@ class Grid:
                 return x, y
         return None
 
+    def wall_hits(self, other: "Grid", alignment: "Alignment") -> float:
+        """
+        The share of `other`'s walls that `alignment` puts within a pixel of
+        one of these: a cheap check that an alignment still holds.
+        """
+        if not len(other.walls_cm) or not len(self.walls_cm):
+            return 0.0
+        a = math.radians(alignment.angle_deg)
+        rot = np.array([[math.cos(a), -math.sin(a)], [math.sin(a), math.cos(a)]])
+        moved = other.walls_cm @ rot.T + (alignment.tx, alignment.ty)
+        cols = np.floor(moved[:, 0] / self.pixel_size).astype(int) - self.x0
+        rows = np.floor(moved[:, 1] / self.pixel_size).astype(int) - self.y0
+        near = self._near_wall()
+        inside = (rows >= 0) & (rows < near.shape[0]) & (cols >= 0) & (cols < near.shape[1])
+        return float(near[rows[inside], cols[inside]].sum() / len(moved))
+
+    def _near_wall(self) -> np.ndarray:
+        """The walls grown by a pixel each way."""
+        near = self.wall.copy()
+        near[1:, :] |= self.wall[:-1, :]
+        near[:-1, :] |= self.wall[1:, :]
+        grown = near.copy()
+        grown[:, 1:] |= near[:, :-1]
+        grown[:, :-1] |= near[:, 1:]
+        return grown
+
 
 # --- alignment ------------------------------------------------------------------
 
@@ -128,18 +154,22 @@ def align(ref: Grid, new: Grid, coarse_step_deg: float = 1.0) -> Alignment:
     share of `new`'s walls that then land within a pixel of one of `ref`'s.
     Maps of the same room made in different frames scored 0.7-0.85 on
     2026-09-26; judge a low score as "not the same place" at the caller.
+    A map with too little in it can match wrongly: one straight wall fits
+    anywhere along any straight wall.
     """
     if not len(ref.walls_cm) or not len(new.walls_cm):
         return Alignment(0.0, 0.0, 0.0, 0.0)
     coarse = _search(ref.walls_cm, new.walls_cm, 2 * ref.pixel_size,
-                     np.arange(-180.0, 180.0, coarse_step_deg))
+                     np.arange(-180.0, 180.0, coarse_step_deg), tolerant=True)
+    # Fine: exact pixel hits only. With a pixel's tolerance a whole plateau of
+    # shifts scores the same (the same map came out 16 cm and 0.25 deg off).
     fine = _search(ref.walls_cm, new.walls_cm, ref.pixel_size,
-                   coarse.angle_deg + np.arange(-1.5, 1.51, 0.25))
-    return fine
+                   coarse.angle_deg + np.arange(-1.5, 1.51, 0.25), tolerant=False)
+    return Alignment(fine.angle_deg, fine.tx, fine.ty, ref.wall_hits(new, fine))
 
 
-def _search(ref_cm: np.ndarray, new_cm: np.ndarray, res: float, angles) -> Alignment:
-    # The reference, one raster, dilated by a pixel so near misses count.
+def _search(ref_cm: np.ndarray, new_cm: np.ndarray, res: float, angles, tolerant: bool) -> Alignment:
+    # The reference as one raster; tolerant: dilated by a pixel so near misses count.
     ref_px = np.floor(ref_cm / res).astype(int)
     origin = ref_px.min(axis=0)
     ref_px -= origin
@@ -148,8 +178,9 @@ def _search(ref_cm: np.ndarray, new_cm: np.ndarray, res: float, angles) -> Align
     half = int(math.ceil(np.max(np.hypot(*(new_cm - centre).T)) / res)) + 2
     size = _fft_size(max(ref_ext) + 2 * half + 4)
     ref_img = np.zeros((size, size), np.float32)
-    for dx in (-1, 0, 1):
-        for dy in (-1, 0, 1):
+    reach = (-1, 0, 1) if tolerant else (0,)
+    for dx in reach:
+        for dy in reach:
             ref_img[np.clip(ref_px[:, 1] + dy, 0, size - 1), np.clip(ref_px[:, 0] + dx, 0, size - 1)] = 1
     ref_f = np.fft.rfft2(ref_img)
 

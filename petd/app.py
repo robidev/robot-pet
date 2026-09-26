@@ -42,6 +42,7 @@ class App:
         self.recognizer = None
         self.motion = None
         self.dock = None
+        self.frame = None
         self.motion_task: Optional[asyncio.Task] = None
         self.tools = None
         self.brain = None
@@ -101,6 +102,8 @@ class App:
 
         if self.vacuum is not None:
             from .spatial.dock import Dock
+            from .spatial.frame import MapFrame
+            self.frame = MapFrame(self.vacuum, cfg.motion, cfg.path(cfg.motion.reference_map), fixed=fake)
             self.dock = Dock(self)
             await self.dock.start()
 

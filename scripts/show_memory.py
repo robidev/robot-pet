@@ -10,7 +10,8 @@ Read-only: the database (memory.db_path, runtime/pet.db by default) is
 opened read-only, so it's safe while petd runs. `map` fetches the live
 map from Valetudo and marks the named places, and where the robot was when
 it last saw each person (not where they stood: petd doesn't place faces on
-the map yet); the dock is green, the robot blue.
+the map yet); the dock is green, the robot blue. Both are stored in the
+reference map's frame (petd/spatial/frame.py) and moved onto the live map.
 
 Faces are stored as fingerprints (128 numbers each), not images; the count
 per person is shown, by source (enroll, or grown from confident recognitions).
@@ -123,11 +124,24 @@ def conversation(db: sqlite3.Connection, number) -> None:
 
 
 def draw_map(db: sqlite3.Connection, cfg, out: Path) -> None:
+    import json
+
     from valetudo_client import ValetudoClient
+
+    from petd.spatial.mapgeo import Grid, align
     markers = [(p["x"], p["y"], p["name"]) for p in db.execute("SELECT * FROM places")]
     markers += [(p["last_seen_x"], p["last_seen_y"], f"{p['name']} seen from here")
                 for p in db.execute("SELECT * FROM people WHERE last_seen_x IS NOT NULL")]
-    image = ValetudoClient(cfg.vacuum.host, cfg.vacuum.port).get_map_image(markers=markers)
+    client = ValetudoClient(cfg.vacuum.host, cfg.vacuum.port)
+    reference = cfg.path(cfg.motion.reference_map)
+    if reference.exists():
+        found = align(Grid.from_valetudo(json.loads(reference.read_text())), Grid.from_valetudo(client.get_map()))
+        print(f"live map: {found.angle_deg:.1f} deg from the reference (score {found.score:.2f})")
+        back = found.inverse()
+        markers = [(*back.apply(x, y), label) for x, y, label in markers]
+    else:
+        print(f"no reference map ({reference}): markers drawn as stored")
+    image = client.get_map_image(markers=markers)
     out.parent.mkdir(parents=True, exist_ok=True)
     image.save(out)
     print(f"{len(markers)} markers -> {out}")

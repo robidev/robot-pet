@@ -340,7 +340,11 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         pose = vacuum.state.pose
         if pose is None:
             raise ToolError("I don't know where I am right now")
-        pet.db.set_place(name, pose.x, pose.y)
+        # Kept in the reference map's frame: the robot's map can change frames.
+        spot = await pet.frame.to_reference(pose.x, pose.y)
+        if spot is None:
+            raise ToolError("I can't place myself on my map right now, so I couldn't find it again")
+        pet.db.set_place(name, *spot)
         return f"remembered this spot as {name}"
 
     @registry.tool(
@@ -356,6 +360,9 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
             known = ", ".join(pet.db.places()) or "none yet"
             raise ToolError(f"I don't know a place called {name} (I know: {known})")
         check_can_move(leaving_dock_ok=True)
+        target = await pet.frame.to_current(*target)
+        if target is None:
+            raise ToolError("I can't match my map to the one I remember places on right now")
 
         async def run():
             await motion.disarm()

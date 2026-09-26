@@ -206,6 +206,13 @@ class MotionConfig:
     # stopped this close. Measured 2026-09-26: 8-12 cm off when it arrives;
     # 25 cm off with the goal on furniture, 39 cm with it inside.
     arrive_cm: float = 20.0
+    # Places are kept in this map's frame (spatial/frame.py). None yet: the
+    # first map of at least reference_min_m2 becomes it.
+    reference_map: str = "runtime/map/reference.json"
+    reference_min_m2: float = 30.0
+    # Share of the current map's walls that must land on the reference's.
+    # Measured: 0.74-0.85 aligned, 0.06-0.19 not.
+    frame_min_score: float = 0.5
 
 
 @dataclass
