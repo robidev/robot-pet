@@ -54,7 +54,7 @@ ALWAYS = ("stop", "quiet")
 BARGE_IN = {"stop": "stop", "halt": "stop", "freeze": "stop",
             "quiet": "quiet", "shut": "quiet", "silence": "quiet", "enough": "quiet"}
 # How far back our own words count when recognizing an echo by its text.
-ECHO_WINDOW_S = 20.0
+ECHO_WINDOW_S = 10.0 # 20.0
 # An echo starts while our voice is audible or just after; a transcript that
 # starts later than this after it is someone talking, even in our words
 # ("Please get Claudia" to "should I get Claudia?").
