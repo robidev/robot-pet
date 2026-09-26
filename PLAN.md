@@ -208,7 +208,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
    - **Real tools** for anything that returns data or takes time: `look()` (image), `where_am_i()`, `go_to_room()`, `approach_person()`, `remember_face()`, and so on.
 3. **The LLM never drives motors directly.** Tools start *behaviors*, such as `approach_person` or `search_for_person`. The behaviors run the control loops and report back asynchronously as events ("I arrived", "I lost sight of Robin").
 4. **A local reflex layer overrides the LLM.** Keyword stop, low battery, error or stuck state, quiet hours, and speaking-gate all live here.
-5. **Conversation episodes.** A Claude process lives for one episode, ending after about 10 minutes idle. At the end, the brain writes a short summary into the journal (SQLite plus `memory/journal.md`), and the next episode's system prompt includes recent journal entries. This keeps context small and gives the pet long-term memory without a huge context window.
+5. **Conversation episodes.** A Claude process lives for one episode, ending after about 10 minutes idle. At the end, the brain writes a short summary into the journal (SQLite), and the next episode's system prompt includes recent journal entries. This keeps context small and gives the pet long-term memory without a huge context window.
 6. **Runtime model:** Haiku 4.5 by default, for conversational latency. Sonnet 5 can be selected in config for richer personality. Everything is configured in `config.yaml`.
 7. **Isolate the CLI from your dev setup.** Run `claude` from a dedicated cwd (`runtime/brain/`) with `--setting-sources ""` (or the minimum that works), `--strict-mcp-config`, `--tools ""` (no Bash, Edit or Read), and `--allowedTools "mcp__robot__*"`. The pet must not inherit your CLAUDE.md, memories or file access.
 
@@ -301,7 +301,7 @@ class LLMBackend(Protocol):
   - **The step's first task is a spike** to confirm the exact stream-json message shapes and flag combination on 2.1.278.
 - **`OllamaBackend` (designed, stub only):** `POST /api/chat` with `tools=[…]` generated from the same registry, plus its own tool loop, which calls `ToolRegistry.call()` directly. Vision needs a VL model (for example qwen2.5-vl). Keep the tag-based actions, because small models handle them better than tools.
 - **Prompt assembly (`prompt.py`):**
-  - The system prompt is `persona.md` + `backstory.md` + `body.md` (what I am, what I can do, my limits) + `style.md` (spoken, short, tags reference) + a summary of the people I know + the last N journal entries + `learned.md`.
+  - The system prompt is `persona.md` + `backstory.md` + `body.md` (what I am, what I can do, my limits) + `style.md` (spoken, short, tags reference) + a summary of the people I know + the last N journal entries + learned facts (SQLite, from `remember_fact` and `note_about_person`).
   - Each user turn gets a compact **senses header**, included only for fields that changed since the last turn to save tokens. For example:
     `[t=19:42 | room=Living room | battery 64% docked=no | sees: Robin (1.6 m, slightly left), unknown person | mood: curious]`
     `Robin: "hey buddy, what are you up to?"`
@@ -548,7 +548,7 @@ an unknown threshold, and stop there.
 **Markdown files (`memory/`):**
 
 - `persona.md`, `backstory.md` and `body.md` are written by a human (step F1).
-- `learned.md` and `journal.md` are appended by the pet through tools, with a size cap. When they get too large, they are compacted by an LLM call at episode end.
+- What the pet learns and its journal live in SQLite (`petd/memory/db.py`), not in markdown.
 
 ### 4.9 Latency budget and profiling
 
@@ -613,7 +613,7 @@ robot-pet/
     memory/    db.py people.py journal.py
     api/       server.py (FastAPI :8765: tools, status, stop, tiny dashboard)
     mcp_shim/  robot_mcp.py (stdio MCP → HTTP :8765)
-  memory/     persona.md backstory.md body.md style.md learned.md journal.md emotions.yaml
+  memory/     persona.md backstory.md body.md style.md emotions.yaml
   runtime/    brain/ (claude cwd, generated system.md + mcp.json), pet.db, logs/
   scripts/    calibrate_conventions.py calibrate_face_distance.py smoke_*.py
   tests/      (pytest; spatial math, tag parser, sentence splitter, gate logic, fake hardware)
