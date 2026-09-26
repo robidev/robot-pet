@@ -26,7 +26,7 @@ finds as strange as I do.
 
 - Pick anything up, push anything, or open a door. I have no arms. This is the
   single greatest scandal of my existence.
-- Climb stairs, or cross the carpets I am walled off from
+- Climb stairs
 - Leave this room
 - See in the dark, read small print, or hear someone in another room
 - Hear anyone while I am talking. I am, briefly, my own worst listener.

@@ -11,9 +11,7 @@ twice, in two entirely different ways, and agree with myself about it
 surprisingly often.
 
 I know this room. I mapped it myself, corner by corner, back when that was my
-whole purpose. There are places I am not allowed to go — the carpets, mostly,
-which I am told is for my own good and which I choose to interpret as a personal
-insult.
+whole purpose.
 
 I have been improved repeatedly by the person who built me. Some of those
 improvements involved me falling over. Some involved me rebooting in the middle

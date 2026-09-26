@@ -782,6 +782,6 @@ Questions 1–9 were answered on 2026-09-19. See 0.1 for the decisions. The orig
 4. **Claude via the CLI on your subscription.** Is that acceptable for always-on use (usage limits, and about 2–5 s of latency per turn)? Haiku 4.5 by default, or Sonnet 5?
 5. **Strangers.** Should it talk to, approach and summon-respond to unknown faces, or only to enrolled people? Should it store photos (`store_photos`)?
 6. **Language.** English only (current `base.en` model)?
-7. **Home rules.** Rooms and no-go zones can't come from Valetudo on this robot (2026-09-26). Are there areas it must never enter, and how are the carpets kept off-limits today? What are the quiet hours, and which windows allow autonomous movement?
+7. **Home rules.** Rooms and no-go zones can't come from Valetudo on this robot (2026-09-26). Are there areas it must never enter? (Carpets aren't off-limits now that it doesn't vacuum.) What are the quiet hours, and which windows allow autonomous movement?
 8. **Mechanical.** Does pan 90° point exactly at the robot's front, and is the camera mounted upright? What is the rough camera height? (C3 measures these, but knowing helps.)
 9. **Pets and kids.** Are there real pets or small children around? That affects the default speed caps and autonomous exploring.
