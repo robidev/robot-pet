@@ -345,7 +345,7 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
     @registry.tool(
         "go_to_place",
         "Drive to a place I know by name (see places_i_know in get_senses). My base plans its "
-        "own route around obstacles and off-limits areas. Returns at once; I'm told when I "
+        "own route around obstacles. Returns at once; I'm told when I "
         "arrive or if I couldn't get there.",
         {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]})
     async def go_to_place(args: dict) -> str:
