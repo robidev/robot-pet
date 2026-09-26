@@ -19,7 +19,7 @@ face:
   host: 192.168.101.40
   audio_port: 5000
   audio_gain: null         # e.g. 1.5; null leaves the device setting alone
-  faces_lost_debounce_s: 5.0   # recognition drops out for seconds with a face in view
+  faces_lost_debounce_s: 5.0   # detection drops out for seconds with a face in view
 
 stt:
   binary: stt/udp-stream/whisper-udp-stream

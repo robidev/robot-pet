@@ -6,7 +6,8 @@ Async adapter around face-api's FaceApiClient + FaceEventStream.
 - FacesPresence is a debounced "someone is here / nobody is here".
 - /api/status is polled for servo/eye state. Whenever the device reports
   its audio destination as unconfigured (e.g. after a reboot), the init
-  sequence (detection, recognition, audio destination, gain) is re-applied.
+  sequence (detection on, the head's recognition off, audio destination,
+  gain) is re-applied.
   A reboot is logged as a warning, with the board's reset reason.
 - current_faces() prefers GET /api/face/current (fresh boxes) and falls
   back to the last pushed event on firmware without that endpoint.

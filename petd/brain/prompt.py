@@ -139,9 +139,9 @@ def memory_sections(pet: "App") -> str:
 
 # Overrides what body.md says about faces while recognition is switched off.
 RECOGNITION_OFF = """
-My face recognition is switched off for now; it is moving to a better system. I can
-see that someone is there, but not who. So I never claim to recognise anyone, from
-their face or from a photo, and I can't learn new faces. If it matters who I'm
+My face recognition isn't running right now. I can see that someone is there,
+but not who. So I never claim to recognise anyone, from their face or from a
+photo, and I can't learn new faces. If it matters who I'm
 talking to, I ask. A name someone gives me, I can still remember.
 """
 

@@ -103,7 +103,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **VGA × 1.0 rebooted the board:** stage one wanted one 2.4 MB buffer, the malloc failed. Stage one is now capped at 320×240 and the scale is lowered to fit, so no framesize can do that again.
 - **Default VGA × 0.5:** the same 320×240 stage-one input at **1.89 passes/s**, and `/api/snapshot` (the brain's `look()`) stays at 640×480, 0.38 s, correctly exposed. QVGA × 1.0 is the faster alternative with QVGA photos (`/api/camera?framesize=5`, `/api/face/detector?resize_scale=1.0`).
 
-`resize_scale` is settable at runtime (`/api/face/detector?resize_scale=`), and a `framesize` change re-initializes the camera, keeping every other setting. petd starts the head with recognition off (E6 moves it to the PC).
+`resize_scale` is settable at runtime (`/api/face/detector?resize_scale=`), and a `framesize` change re-initializes the camera, keeping every other setting. petd switches the head's own recognition off; recognition runs on the PC (4.7, E6).
 
 **Face tracking (2026-09-23).** Tilt overshot into a nod up close. `scripts/tracking_log.py` showed each frame matching the previous pass's pose: frames reach detection ~0.3 s after capture (the camera driver queues them), but the pose was sampled at copy time. The firmware now looks the pose up at the frame's capture timestamp, keeps an axis's target inside the deadband (aiming at the older capture pose there caused a two-pass ping-pong on pan), and gives tilt its own gain (30 at VGA, pan 55). Stable on both axes at 0.6 and 2 m. Reaction time is still ~1 s: frame age ~280 ms + detection ~370 ms + up to one pass. Fresher frames (one buffer, or skipping stale frames) measured no better overall; the numbers are in the firmware's `docs/camera-settings.md`.
 
@@ -402,12 +402,12 @@ If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, i
 | 0–1 | Calls out their name when they appear (once per N hours) | Approaches after they confirm | Name plus notes |
 | 2–3 | Name or nickname, references past conversations and running jokes, GLaDOS-style "fondness" | Approaches directly when called | Name, nickname, notes, last 3 facts, last-seen summary |
 
-**Face recognition on the PC (E6, planned).** Since 2026-09-23 the head only
+**Face recognition on the PC (E6).** Since 2026-09-23 the head only
 detects: recognizing every face on every pass cost the tracking loop time and
 bought nothing (tracking needs only the box), and the head's 112x112 recognizer
-flickered even up close (similarity ~0.55). Until E6 lands, `face.enable_recognition`
-is off: the pet doesn't know who anyone is, no stranger notes are sent, and
-`remember_face` refuses. The design below borrows from Frigate's face recognition
+flickered even up close (similarity ~0.55). Recognition runs on the PC instead
+(E6b): built, and verified live with one person, but not yet fully trusted:
+two people, daylight and a guest are still to check (Next up, item 0). The design below borrows from Frigate's face recognition
 (the matching and voting) and Immich (grouping unknown faces); see "Prior art".
 
 *Stack.* `onnxruntime` + `numpy`: 122 MB installed, measured from the wheels
@@ -695,7 +695,7 @@ Concurrency, state machines, and where the "feel" lives.
 | E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 0.7 m, facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
 | E6a | Measure first (4.7), in a venv outside petd's: YuNet + SFace on head snapshots of Robin and Claudia at 0.6/1.5/2.5 m, day and lamp light. **Lamp light done 2026-09-23** (`runtime/e6a/`); daylight and backlight to go. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim` 0.35, `accept_sim` 0.45, `margin` 0.15, `min_face_px` 45 and SFace fp32 chosen from them. |
-| E6b | **Built 2026-09-23, with fakes and E6a's real snapshots; not yet tried live.** Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
+| E6b | **Built 2026-09-23, with fakes and E6a's real snapshots; verified live with Robin** (enrollment, recognition on return and after a restart); two people, daylight and a guest still to check. Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
 | E6c | Kept attempts (4.7): the last ~200 aligned crops under `runtime/faces/attempts/`, shown by `show_memory.py`, a misread deletable or renamable. | A wrong or unsure attempt can be found and corrected after a session. |
 
 ### Cluster F: personality and content (Opus 5, medium). Creative writing, best done in one sitting.
