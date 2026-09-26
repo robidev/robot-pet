@@ -15,7 +15,7 @@ then the attention gate, then the brain.
   published as HeardDropped("not addressed") and left alone.
 - Echo is filtered twice: by time in io/stt.py (while the pet talks, plus
   a tail), and here by content, for echoes that outlast that estimate:
-  a transcript that mostly repeats the pet's last 20 s of speech is not
+  a transcript that mostly repeats the pet's last 10 s of speech is not
   someone talking to it.
 - The strict reflex match (the whole utterance is the command, give or take
   the name and a "please") keeps "don't stop" or "stop by the shop later"
@@ -54,7 +54,7 @@ ALWAYS = ("stop", "quiet")
 BARGE_IN = {"stop": "stop", "halt": "stop", "freeze": "stop",
             "quiet": "quiet", "shut": "quiet", "silence": "quiet", "enough": "quiet"}
 # How far back our own words count when recognizing an echo by its text.
-ECHO_WINDOW_S = 10.0 # 20.0
+ECHO_WINDOW_S = 10.0
 # An echo starts while our voice is audible or just after; a transcript that
 # starts later than this after it is someone talking, even in our words
 # ("Please get Claudia" to "should I get Claudia?").
