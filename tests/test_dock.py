@@ -4,8 +4,8 @@ import pytest
 
 from petd.app import App
 from petd.config import Config
-from petd.io.vacuum import MapPose
-from petd.spatial.dock import DOCK_KEY, approach_point
+from petd.io.vacuum import MapPose, VacuumState
+from petd.spatial.dock import DOCK_KEY, approach_point, await_arrival
 
 
 def test_the_approach_point_is_straight_out_in_front_of_the_dock():
@@ -113,3 +113,47 @@ async def test_the_charger_on_top_of_the_robot_is_not_learned(pet):
     pet.vacuum._update(status="docked", pose=MapPose(2562, 2552), charger=MapPose(2564, 2551))
     await asyncio.sleep(0.05)
     assert pet.dock.charger == MapPose(2548, 2540)          # the good pair, kept
+
+
+class Replay:
+    """A vacuum whose refresh() plays back a go_to's states, then keeps the last."""
+
+    def __init__(self, *states):
+        self.states = list(states)
+
+    async def refresh(self):
+        return self.states.pop(0) if len(self.states) > 1 else self.states[0]
+
+
+def at(status, x, y):
+    return VacuumState(reachable=True, status=status, pose=MapPose(x, y))
+
+
+async def arrival(*states, target=(2562, 2601)):
+    return await await_arrival(Replay(*states), "the spot", MapPose(*target), 20.0,
+                               start_grace_s=0.05, poll_s=0.01)
+
+
+async def test_a_go_to_that_gets_there_arrives():
+    # 2026-09-26 23:41: asked for (2562, 2601), stopped 8 cm short.
+    assert await arrival(at("moving", 2560, 2570), at("idle", 2561, 2593)) == ("arrived at the spot", True)
+
+
+async def test_idle_short_of_the_goal_is_not_arriving():
+    # 2026-09-26 23:52: a goal inside a box; round to its far side, ~40 cm off, still just "idle".
+    outcome, ok = await arrival(at("moving", 2600, 2560), at("idle", 2704, 2607), target=(2690, 2570))
+    assert not ok and outcome == "stopped 40 cm from the spot: something may be in the way"
+    # A goal on its edge: stopped in front of it, 25 cm off.
+    outcome, ok = await arrival(at("moving", 2600, 2560), at("idle", 2645, 2566), target=(2670, 2570))
+    assert not ok and outcome.startswith("stopped 25 cm from the spot")
+
+
+async def test_never_setting_off_depends_on_where_it_is():
+    assert await arrival(at("idle", 2560, 2598)) == ("already at the spot", True)
+    assert await arrival(at("idle", 2557, 2550)) == ("never set off for the spot: my base ignored me", False)
+
+
+async def test_an_error_is_not_arriving():
+    state = VacuumState(reachable=True, status="error", error="wheel stuck", pose=MapPose(2600, 2600))
+    outcome, ok = await arrival(at("moving", 2560, 2570), state)
+    assert not ok and "wheel stuck" in outcome

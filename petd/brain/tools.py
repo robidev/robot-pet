@@ -241,6 +241,7 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
     """Turning, moving and named places (PLAN.md 4.5; cluster C4)."""
     import asyncio
 
+    from ..io.vacuum import MapPose
     from ..spatial.dock import await_arrival
     motion, vacuum, cfg = pet.motion, pet.vacuum, pet.cfg.motion
 
@@ -359,7 +360,7 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         async def run():
             await motion.disarm()
             await vacuum.go_to(*target)
-            return await await_arrival(vacuum, name)
+            return await await_arrival(vacuum, name, MapPose(*target), cfg.arrive_cm)
         pet.start_motion(run(), f"go to {name}")
         return f"on my way to {name}"
 

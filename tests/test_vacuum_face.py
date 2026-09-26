@@ -34,7 +34,11 @@ async def test_fake_vacuum_publishes_changes():
     sub = bus.subscribe(VacuumStateChanged)
     vac = FakeVacuum(bus)
     await vac.go_to(100, 200)
-    event = await sub.get()
+    statuses = []
+    while not statuses or statuses[-1] != "idle":
+        event = await asyncio.wait_for(sub.get(), 1)
+        statuses.append(event.state.status)
+    assert statuses == ["docked", "moving", "idle"]
     assert "pose" in event.changed and vac.state.pose.x == 100
 
 

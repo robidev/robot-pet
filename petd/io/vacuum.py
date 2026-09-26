@@ -311,7 +311,7 @@ class ValetudoVacuum(VacuumAdapter):
 class FakeVacuum(VacuumAdapter):
     """
     In-memory stand-in: records commands, "arrives" at go_to targets
-    instantly, and in manual control integrates an odometry pose from the
+    after go_to_s, and in manual control integrates an odometry pose from the
     commanded speeds (after the same warm-up as the real robot, shortened).
     """
 
@@ -322,6 +322,7 @@ class FakeVacuum(VacuumAdapter):
         super().__init__(bus)
         self.commands: list = []
         self.warmup_s = warmup_s
+        self.go_to_s = 0.05
         self.odometry = FakeOdometry()
         self._manual_since: Optional[float] = None
         self._set_state(VacuumState(
@@ -338,7 +339,10 @@ class FakeVacuum(VacuumAdapter):
 
     async def go_to(self, x: float, y: float) -> None:
         self.commands.append(("go_to", x, y))
-        self._update(status="idle", pose=MapPose(x, y, self._state.pose.angle if self._state.pose else None))
+        # Moving for a moment, like the real one, then idle at the target.
+        self._update(status="moving")
+        pose = MapPose(x, y, self._state.pose.angle if self._state.pose else None)
+        asyncio.get_running_loop().call_later(self.go_to_s, lambda: self._update(status="idle", pose=pose))
 
     async def dock(self) -> None:
         self.commands.append(("dock",))

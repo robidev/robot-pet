@@ -65,9 +65,15 @@ def approach_point(charger: Optional[MapPose], docked: Optional[MapPose],
                    charger.y + (docked.y - charger.y) / offset * distance_cm)
 
 
-async def await_arrival(vacuum, name: str, timeout_s: float = 180.0, start_grace_s: float = 8.0,
+async def await_arrival(vacuum, name: str, target: MapPose, arrive_cm: float,
+                        timeout_s: float = 180.0, start_grace_s: float = 8.0,
                         poll_s: float = 1.0) -> tuple[str, bool]:
-    """Valetudo reports a go_to through its status: moving, then idle (or an error)."""
+    """
+    Valetudo reports a go_to through its status: moving, then idle (or an
+    error). Idle is also how it ends when it stopped short: a goal on
+    furniture stops it in front, one inside sends it round to the far side
+    (2026-09-26). So where it ended up decides whether it arrived.
+    """
     started_at = time.monotonic()
     started = False
     while time.monotonic() - started_at < timeout_s:
@@ -76,12 +82,26 @@ async def await_arrival(vacuum, name: str, timeout_s: float = 180.0, start_grace
             return f"couldn't get to {name}: my base reported an error ({state.error})", False
         if state.moving:
             started = True
-        elif started:
-            return f"arrived at {name}", True
-        elif time.monotonic() - started_at > start_grace_s:
-            return f"never set off for {name}: I may already be there, or my base ignored me", True
+        elif started or time.monotonic() - started_at > start_grace_s:
+            # The map pose lags the stop a little.
+            await asyncio.sleep(2 * poll_s)
+            return _arrival(await vacuum.refresh(), name, target, arrive_cm, started)
         await asyncio.sleep(poll_s)
     return f"gave up on getting to {name}: it took too long", False
+
+
+def _arrival(state: VacuumState, name: str, target: MapPose, arrive_cm: float,
+             started: bool) -> tuple[str, bool]:
+    if state.pose is None:
+        if started:
+            return f"arrived at {name}, I think: I can't tell where I am", True
+        return f"never set off for {name}, and I can't tell where I am", False
+    off = distance(state.pose, target)
+    if off <= arrive_cm:
+        return (f"arrived at {name}" if started else f"already at {name}"), True
+    if not started:
+        return f"never set off for {name}: my base ignored me", False
+    return f"stopped {off:.0f} cm from {name}: something may be in the way", False
 
 
 class Dock:
@@ -164,8 +184,9 @@ class Dock:
                 log.info("going home (attempt %d): to (%.0f, %.0f) in front of the dock first",
                          attempt, point.x, point.y)
                 await vacuum.go_to(point.x, point.y)
-                outcome, ok = await await_arrival(vacuum, "the spot in front of my dock",
-                                                  start_grace_s=self.start_grace_s, poll_s=self.poll_s)
+                outcome, ok = await await_arrival(vacuum, "the spot in front of my dock", point,
+                                                  self.cfg.arrive_cm, start_grace_s=self.start_grace_s,
+                                                  poll_s=self.poll_s)
                 if not ok:
                     log.warning("going home: %s; docking from here", outcome)
             await vacuum.dock()

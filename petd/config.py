@@ -202,6 +202,10 @@ class MotionConfig:
     dock_near_cm: float = 30.0
     dock_timeout_s: float = 90.0
     dock_attempts: int = 2
+    # A go_to ends "idle" whether it got there or not, so it arrived only if it
+    # stopped this close. Measured 2026-09-26: 8-12 cm off when it arrives;
+    # 25 cm off with the goal on furniture, 39 cm with it inside.
+    arrive_cm: float = 20.0
 
 
 @dataclass
