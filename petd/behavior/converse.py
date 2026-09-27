@@ -241,11 +241,7 @@ class Listener:
 
     def _ignore(self, text: str, reason: str) -> None:
         log.info("ignoring %r: %s", text, reason)
-        self.pet.bus.publish(HeardDropped(text=text, reason=reason))
-        brain = self.pet.brain
-        if brain is not None and brain.expressions is not None and not brain.busy:
-            # SpeechEnded already set the eye to "thinking"; nothing to think about.
-            asyncio.create_task(brain.expressions.rest())
+        self.pet.bus.publish(HeardDropped(text=text, reason=reason))   # the brain hands the eye back
 
     async def reflex(self, reflex: str, text: str) -> None:
         log.warning("reflex %s (heard %r)", reflex, text)

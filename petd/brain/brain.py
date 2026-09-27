@@ -23,8 +23,8 @@ import logging
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ..events import (BrainToolCall, SentenceReady, SpeechEnded, SpeechStarted, StopRequested,
-                      TurnEnded, TurnFirstText, TurnStarted)
+from ..events import (BrainToolCall, HeardDropped, SentenceReady, SpeechEnded, SpeechStarted,
+                      StopRequested, TurnEnded, TurnFirstText, TurnStarted)
 from . import prompt as prompt_module
 from .backend import BrainError, LLMBackend, TextDelta, ToolFinished, ToolStarted, TurnDone
 from .expressions import Expressions
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from ..app import App
 
 log = logging.getLogger(__name__)
+THINKING_TIMEOUT_S = 15.0     # "thinking" with no turn and no drop after it: hand the eye back
 
 
 class Brain:
@@ -57,7 +58,7 @@ class Brain:
 
     async def start(self) -> None:
         subs = [self.pet.bus.subscribe(StopRequested),
-                self.pet.bus.subscribe(SpeechStarted, SpeechEnded)]
+                self.pet.bus.subscribe(SpeechStarted, SpeechEnded, HeardDropped)]
         self._tasks = [
             asyncio.create_task(self._watch_stops(subs[0]), name="brain-stops"),
             asyncio.create_task(self._feedback_loop(subs[1]), name="brain-feedback"),
@@ -96,17 +97,35 @@ class Brain:
             log.warning("brain is behind; dropping %s: %r", kind, text)
 
     async def _feedback_loop(self, sub) -> None:
-        """Immediate eye feedback so the ~2s think time doesn't feel dead."""
+        """
+        Immediate eye feedback so the ~2s think time doesn't feel dead, and the
+        eye back to the device's own animation when nothing comes of it: what
+        was heard got dropped anywhere (2026-09-27: a [BLANK_AUDIO] dropped by
+        the stt adapter left the eye parked on "thinking"), or, failing that,
+        after THINKING_TIMEOUT_S. A turn hands the eye back when it ends.
+        """
         if self.expressions is None:
             return
+        fallback: Optional[asyncio.Task] = None
         async for event in sub:
             try:
+                if fallback is not None:
+                    fallback.cancel()
+                    fallback = None
                 if isinstance(event, SpeechStarted):
                     await self.expressions.listening()
                 elif isinstance(event, SpeechEnded) and not event.discarded:
                     await self.expressions.thinking()
+                    fallback = asyncio.create_task(self._rest_unless_busy(THINKING_TIMEOUT_S))
+                elif isinstance(event, HeardDropped) and not self.busy:
+                    await self.expressions.rest()
             except Exception:  # noqa: BLE001
                 log.debug("feedback expression failed", exc_info=True)
+
+    async def _rest_unless_busy(self, delay_s: float) -> None:
+        await asyncio.sleep(delay_s)
+        if not self.busy and self.expressions is not None:
+            await self.expressions.rest()
 
     # --- the turn loop --------------------------------------------------------
 

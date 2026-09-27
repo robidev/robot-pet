@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from .tags import Action
 
@@ -45,6 +45,7 @@ GLANCES: dict[str, tuple[float, float, float, float]] = {
     "ahead": (0.0, 0.0, 0.0, 0.0),
     "away":  (-0.7, 0.4, 0.0, 0.0),
 }
+GLANCE_HOLD_S = 1.5         # a glance holds this long before tracking takes over again
 
 
 class Expressions:
@@ -56,6 +57,7 @@ class Expressions:
         self.tilt_max = getattr(face.cfg, "tilt_max_deg", 180.0)
         self.pan_centre = pan_centre
         self.tilt_centre = tilt_centre
+        self._resume: Optional[asyncio.Task] = None     # tracking back on after a glance
 
     async def apply(self, action: Action) -> None:
         log.info("expresses %s%s", action.kind, f":{action.value}" if action.value else "")
@@ -90,9 +92,31 @@ class Expressions:
             state = self.face.state
             pan = (state.pan_deg if state.pan_deg is not None else self.pan_centre) + pan_offset
             tilt = (state.tilt_deg if state.tilt_deg is not None else self.tilt_centre) + tilt_offset
+            before = self._mode_to_return_to()
             await self.face.set_servo(mode="manual")
             await self.face.set_servo(pan_deg=max(0.0, min(180.0, pan)),
                                       tilt_deg=max(self.tilt_min, min(self.tilt_max, tilt)))
+            if before == "track":
+                self._track_again_after(GLANCE_HOLD_S)
+
+    def _mode_to_return_to(self) -> Optional[str]:
+        """The head's mode before this gesture: a glance's pending resume means tracking."""
+        if self._resume is not None and not self._resume.done():
+            self._resume.cancel()
+            return "track"
+        return self.face.state.servo_mode
+
+    def _track_again_after(self, delay_s: float) -> None:
+        """Tracking back on after a glance, without holding up the reply."""
+        async def later() -> None:
+            await asyncio.sleep(delay_s)
+            try:
+                await self.face.set_servo(mode="track")
+            except Exception:  # noqa: BLE001 - the next gesture or init tries again
+                log.debug("could not turn tracking back on", exc_info=True)
+        if self._resume is not None:
+            self._resume.cancel()
+        self._resume = asyncio.create_task(later(), name="track-again")
 
     async def nod(self) -> None:
         await self._wiggle(tilt=True)
@@ -104,6 +128,7 @@ class Expressions:
         state = self.face.state
         pan = state.pan_deg if state.pan_deg is not None else self.pan_centre
         tilt_deg = state.tilt_deg if state.tilt_deg is not None else self.tilt_centre
+        before = self._mode_to_return_to()
         await self.face.set_servo(mode="manual")
         for offset in (12.0, -12.0, 0.0):
             if tilt:
@@ -111,6 +136,8 @@ class Expressions:
             else:
                 await self.face.set_servo(pan_deg=max(0.0, min(180.0, pan + offset)))
             await asyncio.sleep(0.22)
+        if before == "track":           # a nod mustn't switch tracking off for good
+            await self.face.set_servo(mode="track")
 
     async def listening(self) -> None:
         await self.emote("listening")

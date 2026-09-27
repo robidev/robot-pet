@@ -248,6 +248,9 @@ class RobotFace(FaceAdapter):
         self._last_uptime: Optional[int] = None
         self._last_wifi_drops: Optional[int] = None
         self._last_answer = float("-inf")       # time.monotonic() of the last good poll
+        # The head's mode as petd last set it, re-applied after a reboot: the
+        # firmware starts in manual, so every reboot used to switch tracking off.
+        self._servo_mode = "track"
 
     async def start(self) -> None:
         await super().start()
@@ -323,13 +326,15 @@ class RobotFace(FaceAdapter):
         pc_ip = self._pc_ip
         if pc_ip == "auto":
             pc_ip = local_ip_towards(self.cfg.host, self.cfg.port)
-        log.info("initializing face: detection on, audio -> %s:%d", pc_ip, self.cfg.audio_port)
+        log.info("initializing face: detection on, head %s, audio -> %s:%d",
+                 self._servo_mode, pc_ip, self.cfg.audio_port)
         try:
             await asyncio.to_thread(self._client.set_face_detection, True)
             # Recognition happens on the PC (memory/recognition.py); on the head it
             # only cost the tracking loop time.
             await asyncio.to_thread(self._client.set_recognition, False)
             await asyncio.to_thread(self._client.set_audio_destination, pc_ip, self.cfg.audio_port)
+            await asyncio.to_thread(self._client.set_servo, mode=self._servo_mode)
             if self.cfg.audio_gain is not None:
                 await asyncio.to_thread(self._client.set_audio_gain, self.cfg.audio_gain)
         except Exception as exc:  # noqa: BLE001 - retried on the next poll
@@ -363,6 +368,8 @@ class RobotFace(FaceAdapter):
         return await asyncio.to_thread(self._client.get_snapshot)
 
     async def set_servo(self, *, mode=None, pan_deg=None, tilt_deg=None) -> None:
+        if mode is not None:
+            self._servo_mode = mode
         await asyncio.to_thread(self._client.set_servo, mode=mode, pan_deg=pan_deg, tilt_deg=tilt_deg)
 
     async def set_eye(self, x: float, y: float = 0.0, aperture: float = 1.0) -> None:
