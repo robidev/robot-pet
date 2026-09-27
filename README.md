@@ -99,9 +99,25 @@ redirects); there is no video stream.
 ## Running
 
 ```sh
-.venv/bin/python -m petd                 # the pet; Ctrl-C stops it cleanly
-.venv/bin/python -m petd --fake          # no hardware at all: fakes for everything
-.venv/bin/python -m petd --echo          # repeats what it hears: tests the audio path and the echo gate
+scripts/start.sh                 # checks, then the pet in this terminal; Ctrl-C stops it cleanly
+scripts/start.sh start           # the same in the background (the systemd user unit "petd")
+scripts/start.sh stop | restart | status | log
+scripts/start.sh check           # only the checks
+```
+
+The checks (`scripts/preflight.py`) look at everything petd needs, from the
+config: the speech recognizer and its models, the voice, the Claude CLI, the
+face models, mirrored networking, whether the PC is on the devices' network,
+and whether the face, Valetudo, the speaker and Player answer. A missing piece
+stops the start; a device that doesn't answer is only a warning, since petd
+waits for it. In the background, systemd stops petd the way Ctrl-C does and
+restarts it if it crashes.
+
+petd's own options go through `start.sh` too, or straight to petd:
+
+```sh
+scripts/start.sh --fake          # no hardware at all: fakes for everything
+scripts/start.sh --echo          # repeats what it hears: tests the audio path and the echo gate
 .venv/bin/python -m petd --log-level DEBUG
 ```
 
@@ -115,10 +131,25 @@ redirects); there is no video stream.
 - Everything it keeps is under `runtime/` (git-ignored: it holds photos of
   people). It stays under ~300 MB: old runs, logs and face crops are pruned.
 
+### Starting with WSL
+
+`scripts/start.sh install` writes and enables a systemd user unit
+(`~/.config/systemd/user/petd.service`), so petd starts whenever this WSL's
+systemd user session does; `uninstall` disables it again. Two more pieces make
+it survive a Windows reboot, both outside this repository:
+
+- `loginctl enable-linger $USER`, so the user session (and petd) starts when
+  WSL boots, without anyone opening a terminal.
+- WSL itself only starts when something asks for it. A task in Windows' Task
+  Scheduler, at logon, running `wsl.exe -d Debian -- sleep infinity` starts it
+  and keeps it from shutting down once the last terminal closes. Check with
+  `wsl -l -v` that `Debian` stays `Running` with no terminal open.
+
 ## Tools
 
 | script | what for |
 |---|---|
+| `scripts/start.sh`, `scripts/preflight.py` | start, stop and check the pet (see Running) |
 | `scripts/show_memory.py [conversation N \| map \| faces]` | what the pet stored: people, places, conversations; `map` draws places on the map; `faces` lists fingerprints and draws the face crops and recent recognition attempts |
 | `scripts/fix_faces.py forget <id>… \| assign <attempt> <name>` | correct a stored face: drop a wrong fingerprint, or give a misread attempt to the right person |
 | `scripts/latency.py [run]` | where each turn's time went, from a run's event trace |
