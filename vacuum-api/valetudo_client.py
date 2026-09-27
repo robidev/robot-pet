@@ -33,6 +33,7 @@ its docstring. Nothing in this module is called automatically on import.
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -187,100 +188,11 @@ class ValetudoClient:
                       markers: Optional[list] = None):
         """
         Rasterize the current map into a Pillow Image (bitmap), since
-        Valetudo doesn't expose one directly. Requires `pillow`
-        (pip install pillow).
-
-        Colors: floor = light grey, walls = dark grey, segments = a
-        rotating palette, robot = blue dot, charger = green dot.
-        `markers`: extra (x, y, label) points in map cm (the units of the
-        robot's position and go_to), drawn as labeled orange dots.
-
-        Layers are in map pixels, entities in cm (pixelSize cm per pixel):
-        e.g. the charger at x=2547 cm sits among floor pixels 448..633.
-
-        By default the image is cropped to the bounding box of the actual
-        floor/wall/segment layers (+ `padding` pixels), then scaled up
-        by `scale`. Without this, the room is a tiny speck in the middle
-        of Valetudo's full (e.g. 1024x1024 pixel) canvas. Pass
-        `crop_to_content=False` to get the raw full-canvas image instead.
-
-        Note: the bounding box intentionally ignores the `path` entity
-        (the robot's cleaning trail), which can extend far outside the
-        mapped room and would otherwise blow the crop back up to
-        near-full-canvas size.
+        Valetudo doesn't expose one directly. Requires `pillow`. See
+        render_map() for what is drawn; that draws a map JSON you already have.
         """
-        try:
-            from PIL import Image, ImageDraw
-        except ImportError as exc:
-            raise RuntimeError(
-                "get_map_image() requires pillow: pip install pillow"
-            ) from exc
-
-        map_data = self.get_map()
-        pixel_size = map_data.get("pixelSize") or 5
-        width = map_data["size"]["x"] // pixel_size
-        height = map_data["size"]["y"] // pixel_size
-        img = Image.new("RGB", (width, height), (20, 20, 20))
-        draw = ImageDraw.Draw(img)
-
-        segment_palette = [
-            (255, 179, 0), (0, 191, 255), (255, 99, 71),
-            (154, 205, 50), (218, 112, 214), (255, 215, 0),
-        ]
-
-        content_layers = (LAYER_TYPE_FLOOR, LAYER_TYPE_WALL, LAYER_TYPE_SEGMENT)
-        xs_min, xs_max, ys_min, ys_max = [], [], [], []
-
-        for layer in map_data.get("layers", []):
-            pixels = _decompress_pixels(layer.get("compressedPixels") or layer.get("pixels") or [])
-            if layer["type"] == LAYER_TYPE_FLOOR:
-                color = (200, 200, 200)
-            elif layer["type"] == LAYER_TYPE_WALL:
-                color = (60, 60, 60)
-            else:  # segment
-                seg_id = layer.get("metaData", {}).get("segmentId", "0")
-                color = segment_palette[hash(seg_id) % len(segment_palette)]
-
-            for x, y in _pairwise(pixels):
-                draw.point((x, y), fill=color)
-
-            if layer["type"] in content_layers:
-                dims = layer.get("dimensions", {})
-                if dims:
-                    xs_min.append(dims["x"]["min"])
-                    xs_max.append(dims["x"]["max"])
-                    ys_min.append(dims["y"]["min"])
-                    ys_max.append(dims["y"]["max"])
-
-        x0 = y0 = 0
-        if crop_to_content and xs_min:
-            x0 = max(0, min(xs_min) - padding)
-            y0 = max(0, min(ys_min) - padding)
-            x1 = min(width, max(xs_max) + padding)
-            y1 = min(height, max(ys_max) + padding)
-            img = img.crop((x0, y0, x1, y1))
-        if scale != 1:
-            img = img.resize((img.width * scale, img.height * scale), Image.NEAREST)
-
-        # Points go on after scaling, so dots and labels stay crisp.
-        draw = ImageDraw.Draw(img)
-
-        def dot(x_cm: float, y_cm: float, fill, label: Optional[str] = None) -> None:
-            x = (x_cm / pixel_size - x0) * scale
-            y = (y_cm / pixel_size - y0) * scale
-            r = max(3, scale)
-            draw.ellipse((x - r, y - r, x + r, y + r), fill=fill, outline=(0, 0, 0))
-            if label:
-                draw.text((x + r + 2, y - r - 2), label, fill=(0, 0, 0))
-
-        for entity in map_data.get("entities", []):
-            if entity["type"] == ENTITY_TYPE_ROBOT_POSITION:
-                dot(*entity["points"][:2], (0, 120, 255))
-            elif entity["type"] == ENTITY_TYPE_CHARGER_LOCATION:
-                dot(*entity["points"][:2], (0, 200, 0))
-        for x_cm, y_cm, label in markers or []:
-            dot(x_cm, y_cm, (255, 140, 0), label)
-        return img
+        return render_map(self.get_map(), scale=scale, crop_to_content=crop_to_content,
+                          padding=padding, markers=markers)
 
     def _find_point_entity(self, entity_type: str) -> Optional[dict]:
         for entity in self.get_map().get("entities", []):
@@ -559,6 +471,118 @@ class TeleopSession:
 # ---------------------------------------------------------------------- #
 # helpers
 # ---------------------------------------------------------------------- #
+
+
+def render_map(map_data: dict, scale: int = 8, crop_to_content: bool = True, padding: int = 15,
+               markers: Optional[list] = None):
+    """
+    Rasterize the current map into a Pillow Image (bitmap), since
+    Valetudo doesn't expose one directly. Requires `pillow`
+    (pip install pillow).
+
+    Colors: floor = light grey, walls = dark grey, segments = a
+    rotating palette, robot = blue dot with a tick for its heading,
+    charger = green dot, a go_to target in progress = red dot.
+    `markers`: extra (x, y, label) or (x, y, label, (r, g, b)) points in
+    map cm (the units of the robot's position and go_to), drawn as
+    labeled dots, orange unless a colour is given.
+
+    Layers are in map pixels, entities in cm (pixelSize cm per pixel):
+    e.g. the charger at x=2547 cm sits among floor pixels 448..633.
+
+    By default the image is cropped to the bounding box of the actual
+    floor/wall/segment layers (+ `padding` pixels), then scaled up
+    by `scale`. Without this, the room is a tiny speck in the middle
+    of Valetudo's full (e.g. 1024x1024 pixel) canvas. Pass
+    `crop_to_content=False` to get the raw full-canvas image instead.
+
+    Note: the bounding box intentionally ignores the `path` entity
+    (the robot's cleaning trail), which can extend far outside the
+    mapped room and would otherwise blow the crop back up to
+    near-full-canvas size.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError as exc:
+        raise RuntimeError(
+            "get_map_image() requires pillow: pip install pillow"
+        ) from exc
+
+    pixel_size = map_data.get("pixelSize") or 5
+    width = map_data["size"]["x"] // pixel_size
+    height = map_data["size"]["y"] // pixel_size
+    img = Image.new("RGB", (width, height), (20, 20, 20))
+    draw = ImageDraw.Draw(img)
+
+    segment_palette = [
+        (255, 179, 0), (0, 191, 255), (255, 99, 71),
+        (154, 205, 50), (218, 112, 214), (255, 215, 0),
+    ]
+
+    content_layers = (LAYER_TYPE_FLOOR, LAYER_TYPE_WALL, LAYER_TYPE_SEGMENT)
+    xs_min, xs_max, ys_min, ys_max = [], [], [], []
+
+    for layer in map_data.get("layers", []):
+        pixels = _decompress_pixels(layer.get("compressedPixels") or layer.get("pixels") or [])
+        if layer["type"] == LAYER_TYPE_FLOOR:
+            color = (200, 200, 200)
+        elif layer["type"] == LAYER_TYPE_WALL:
+            color = (60, 60, 60)
+        else:  # segment
+            seg_id = layer.get("metaData", {}).get("segmentId", "0")
+            color = segment_palette[hash(seg_id) % len(segment_palette)]
+
+        for x, y in _pairwise(pixels):
+            draw.point((x, y), fill=color)
+
+        if layer["type"] in content_layers:
+            dims = layer.get("dimensions", {})
+            if dims:
+                xs_min.append(dims["x"]["min"])
+                xs_max.append(dims["x"]["max"])
+                ys_min.append(dims["y"]["min"])
+                ys_max.append(dims["y"]["max"])
+
+    x0 = y0 = 0
+    if crop_to_content and xs_min:
+        x0 = max(0, min(xs_min) - padding)
+        y0 = max(0, min(ys_min) - padding)
+        x1 = min(width, max(xs_max) + padding)
+        y1 = min(height, max(ys_max) + padding)
+        img = img.crop((x0, y0, x1, y1))
+    if scale != 1:
+        img = img.resize((img.width * scale, img.height * scale), Image.NEAREST)
+
+    # Points go on after scaling, so dots and labels stay crisp.
+    draw = ImageDraw.Draw(img)
+
+    def dot(x_cm: float, y_cm: float, fill, label: Optional[str] = None) -> None:
+        x = (x_cm / pixel_size - x0) * scale
+        y = (y_cm / pixel_size - y0) * scale
+        r = max(3, scale)
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=fill, outline=(0, 0, 0))
+        if label:
+            draw.text((x + r + 2, y - r - 2), label, fill=(0, 0, 0))
+
+    for entity in map_data.get("entities", []):
+        if entity["type"] == ENTITY_TYPE_ROBOT_POSITION:
+            x_cm, y_cm = entity["points"][:2]
+            angle = (entity.get("metaData") or {}).get("angle")
+            if angle is not None:           # angle a points along (sin a, -cos a) in map cm
+                length = 30.0
+                draw.line(((x_cm / pixel_size - x0) * scale, (y_cm / pixel_size - y0) * scale,
+                           ((x_cm + length * math.sin(math.radians(angle))) / pixel_size - x0) * scale,
+                           ((y_cm - length * math.cos(math.radians(angle))) / pixel_size - y0) * scale),
+                          fill=(0, 120, 255), width=3)
+            dot(x_cm, y_cm, (0, 120, 255))
+        elif entity["type"] == ENTITY_TYPE_CHARGER_LOCATION:
+            dot(*entity["points"][:2], (0, 200, 0))
+        elif entity["type"] == ENTITY_TYPE_GO_TO_TARGET:
+            dot(*entity["points"][:2], (220, 30, 30), "go_to")
+    for marker in markers or []:
+        x_cm, y_cm, label = marker[:3]
+        dot(x_cm, y_cm, marker[3] if len(marker) > 3 else (255, 140, 0), label)
+    return img
 
 
 def _decompress_pixels(compressed: list[int]) -> list[int]:
