@@ -1,3 +1,6 @@
+Status 2026-09-27: this is the original plan (2026-09). Most of it is built: see README.md for setting
+it up and running it, and PLAN.md for the design, the progress and what is still open. Kept as it was below.
+
 API for robot: (build turtlebot style vacuum cleaner robot with lidar, bump-sensors, sonar and odometers)
 measurements via HTTP:
  - get map (bitmap?)
