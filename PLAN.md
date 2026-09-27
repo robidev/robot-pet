@@ -26,7 +26,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py` | a deliberate swap; the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
-| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back` | C5: a person's position; E4: approach and search |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | G2's start-after-reboot (a decision) |
 | Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` pausable by hand, which removed its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | the cause of the bad spells on the whole WiFi (2026-09-27, open) |
@@ -68,9 +68,9 @@ Finishes M2 and gives the first real latency numbers.
 
 **Done when** all of the above hold, and `show_memory.py faces` shows every
 stored fingerprint under the right person. **Then, from the step's data:**
-`grow_sim` (0.55 kept a hand-over-the-chin look; ~0.65?), keeping only telling
-recheck crops (the 200 kept attempts reach back only ~1 h with someone in view),
-and `unknown_sim`/`accept_sim`/`margin` against the day's scores.
+`grow_sim` (0.55 kept a hand-over-the-chin look; ~0.65?) and
+`unknown_sim`/`accept_sim`/`margin` against the day's scores. (Rechecks keep
+only telling crops since 2026-09-27, so the kept attempts reach back further.)
 
 ### Step 2: how far away, and in which direction (hands-on, one person, ~45 min)
 
@@ -101,9 +101,12 @@ measured distance at 1-2.5 m, and the bearing within ~10°. If faces can't do it
 for a standing adult (too high in the frame near the robot, too small far away),
 decide between the options of 2026-09-23: a person or feet detector on the PC's
 snapshot (distance from where the feet meet the floor), or tilting the camera up
-on its mount. **Then build C5:** `spatial/person.py` (bearing, distance, map
-target, `validate_target` with `is_free`/`march_back`) with the measured
-constants and synthetic tests, and the estimated person on the dashboard map.
+on its mount. **Then:** C5's geometry is built (`spatial/person.py`, 2026-09-27):
+paste the fit's values into `calibration:` and set `camera_calibrated: true`;
+the dashboard map and `/person` show the estimates. If a new head changes the
+camera height, set `calibration.camera_height_m` and capture again. If faces
+can't do it, only the distance part changes (the bearing, the map position and
+the target stay).
 From the microphone data: a gain before truncation or a fixed gain with a
 limiter, if quiet speech is the weak point (Findings, the microphone, 2026-09-27).
 
@@ -135,9 +138,9 @@ the robot's.
 
 ### Step 5: it comes to you (build, then hands-on): M3
 
-**Decide first:** what a small child in the room changes (Noah): speed caps,
-the standoff, whether it approaches children at all, who may summon it
-(`only_known_people_can_summon`).
+**Decide first:** approaching Noah is fine (he's 8 and happy to interact;
+Robin, 2026-09-27). Still to decide: speed caps and the standoff near him, and
+who may summon it (`only_known_people_can_summon`).
 
 **Build E4** with the fakes: `approach_person` (stop-and-look, 4.2),
 `search_for_person` (the pan sweep, then body turns), the "come here" shortcut
@@ -204,7 +207,8 @@ docks on low battery.
 | Language | English only | `base.en` stays. |
 | Rooms | One room, part of it kitchen. **No Valetudo segments or no-go areas:** this V1's Valetudo has neither capability (2026-09-26) | `go_to_room` is low value. Add **named places** ("the couch", "the door") taught by voice (4.5). A kitchen area, if wanted, is our own zone (C1). |
 | Geometry | Pan 90° = straight ahead. **Camera height 0.20 m** | Tilt elevation becomes a primary distance cue (4.2). Standoff raised to 1.0 m so standing faces stay within tilt range. |
-| Household | ~~Adults only~~ **Corrected 2026-09-27: Robin's son Noah is a young child** and is around the robot. No animals | **Open:** speed caps and approach rules (E4/E5) were set for adults only; decide what a small child in the room changes before M3. |
+| Household | ~~Adults only~~ **Corrected 2026-09-27: Robin's son Noah is 8** and around the robot. No animals | **Approaching Noah is fine** (he's happy to interact). Still open: speed caps and the standoff near him (Step 5). |
+| Camera height | **0.20 m for now; the head's design may change it** (2026-09-27) | Nothing hard-codes it: `calibration.camera_height_m`, read by `spatial/person.py` and `calibrate_face.py`. |
 
 ---
 
@@ -891,7 +895,7 @@ The hardest cluster. It is math-heavy and needs careful unit tests.
 | C2 | `spatial/pose.py`: `PoseTracker` (Player thread, ring buffer, clock offset lower envelope, `pose_odom_at(t)`, `is_stationary`), and the odom→map SE2 fix while stationary, with confidence decaying with distance travelled. | Synthetic tests: known offset and transform recovered within tolerance. The live smoke prints `pose_map_at(now)` against Valetudo while pushing the robot by hand. |
 | C3 | `scripts/calibrate_conventions.py` and `scripts/calibrate_face_distance.py`: interactive, careful, low speed. They write `calibration:` into `config.yaml` (`map_axis`, `angle_zero`, `angle_sign`, `pan_sign`, `pan_forward_deg`, `hfov_deg`, `K_face`, `cam_height_m`). | You run them once, and the values look sane. **This needs you with the robot.** |
 | C4 | `spatial/motion.py`: closed-loop `turn_by(deg)` and `move_by(cm)` using the Valetudo manual vector as the actuator and Player yaw/odom as feedback. Includes timeouts, a speed cap, and a stop on stall. Tune the relation between Valetudo `angle` and turn rate here, and document it. | ±10° turn accuracy on 90° and 180°, tested on the robot. |
-| C5 | `spatial/person.py`: bearing and distance estimation, target projection, validation, and the sightings logger hook. | Synthetic tests plus a hardware test: stand 2 m away at about 30° and check the printed target on the map image. |
+| C5 | `spatial/person.py`: bearing and distance estimation, target projection, validation, and the sightings logger hook. **Geometry built 2026-09-27** (`e43a828`): bearing, elevation, size and tilt distances with posture, map position, approach target; `/person` and the dashboard map; synthetic tests (a forward model, found within 3 cm). Constants from Step 2; the sightings hook after Step 4. | Synthetic tests plus a hardware test: stand 2 m away at about 30° and check the printed target on the map image. |
 
 ### Cluster D: brain (Opus 5, high for D1 and D2; the rest Sonnet 5, medium)
 
@@ -959,7 +963,7 @@ Concurrency, state machines, and where the "feel" lives.
 
 ## 9. Open questions
 
-- **A child in the room** (Noah): speed caps, the standoff, whether it approaches a child, who may summon it. Decide before Step 5.
+- **Noah near the robot:** approaching him is fine; speed caps, the standoff near him and who may summon it are to decide before Step 5.
 - **Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.
 - **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
 - **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. The first list's other answers are under "Decisions".
