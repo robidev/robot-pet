@@ -3,7 +3,8 @@ The faces behind the numbers (PLAN.md 4.7, E6c, first part): the aligned
 112x112 crops recognition worked on, as small JPEGs on the PC.
 
     runtime/faces/attempts/<time>_as-<verdict>_best-<name>-<similarity>.jpg
-        every usable recognition attempt, the last `keep_attempts`
+        every usable recognition attempt, the last `keep_attempts`; a recheck's
+        only when it says something new (memory/recognition.py, _telling)
     runtime/faces/fingerprints/<id>.jpg
         every stored fingerprint (enrolled or grown), by its face_embeddings id;
         a crop goes when its fingerprint does (prune_fingerprints)

@@ -311,6 +311,39 @@ async def test_a_wrong_name_is_corrected_by_a_later_look(pet):
     assert pet.people.who_is_here() == (["Claudia"], 0)
 
 
+async def test_a_recheck_keeps_only_the_crops_that_tell_something(pet, tmp_path):
+    from PIL import Image
+    from petd.vision.kept import FaceKeeper
+    pet.recognizer.keeper = FaceKeeper(tmp_path, 200, lambda pid: {1: "Robin", 2: "Claudia"}.get(pid, "nobody"))
+    robin_face, claudia_face = someone(), someone()
+    store_face(pet, "Robin", robin_face)
+    store_face(pet, "Claudia", claudia_face)
+
+    def looks(face):
+        s = sample(view(face, 0.3))
+        s.crop = Image.new("RGB", (112, 112))
+        return [s]
+    kept = lambda: sorted(p.name for p in (tmp_path / "attempts").iterdir())
+    arrived = pet.bus.subscribe(PersonArrived)
+    pet.recognizer.engine.default = looks(robin_face)
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Robin"
+    for _ in range(100):                       # the first visit, with its confirmations
+        if not pet.recognizer._visiting():
+            break
+        await asyncio.sleep(0.01)
+    first_visit = kept()
+    assert first_visit and all("as-Robin" in n for n in first_visit)
+
+    pet.cfg.recognition.recheck_every_s = 0.05
+    await asyncio.sleep(1.2)                   # rechecks that only confirm Robin
+    assert kept() == first_visit
+
+    pet.recognizer.engine.default = looks(claudia_face)
+    assert (await asyncio.wait_for(arrived.get(), 3)).name == "Claudia"
+    assert any("as-Claudia" in n for n in kept())
+
+
 async def test_a_stranger_is_mentioned_after_a_few_clear_looks(pet):
     pet.cfg.memory.stranger_after_s = 0
     store_face(pet, "Robin", someone())

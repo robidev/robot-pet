@@ -76,6 +76,7 @@ class Recognizer:
         self._gave_up_faces = 0
         self._faces_before = 0
         self._recheck = False           # a face went out of view: look again before trusting names
+        self._rechecking = False        # the running visit is a recheck (its crops kept only if telling)
 
     async def start(self) -> None:
         self.reload()
@@ -158,6 +159,7 @@ class Recognizer:
 
     async def _run_visit(self, recheck: bool = False) -> None:
         attempts = confirmed = 0
+        self._rechecking = recheck
         try:
             while attempts < self.cfg.max_attempts + self.cfg.confirm_attempts:
                 if not self.paused:
@@ -187,6 +189,16 @@ class Recognizer:
         finally:
             asyncio.get_running_loop().call_soon(self._after_visit)
 
+    def _telling(self, guess) -> bool:
+        """
+        A recheck's crop is kept only if it says something new: someone not
+        known to be here, unknown, or a doubtful score. Confirming who is here
+        every 10 s would otherwise fill the kept attempts within about an hour.
+        """
+        present = set(self.pet.people.present) if self.pet.people is not None else set()
+        return (guess.person_id is None or guess.person_id not in present
+                or guess.similarity < self.cfg.grow_sim)
+
     def _settle(self) -> None:
         """After a fresh look: whoever it didn't name is no longer taken to be in view."""
         if self.pet.people is not None:
@@ -206,7 +218,7 @@ class Recognizer:
             log.debug("face at (%.2f, %.2f), %.0f px: best %s at %.2f (next %.2f) -> %s",
                       *sample.centre, sample.height, guess.best_id, guess.similarity, guess.second,
                       guess.person_id)
-            if self.keeper is not None:
+            if self.keeper is not None and (not self._rechecking or self._telling(guess)):
                 self.keeper.attempt(sample, guess)
         for track in self.tracks:
             decision = track.vote.decide(self.cfg.unknown_sim, self.cfg.accept_sim, self.cfg.min_agree)
