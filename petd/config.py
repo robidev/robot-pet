@@ -293,6 +293,9 @@ class RecognitionConfig:
     attempt_every_s: float = 1.5
     max_attempts: int = 12
     confirm_attempts: int = 6
+    # While a named face is in view, look again this often (0: never), so a
+    # wrong name doesn't last the whole conversation. ~2 snapshots each.
+    recheck_every_s: float = 10.0
     # Growth: a confident attempt (at least grow_sim to the person it was voted
     # as) is kept as another fingerprint if it's a new look: less than
     # duplicate_sim to every one kept. At most grow_per_visit a visit; once a

@@ -51,6 +51,7 @@ async def pet():
     cfg.speaker.enabled = False
     cfg.face.faces_lost_debounce_s = 0.1
     cfg.recognition.attempt_every_s = 0.01
+    cfg.recognition.recheck_every_s = 0     # tests that want it turn it on
     cfg.recognition.enroll_timeout_s = 0.3
     cfg.recognition.enroll_step_back_s = 0.0
     app = App(cfg, fake=True)
@@ -290,6 +291,24 @@ async def test_a_swap_within_the_presence_debounce_is_noticed(pet):
     assert not pet.recognizer._visiting()
     assert pet.people.who_is_here() == (["Claudia"], 0)
     assert left.get_nowait() is None and arrived.get_nowait() is None
+
+
+async def test_a_wrong_name_is_corrected_by_a_later_look(pet):
+    # No gap in detection at all: only the periodic look can notice.
+    robin_face, claudia_face = someone(), someone()
+    store_face(pet, "Robin", robin_face)
+    store_face(pet, "Claudia", claudia_face)
+    arrived = pet.bus.subscribe(PersonArrived)
+    left = pet.bus.subscribe(PersonLeft)
+    pet.recognizer.engine.default = [sample(view(robin_face))]
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Robin"
+
+    pet.cfg.recognition.recheck_every_s = 0.05
+    pet.recognizer.engine.default = [sample(view(claudia_face))]
+    assert (await asyncio.wait_for(arrived.get(), 3)).name == "Claudia"
+    assert (await asyncio.wait_for(left.get(), 2)).name == "Robin"
+    assert pet.people.who_is_here() == (["Claudia"], 0)
 
 
 async def test_a_stranger_is_mentioned_after_a_few_clear_looks(pet):

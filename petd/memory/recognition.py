@@ -11,10 +11,12 @@ before. Up to `max_attempts` a visit, and `confirm_attempts` more once everyone
 is named, which is also when confident attempts grow the person's fingerprint
 set: daylight, lamp light and new angles come with ordinary use.
 
-Names stick for the presence episode, but a face going out of view (the head
-seeing fewer faces than before, even for a moment) calls for a fresh look:
-someone may have stepped out and someone else in within the presence debounce.
-That look's names replace the old ones (People.still_here).
+Names stick for the presence episode, but a fresh look replaces them
+(People.still_here) when a face goes out of view (the head seeing fewer faces
+than before, even for a moment: someone may have stepped out and someone else
+in within the presence debounce), and every `recheck_every_s` while a named
+face is in view, so an early wrong name gets corrected. A fresh look that
+can't name a face drops its old name too: unsure means unknown.
 
 A face seen clearly several times without a name is a stranger (People says so,
 at most every `stranger_every_min`). A face too small, dark or doubtful never
@@ -69,6 +71,7 @@ class Recognizer:
         self.collect_every_s = 0.3      # between enrollment snapshots (tests shorten it)
         self._visit: Optional[asyncio.Task] = None
         self._task: Optional[asyncio.Task] = None
+        self._periodic: Optional[asyncio.Task] = None
         self._gave_up_at = float("-inf")
         self._gave_up_faces = 0
         self._faces_before = 0
@@ -79,9 +82,10 @@ class Recognizer:
         log.info("face recognition on: %d people with a stored face", len(self.centres))
         sub = self.pet.bus.subscribe(FacesChanged, FacesPresence)
         self._task = asyncio.create_task(self._watch(sub), name="recognizer")
+        self._periodic = asyncio.create_task(self._recheck_now_and_then(), name="recognition-recheck")
 
     async def close(self) -> None:
-        for task in (self._task, self._visit):
+        for task in (self._task, self._periodic, self._visit):
             if task:
                 task.cancel()
 
@@ -111,6 +115,15 @@ class Recognizer:
                     self._maybe_start(faces)
             except Exception:  # noqa: BLE001 - one bad event must not stop recognition
                 log.exception("recognizer failed on %r", event)
+
+    async def _recheck_now_and_then(self) -> None:
+        while True:
+            every = self.cfg.recheck_every_s
+            await asyncio.sleep(every if every > 0 else 1.0)
+            if (every > 0 and self._faces_before and not self._visiting()
+                    and any(t.person_id is not None for t in self.tracks)):
+                self._recheck = True
+                self._maybe_start(self._faces_before)
 
     def _visiting(self) -> bool:
         return self._visit is not None and not self._visit.done()
