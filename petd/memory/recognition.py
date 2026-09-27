@@ -138,7 +138,7 @@ class Recognizer:
             return                      # just tried these faces; a new one would restart
         recheck, self._recheck = self._recheck, False
         if recheck:
-            log.debug("recognition: a face went out of view; looking again")
+            log.debug("recognition: looking again (a face went out of view, or it's time)")
             self.tracks = []
         self._visit = asyncio.create_task(self._run_visit(recheck), name="recognition-visit")
 
