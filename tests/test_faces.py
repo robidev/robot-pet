@@ -95,3 +95,19 @@ def test_real_snapshots_from_e6a_are_told_apart():
             v.add(guess, f.area)
         decided = v.decide(cfg.unknown_sim, cfg.accept_sim, cfg.min_agree)
         assert decided and decided[0] == people.index(name), f"{name} at {distance}: {decided}"
+
+
+def test_kept_crops_are_named_by_verdict_and_pruned(tmp_path):
+    from PIL import Image
+    from petd.memory.recognition import sample
+    from petd.vision.kept import FaceKeeper
+    keeper = FaceKeeper(tmp_path, keep_attempts=3, name_of=lambda pid: {1: "Robin"}.get(pid, "nobody"))
+    face = sample([1.0] + [0.0] * 127)
+    face.crop = Image.new("RGB", (112, 112))
+    keeper.attempt(face, Guess(None, 0.19, 1, -1.0))
+    assert [p.name.split("_", 1)[1] for p in (tmp_path / "attempts").iterdir()] == ["as-unknown_best-Robin-0.19.jpg"]
+    for _ in range(4):
+        keeper.attempt(face, Guess(1, 0.61, 1, -1.0))
+    assert len(list((tmp_path / "attempts").iterdir())) == 3
+    keeper.fingerprint(41, face)
+    assert (tmp_path / "fingerprints" / "41.jpg").exists()

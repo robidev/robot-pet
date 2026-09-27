@@ -32,6 +32,7 @@ from ..vision.matching import Vote, class_centre, classify, from_blob, to_blob
 if TYPE_CHECKING:
     from ..app import App
     from ..vision.faces import FaceSample
+    from ..vision.kept import FaceKeeper
 
 log = logging.getLogger(__name__)
 
@@ -52,9 +53,10 @@ class Track:
 
 
 class Recognizer:
-    def __init__(self, pet: "App", engine):
+    def __init__(self, pet: "App", engine, keeper: Optional["FaceKeeper"] = None):
         self.pet = pet
         self.engine = engine
+        self.keeper = keeper            # the crops behind attempts and fingerprints, if kept
         self.cfg = pet.cfg.recognition
         self.centres: dict[int, np.ndarray] = {}
         self.tracks: list[Track] = []
@@ -152,6 +154,8 @@ class Recognizer:
             log.debug("face at (%.2f, %.2f), %.0f px: best %s at %.2f (next %.2f) -> %s",
                       *sample.centre, sample.height, guess.best_id, guess.similarity, guess.second,
                       guess.person_id)
+            if self.keeper is not None:
+                self.keeper.attempt(sample, guess)
         for track in self.tracks:
             decision = track.vote.decide(self.cfg.unknown_sim, self.cfg.accept_sim, self.cfg.min_agree)
             if decision is not None and decision[0] != track.person_id:
@@ -225,9 +229,11 @@ class Recognizer:
                 if victim is None or victim[1] <= closest:
                     continue                # nothing kept is more redundant than this look would be
                 db.delete_face_embedding(victim[0])
-            db.add_face_embedding(pid, to_blob(sample.embedding), source="grown",
-                                  face_px=sample.height, sharpness=sample.sharpness,
-                                  brightness=sample.brightness)
+            embedding_id = db.add_face_embedding(pid, to_blob(sample.embedding), source="grown",
+                                                 face_px=sample.height, sharpness=sample.sharpness,
+                                                 brightness=sample.brightness)
+            if self.keeper is not None:
+                self.keeper.fingerprint(embedding_id, sample)
             track.grown += 1
             changed = True
             log.info("person %d: kept a new look (%.0f px, %.2f to the closest kept)",

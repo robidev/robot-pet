@@ -248,9 +248,11 @@ class People:
         if existing:
             self.db.delete_face_embeddings(person.id)       # a retake replaces the old face
         for s in close + far:
-            self.db.add_face_embedding(person.id, to_blob(s.embedding), source="enroll",
-                                       face_px=s.height, sharpness=s.sharpness,
-                                       brightness=s.brightness)
+            embedding_id = self.db.add_face_embedding(person.id, to_blob(s.embedding), source="enroll",
+                                                      face_px=s.height, sharpness=s.sharpness,
+                                                      brightness=s.brightness)
+            if recognizer.keeper is not None:
+                recognizer.keeper.fingerprint(embedding_id, s)
         recognizer.reload()
         recognizer.mark_current(person.id)
 

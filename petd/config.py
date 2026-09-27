@@ -308,6 +308,9 @@ class RecognitionConfig:
     enroll_samples: int = 5
     enroll_timeout_s: float = 10.0
     enroll_step_back_s: float = 3.0          # after "take one step back", before the second set
+    # The aligned crops behind attempts and fingerprints (petd/vision/kept.py).
+    faces_dir: str = "runtime/faces"
+    keep_attempts: int = 200
 
 
 @dataclass

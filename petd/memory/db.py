@@ -199,12 +199,12 @@ class MemoryDB:
 
     def add_face_embedding(self, person_id: int, vector: bytes, *, source: str,
                            face_px: Optional[float] = None, sharpness: Optional[float] = None,
-                           brightness: Optional[float] = None, t: Optional[float] = None) -> None:
-        self._db.execute(
+                           brightness: Optional[float] = None, t: Optional[float] = None) -> int:
+        return self._db.execute(
             "INSERT INTO face_embeddings (person_id, t_utc, vector, face_px, sharpness, "
             "brightness, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (person_id, time.time() if t is None else t, vector, face_px, sharpness,
-             brightness, source))
+             brightness, source)).lastrowid
 
     def face_embeddings(self) -> dict[int, list[bytes]]:
         """person id -> their fingerprints, raw."""

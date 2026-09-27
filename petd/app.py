@@ -216,7 +216,19 @@ class App:
         except Exception as exc:  # noqa: BLE001 - missing models or packages: run without it
             log.warning("face recognition off: %s", exc)
             return None
-        return Recognizer(self, engine)
+        keeper = None
+        if not self.fake:
+            from .vision.kept import FaceKeeper
+            keeper = FaceKeeper(self.cfg.path(rc.faces_dir), rc.keep_attempts, self._face_name)
+        return Recognizer(self, engine, keeper)
+
+    def _face_name(self, person_id) -> str:
+        """A person's name for a kept crop's file name."""
+        if person_id is None:
+            return "nobody"
+        person = self.db.person(person_id) if self.db is not None else None
+        name = person.name if person is not None else f"id{person_id}"
+        return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
 
     @property
     def recognition_on(self) -> bool:
