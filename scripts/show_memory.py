@@ -5,6 +5,7 @@ What the pet has stored: people, places, facts, conversations, photos.
     .venv/bin/python scripts/show_memory.py conversation 12  # one conversation, word for word
     .venv/bin/python scripts/show_memory.py conversation     # the latest one
     .venv/bin/python scripts/show_memory.py map              # places on the robot's map, as a PNG
+    .venv/bin/python scripts/show_memory.py faces            # fingerprints and recent attempts, as pictures
 
 Read-only: the database (memory.db_path, runtime/pet.db by default) is
 opened read-only, so it's safe while petd runs. `map` fetches the live
@@ -14,7 +15,10 @@ the map yet); the dock is green, the robot blue. Both are stored in the
 reference map's frame (petd/spatial/frame.py) and moved onto the live map.
 
 Faces are stored as fingerprints (128 numbers each), not images; the count
-per person is shown, by source (enroll, or grown from confident recognitions).
+per person is shown, by source (enroll, grown from confident recognitions, or
+assigned by hand). `faces` lists them with the crop each came from (kept since
+2026-09-27, in runtime/faces/) and draws contact sheets of them and of the
+recent recognition attempts; scripts/fix_faces.py corrects a misread.
 Photos show up under "photos" once petd keeps some (the observations table).
 """
 
@@ -147,6 +151,45 @@ def draw_map(db: sqlite3.Connection, cfg, out: Path) -> None:
     print(f"{len(markers)} markers -> {out}")
 
 
+def faces(db: sqlite3.Connection, cfg, attempts: int) -> None:
+    from petd.vision.kept import FaceKeeper, contact_sheet
+    keeper = FaceKeeper(cfg.path(cfg.recognition.faces_dir), cfg.recognition.keep_attempts, str)
+    sheets = cfg.path(cfg.recognition.faces_dir) / "sheets"
+    tiles: list = []
+    for person in db.execute("SELECT * FROM people ORDER BY name"):
+        rows = db.execute("SELECT id, t_utc, face_px, source FROM face_embeddings WHERE person_id = ? "
+                          "ORDER BY id", (person["id"],)).fetchall()
+        if not rows:
+            continue
+        with_crop = sum(keeper.fingerprint_crop(r["id"]) is not None for r in rows)
+        print(f"== {person['name']}: {len(rows)} fingerprints, {with_crop} with a crop")
+        for r in rows:
+            px = f"{r['face_px']:.0f} px" if r["face_px"] else "-"
+            crop = "" if keeper.fingerprint_crop(r["id"]) else "  (no crop: stored before 2026-09-27)"
+            print(f"  {r['id']:4d}  {r['source']:8s} {px:>7s}  "
+                  f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(r['t_utc']))}{crop}")
+            tiles.append((keeper.fingerprint_crop(r["id"]), f"{r['id']} {person['name'][:7]} {r['source'][0]}"))
+        tiles.append((None, ""))
+    if tiles:
+        out = contact_sheet(tiles, sheets / "fingerprints.jpg",
+                            heading="stored fingerprints: id, person, e(nroll) g(rown) a(ssigned)")
+        print(f"-> {out}")
+
+    recent = keeper.recent_attempts(attempts)
+    if not recent:
+        print("\n== Attempts: none kept yet")
+        return
+    unknown = sum(a.verdict is None for a in recent)
+    print(f"\n== The last {len(recent)} recognition attempts ({unknown} unknown), newest last")
+    for a in recent[-10:]:
+        print(f"  {a.time}  {a.verdict or 'unknown':10s} best {a.best} {a.similarity:.2f}")
+    out = contact_sheet([(a.path, f"{a.clock} {a.similarity:.2f} {(a.verdict or '?')[:6]}") for a in recent],
+                        sheets / "attempts.jpg",
+                        heading="attempts: time, similarity to the best match, the name given (? = unknown)")
+    print(f"-> {out}")
+    print("Fix a misread with scripts/fix_faces.py (forget <fingerprint id>, assign <attempt time> <name>).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", help="YAML config (default: ./config.yaml if present)")
@@ -155,6 +198,8 @@ def main() -> None:
     p.add_argument("number", type=int, nargs="?")
     p = sub.add_parser("map")
     p.add_argument("--out", type=Path, default=ROOT / "runtime" / "memory-map.png")
+    p = sub.add_parser("faces")
+    p.add_argument("--attempts", type=int, default=60, help="how many recent attempts (default 60)")
     args = parser.parse_args()
 
     cfg = load_config(Path(args.config) if args.config else None)
@@ -167,6 +212,8 @@ def main() -> None:
         conversation(db, args.number)
     elif args.cmd == "map":
         draw_map(db, cfg, args.out)
+    elif args.cmd == "faces":
+        faces(db, cfg, args.attempts)
     else:
         overview(db)
 

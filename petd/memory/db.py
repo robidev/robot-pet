@@ -95,7 +95,7 @@ MIGRATIONS = [
         face_px REAL,                        -- face height in the snapshot
         sharpness REAL,
         brightness REAL,
-        source TEXT NOT NULL                 -- 'enroll' | 'grown'
+        source TEXT NOT NULL                 -- 'enroll' | 'grown' | 'assigned' (by hand)
     );
     CREATE INDEX face_embeddings_person ON face_embeddings(person_id);
     """,
@@ -205,6 +205,17 @@ class MemoryDB:
             "brightness, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (person_id, time.time() if t is None else t, vector, face_px, sharpness,
              brightness, source)).lastrowid
+
+    def face_embedding(self, embedding_id: int) -> Optional[dict]:
+        """One fingerprint's row (without the vector), or None."""
+        row = self._db.execute("SELECT id, person_id, t_utc, face_px, source FROM face_embeddings "
+                               "WHERE id = ?", (embedding_id,)).fetchone()
+        return dict(row) if row else None
+
+    def all_face_rows(self) -> list[tuple[int, int, bytes]]:
+        """Everyone's fingerprints: (id, person id, vector)."""
+        return [(row["id"], row["person_id"], row["vector"])
+                for row in self._db.execute("SELECT id, person_id, vector FROM face_embeddings ORDER BY id")]
 
     def face_embedding_ids(self) -> set[int]:
         return {row["id"] for row in self._db.execute("SELECT id FROM face_embeddings")}
