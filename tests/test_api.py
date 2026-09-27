@@ -90,3 +90,15 @@ async def test_the_tool_console_lists_the_tools(pet):
         assert response.status_code == 503
     else:
         assert all({"name", "description", "schema"} <= set(t) for t in response.json())
+
+
+async def test_person_estimates_each_face_in_view(pet):
+    from petd.io.face import Face
+    async with client(pet) as c:
+        assert (await c.get("/person")).json()["people"] == []
+        pet.face.show(Face(-1, 0.9, 0.45, 0.4, 0.55, 0.55))      # a face 0.15 of the frame tall
+        answer = (await c.get("/person")).json()
+    assert answer["calibrated"] is False
+    [one] = answer["people"]
+    assert abs(one["size_m"] - pet.cfg.calibration.K_face / 0.15) < 1e-6
+    assert one["xy"] is not None and "uncalibrated" in one["text"]

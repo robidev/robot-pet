@@ -165,6 +165,34 @@ class CalibrationConfig:
     """
     map_heading_offset_deg: float = -90.0
     map_heading_sign: float = 1.0
+    # The camera (spatial/person.py, C5). Names as scripts/calibrate_face.py fit
+    # prints them. Until Step 2 measures them, camera_calibrated stays false and
+    # these are starting values: K_face from E6a's snapshots (faces 195/80/47 px
+    # of 480 at 0.6/1.5/2.5 m: distance x box height ~0.245 at all three, with
+    # the PC's detector; the head's boxes may differ), the rest nominal.
+    camera_calibrated: bool = False
+    camera_height_m: float = 0.20             # the lens above the floor; the head's design may change it
+    camera_forward_cm: float = 0.0            # the lens ahead of the robot's map position
+    K_face: float = 0.245                     # horizontal distance (m) x face box height (fraction of the frame)
+    hfov_deg: float = 60.0
+    vfov_deg: Optional[float] = None          # None: from hfov_deg for a 4:3 frame
+    pan_forward_deg: float = 90.0             # pan 90 = straight ahead (measured roughly)
+    pan_sign: float = 1.0                     # +1: pan grows to the robot's left
+    cx_per_pan_deg_sign: float = 1.0          # +1: a face moves right in the image as pan grows
+    tilt_level_deg: float = 90.0              # tilt 90 is level (2026-09-23)
+    tilt_deg_per_elevation_deg: float = 1.0   # lower tilt looks up
+
+
+@dataclass
+class PersonConfig:
+    """Where a person is, from what the head sees (spatial/person.py, C5; PLAN.md 4.2)."""
+    standoff_m: float = 1.0                   # stop this far in front of them
+    clearance_cm: float = 25.0                # the approach target this far from anything mapped
+    # Eye height by posture, when the person's own (people.face_z_m) isn't known:
+    # the one whose tilt distance agrees best with the face-size distance wins.
+    postures: dict = field(default_factory=lambda: {"standing": 1.55, "sitting or a child": 1.2})
+    min_elevation_deg: float = 5.0            # below: tilt says little about distance, size only
+    tilt_weight: float = 0.5                  # tilt vs size distance, when both are usable
 
 
 @dataclass
@@ -339,6 +367,7 @@ class Config:
     converse: ConverseConfig = field(default_factory=ConverseConfig)
     motion: MotionConfig = field(default_factory=MotionConfig)
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
+    person: PersonConfig = field(default_factory=PersonConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
     api: ApiConfig = field(default_factory=ApiConfig)

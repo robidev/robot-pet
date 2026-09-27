@@ -83,3 +83,24 @@ log:
   max_file_mb: 20              # petd.log rotates at this size,
   keep_files: 3                # keeping this many older ones
   events: true                 # every bus event to events.jsonl, for scripts/latency.py
+
+calibration:                   # measured conventions (PLAN.md 4.1) and the camera (C5)
+  map_heading_offset_deg: -90.0
+  map_heading_sign: 1.0
+  # The camera (C5; scripts/calibrate_face.py fit prints these). Starting values
+  # until Step 2 measures them; then set camera_calibrated: true.
+  camera_calibrated: false
+  camera_height_m: 0.20        # the lens above the floor: change it with the head's design
+  camera_forward_cm: 0.0       # the lens ahead of the robot's map position
+  K_face: 0.245                # distance (m) x face box height (fraction of the frame)
+  hfov_deg: 60.0
+  pan_forward_deg: 90.0
+  pan_sign: 1.0                # +1: pan grows to the robot's left
+  cx_per_pan_deg_sign: 1.0     # +1: a face moves right in the image as pan grows
+  tilt_level_deg: 90.0
+  tilt_deg_per_elevation_deg: 1.0
+
+person:                        # where a person is (spatial/person.py, C5)
+  standoff_m: 1.0              # stop this far in front of them
+  clearance_cm: 25             # the target this far from anything mapped
+  postures: {standing: 1.55, sitting or a child: 1.2}   # eye heights (m) when a person's own isn't known

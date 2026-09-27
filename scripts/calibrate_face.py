@@ -29,12 +29,15 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "face-api"))
 
 from face_client import FaceApiClient  # noqa: E402
 
 LOG = ROOT / "runtime" / "calibration" / "face.jsonl"
-CAMERA_HEIGHT_M = 0.20
+# From the config: the head's design may still change it (calibration.camera_height_m).
+from petd.config import load_config  # noqa: E402
+CAMERA_HEIGHT_M = load_config().calibration.camera_height_m
 
 
 def client(args) -> FaceApiClient:

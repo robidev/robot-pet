@@ -151,6 +151,12 @@ def create_app(pet: "App") -> FastAPI:
             "attempts": attempts,
         }
 
+    @api.get("/person")
+    async def person() -> dict:
+        """Where each face the head sees now is, on the map (spatial/person.py, C5)."""
+        return {"calibrated": pet.cfg.calibration.camera_calibrated,
+                "people": [to_jsonable(e) | {"text": e.describe()} for e in await person_estimates(pet)]}
+
     @api.get("/faces/attempt/{name}")
     def face_attempt(name: str) -> Response:
         """One kept attempt's crop (runtime/faces/attempts/); only attempt file names."""
@@ -174,6 +180,37 @@ def create_app(pet: "App") -> FastAPI:
 
 PLACE_COLOUR = (255, 140, 0)
 PERSON_COLOUR = (140, 60, 200)
+ESTIMATE_COLOUR = (220, 0, 140)
+TARGET_COLOUR = (0, 170, 170)
+_grid_cache: list = [None, None]            # [map json it was made from, Grid]
+
+
+def current_grid(pet: "App"):
+    """The map as a Grid (mapgeo), decoded once per map the vacuum adapter polled."""
+    raw = pet.vacuum.last_map if pet.vacuum else None
+    if raw is None:
+        return None
+    if _grid_cache[0] is not raw:
+        from ..spatial.mapgeo import Grid
+        _grid_cache[:] = [raw, Grid.from_valetudo(raw)]
+    return _grid_cache[1]
+
+
+async def person_estimates(pet: "App") -> list:
+    """An estimate for each face the head sees now; the eye height of the one known person if alone."""
+    if pet.face is None:
+        return []
+    from ..spatial.person import estimate
+    frame = await pet.face.current_faces()
+    if not frame.faces:
+        return []
+    face_z = None
+    if pet.people is not None and len(frame.faces) == 1 and len(pet.people.present) == 1:
+        face_z = next(iter(pet.people.present.values())).face_z_m
+    pose = pet.vacuum.state.pose if pet.vacuum else None
+    grid = await asyncio.to_thread(current_grid, pet)
+    return [estimate(f, frame.pan_deg, frame.tilt_deg, pet.cfg.calibration, pet.cfg.person, pose, grid, face_z)
+            for f in frame.faces]
 
 
 async def map_markers(pet: "App") -> list:
@@ -184,13 +221,19 @@ async def map_markers(pet: "App") -> list:
     stored = [(*db.place(name), name, PLACE_COLOUR) for name in db.places()]
     stored += [(p.last_seen_x, p.last_seen_y, f"{p.name} seen from here", PERSON_COLOUR)
                for p in db.people() if p.last_seen_x is not None]
-    if frame is None:
-        return stored
     markers = []
     for x, y, label, colour in stored:
-        spot = await frame.to_current(x, y)
+        spot = await frame.to_current(x, y) if frame is not None else (x, y)
         if spot is not None:
             markers.append((*spot, label, colour))
+    try:
+        for e in await person_estimates(pet):     # already in the current map's frame
+            if e.xy is not None:
+                markers.append((*e.xy, "person " + e.describe(), ESTIMATE_COLOUR))
+            if e.target is not None:
+                markers.append((*e.target, "approach target", TARGET_COLOUR))
+    except Exception:  # noqa: BLE001 - the map draws without them
+        log.debug("no person estimates for the map", exc_info=True)
     return markers
 
 
@@ -241,7 +284,7 @@ dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0}dt{color:va
 <div class="card"><h2>People</h2><dl id="presence"></dl>
 <table id="tracks"></table><h2 style="margin-top:10px">Latest attempts</h2><div class="thumbs" id="attempts"></div></div>
 <div class="card span2"><h2>Map</h2><div class="row"><label><input type="checkbox" id="maplive" checked> refresh every 5 s</label>
-<span class="muted">blue robot · green dock · red go_to · orange places · purple last seen</span></div>
+<span class="muted">blue robot · green dock · red go_to · orange places · purple last seen · magenta a person now, cyan where it would stop</span></div>
 <img id="map" alt=""><div class="muted" id="nomap" hidden>no map yet: the robot is unreachable, or this is --fake</div></div>
 <div class="card wide"><h2>Events</h2>
 <div class="row"><input type="text" id="filter" placeholder="filter by type or text">
