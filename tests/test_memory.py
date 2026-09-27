@@ -259,6 +259,39 @@ async def test_a_known_face_is_named_greeted_once_and_sticks(pet):
     assert len(pet.told) == 1
 
 
+async def test_a_swap_within_the_presence_debounce_is_noticed(pet):
+    # 2026-09-27: Robin stepped out and Claudia in during a 1-2 s detection gap;
+    # presence never dropped, so she stayed "Robin" for four minutes.
+    pet.cfg.face.faces_lost_debounce_s = 5.0
+    robin_face, claudia_face = someone(), someone()
+    store_face(pet, "Robin", robin_face)
+    store_face(pet, "Claudia", claudia_face)
+    arrived = pet.bus.subscribe(PersonArrived)
+    left = pet.bus.subscribe(PersonLeft)
+    pet.recognizer.engine.default = [sample(view(robin_face))]
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Robin"
+
+    pet.face.show()                         # a moment with nobody in view, mid-visit
+    pet.recognizer.engine.default = [sample(view(claudia_face))]
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Claudia"
+    assert (await asyncio.wait_for(left.get(), 2)).name == "Robin"
+    assert pet.people.who_is_here() == (["Claudia"], 0)
+    assert pet.people.sole_person().name == "Claudia"
+
+    for _ in range(50):                     # the same person after a flicker stays, quietly
+        if not pet.recognizer._visiting():
+            break
+        await asyncio.sleep(0.01)
+    pet.face.show()
+    pet.face.show(face())
+    await asyncio.sleep(0.2)
+    assert not pet.recognizer._visiting()
+    assert pet.people.who_is_here() == (["Claudia"], 0)
+    assert left.get_nowait() is None and arrived.get_nowait() is None
+
+
 async def test_a_stranger_is_mentioned_after_a_few_clear_looks(pet):
     pet.cfg.memory.stranger_after_s = 0
     store_face(pet, "Robin", someone())

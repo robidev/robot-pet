@@ -4,7 +4,9 @@ Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3, E6).
 - Faces are recognized on the PC (memory/recognition.py), which calls
   recognized() when a visit's vote names someone. Identity is sticky per
   presence episode: once named, the person counts as present until the
-  debounced FacesPresence says nobody is there any more.
+  debounced FacesPresence says nobody is there any more, or a fresh look
+  after a face went out of view doesn't find them (still_here()): one person
+  can step out and another in within the debounce.
 - A face is known by its fingerprints in the database (face_embeddings), as
   many per person as useful. The head's own recognizer and its 7 face slots
   are retired: people enrolled there enroll again.
@@ -108,11 +110,16 @@ class People:
 
     def _on_nobody(self) -> None:
         self.faces_in_view = 0
+        self.still_here(set())
+
+    def still_here(self, person_ids: set) -> None:
+        """A fresh look named these people in view: anyone else present has gone."""
         now = time.time()
-        for person in self.present.values():
+        for person in [p for p in self.present.values() if p.id not in person_ids]:
+            del self.present[person.id]
             self.db.mark_seen(person.id, now)
+            log.info("%s is no longer in view", person.name)
             self.pet.bus.publish(PersonLeft(person_id=person.id, name=person.name))
-        self.present.clear()
 
     def _arrived(self, person: Person, now: float) -> None:
         away_s = None if person.last_seen_at is None else now - person.last_seen_at

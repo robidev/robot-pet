@@ -36,8 +36,11 @@ class FaceKeeper:
         now = time.time()
         stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now)) + f".{int(now * 1000) % 1000:03d}"
         verdict = self.name_of(guess.person_id) if guess.person_id is not None else "unknown"
-        name = f"{stamp}_as-{verdict}_best-{self.name_of(guess.best_id)}-{guess.similarity:.2f}.jpg"
-        self._save(sample.crop, self.attempts / name)
+        name = f"{stamp}_as-{verdict}_best-{self.name_of(guess.best_id)}-{guess.similarity:.2f}"
+        path, n = self.attempts / f"{name}.jpg", 1
+        while path.exists():                            # two faces in one snapshot
+            path, n = self.attempts / f"{name}-{n}.jpg", n + 1
+        self._save(sample.crop, path)
         self._prune()
 
     def fingerprint(self, embedding_id: int, sample) -> None:

@@ -11,6 +11,11 @@ before. Up to `max_attempts` a visit, and `confirm_attempts` more once everyone
 is named, which is also when confident attempts grow the person's fingerprint
 set: daylight, lamp light and new angles come with ordinary use.
 
+Names stick for the presence episode, but a face going out of view (the head
+seeing fewer faces than before, even for a moment) calls for a fresh look:
+someone may have stepped out and someone else in within the presence debounce.
+That look's names replace the old ones (People.still_here).
+
 A face seen clearly several times without a name is a stranger (People says so,
 at most every `stranger_every_min`). A face too small, dark or doubtful never
 gets a name at all: "unknown" is the safe side.
@@ -66,6 +71,8 @@ class Recognizer:
         self._task: Optional[asyncio.Task] = None
         self._gave_up_at = float("-inf")
         self._gave_up_faces = 0
+        self._faces_before = 0
+        self._recheck = False           # a face went out of view: look again before trusting names
 
     async def start(self) -> None:
         self.reload()
@@ -95,28 +102,46 @@ class Recognizer:
                 if isinstance(event, FacesPresence):
                     if not event.present:
                         self._end_visit()
-                elif event.faces:
-                    self._maybe_start(len(event.faces))
+                    continue
+                faces = len(event.faces)
+                if faces < self._faces_before and self.tracks:
+                    self._recheck = True
+                self._faces_before = faces
+                if faces:
+                    self._maybe_start(faces)
             except Exception:  # noqa: BLE001 - one bad event must not stop recognition
                 log.exception("recognizer failed on %r", event)
 
+    def _visiting(self) -> bool:
+        return self._visit is not None and not self._visit.done()
+
     def _maybe_start(self, faces: int) -> None:
-        if (self._visit and not self._visit.done()) or self.paused:
+        if self._visiting() or self.paused:
             return
-        if faces <= sum(t.person_id is not None for t in self.tracks):
+        if not self._recheck and faces <= sum(t.person_id is not None for t in self.tracks):
             return                      # everyone in view is known already
         if (time.monotonic() - self._gave_up_at < RESTART_AFTER_S
                 and faces <= self._gave_up_faces):
             return                      # just tried these faces; a new one would restart
-        self._visit = asyncio.create_task(self._run_visit(), name="recognition-visit")
+        recheck, self._recheck = self._recheck, False
+        if recheck:
+            log.debug("recognition: a face went out of view; looking again")
+            self.tracks = []
+        self._visit = asyncio.create_task(self._run_visit(recheck), name="recognition-visit")
 
     def _end_visit(self) -> None:
         if self._visit:
             self._visit.cancel()
         self.tracks = []
         self._gave_up_at = float("-inf")
+        self._recheck = False
 
-    async def _run_visit(self) -> None:
+    def _after_visit(self) -> None:
+        """A face went out of view during the visit just ended: look again now."""
+        if self._recheck and self._faces_before:
+            self._maybe_start(self._faces_before)
+
+    async def _run_visit(self, recheck: bool = False) -> None:
         attempts = confirmed = 0
         try:
             while attempts < self.cfg.max_attempts + self.cfg.confirm_attempts:
@@ -126,6 +151,9 @@ class Recognizer:
                     everyone = bool(self.tracks) and all(t.person_id is not None for t in self.tracks)
                     if everyone:
                         confirmed += 1
+                        if recheck:
+                            self._settle()      # quick: the first visit already grew the set
+                            return
                         if confirmed >= self.cfg.confirm_attempts:
                             return
                     elif attempts >= self.cfg.max_attempts:
@@ -135,10 +163,19 @@ class Recognizer:
             self._gave_up_faces = len(self.tracks)
             log.info("recognition: gave up on %d of %d faces after %d attempts",
                      sum(t.person_id is None for t in self.tracks), len(self.tracks), attempts)
+            if recheck:
+                self._settle()
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 - the next visit will try again
             log.exception("recognition visit failed")
+        finally:
+            asyncio.get_running_loop().call_soon(self._after_visit)
+
+    def _settle(self) -> None:
+        """After a fresh look: whoever it didn't name is no longer taken to be in view."""
+        if self.pet.people is not None:
+            self.pet.people.still_here({t.person_id for t in self.tracks if t.person_id is not None})
 
     async def attempt(self) -> None:
         """One snapshot: every usable face in it fingerprinted, voted on, maybe named."""
