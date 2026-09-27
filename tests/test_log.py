@@ -65,3 +65,40 @@ def test_the_face_wifi_section_is_read_and_explained():
     assert (state.wifi_rssi, state.wifi_disconnects, state.wifi_last_reason) == (-71, 2, 15)
     assert "key handshake timed out" in wifi_drop_message(state)
     assert parse_status({}).wifi_disconnects is None          # older firmware
+
+
+def test_older_runs_are_pruned_to_a_size_budget_but_never_the_current_one(tmp_path):
+    cfg = config(tmp_path, keep_runs=10)
+    runs = []
+    for i in range(4):
+        run_dir, handler = start_run_log(cfg, now=1_000_000_000 + i)
+        handler.close()
+        (run_dir / "petd.log").write_bytes(b"x" * 400_000)      # ~0.4 MB each
+        runs.append(run_dir)
+    base = tmp_path / "logs"
+    doomed = prune_runs(base, 10, max_old_mb=0.9, current=runs[-1])
+    assert doomed == runs[:1]                   # 3 older runs, 1.2 MB: the oldest goes
+    assert [p.exists() for p in runs] == [False, True, True, True]
+    prune_runs(base, 10, max_old_mb=0.0, current=runs[-1])
+    assert [p.exists() for p in runs] == [False, False, False, True]
+
+
+def test_the_event_trace_rotates(tmp_path):
+    import asyncio
+    from petd.bus import EventBus
+    from petd.events import SpeechStarted
+    from petd.trace import EventTrace
+
+    async def run():
+        bus = EventBus()
+        bus.bind_loop(asyncio.get_running_loop())
+        trace = EventTrace(bus, tmp_path / "events.jsonl", max_bytes=2000)
+        trace.start()
+        for i in range(100):
+            bus.publish(SpeechStarted(t_utc=float(i)))
+        await asyncio.sleep(0.05)
+        await trace.close()
+    asyncio.run(run())
+    assert (tmp_path / "events.jsonl.1").exists()
+    assert (tmp_path / "events.jsonl").stat().st_size < 2000
+    assert (tmp_path / "events.jsonl.1").stat().st_size < 2000 + 200

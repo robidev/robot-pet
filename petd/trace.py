@@ -22,9 +22,10 @@ log = logging.getLogger(__name__)
 
 
 class EventTrace:
-    def __init__(self, bus: EventBus, path: Path):
+    def __init__(self, bus: EventBus, path: Path, max_bytes: int = 20 * 1024 * 1024):
         self.bus = bus
         self.path = path
+        self.max_bytes = max_bytes          # then events.jsonl.1 (one older file kept)
         self._sub = None
         self._file = None
         self._task: Optional[asyncio.Task] = None
@@ -43,6 +44,10 @@ class EventTrace:
     def _write(self, event) -> None:
         try:
             self._file.write(json.dumps(event_record(event), default=str) + "\n")
+            if self._file.tell() >= self.max_bytes:
+                self._file.close()
+                self.path.replace(self.path.with_name(self.path.name + ".1"))
+                self._file = self.path.open("a", encoding="utf-8", buffering=1)
         except Exception:  # noqa: BLE001 - one odd event must not end the trace
             log.debug("could not trace %r", event, exc_info=True)
 

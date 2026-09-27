@@ -256,10 +256,13 @@ class LogConfig:
     enabled: bool = True
     dir: str = "runtime/logs"
     keep_runs: int = 30                       # newest run folders kept; older ones deleted
+    max_old_runs_mb: float = 120.0            # ...and the older runs together at most this big
     file_level: str = "DEBUG"                 # the console keeps --log-level
     max_file_mb: float = 20.0                 # petd.log rotates at this size...
     keep_files: int = 3                       # ...keeping this many older ones
-    events: bool = True                       # every bus event to events.jsonl (petd/trace.py)
+    events: bool = True                       # every bus event to events.jsonl (petd/trace.py),
+    # which rotates at max_file_mb too, keeping one older file. With the
+    # defaults a run is at most 80 + 40 MB, and runtime/logs ~240 MB in all.
 
 
 @dataclass

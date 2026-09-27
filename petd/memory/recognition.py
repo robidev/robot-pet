@@ -94,6 +94,8 @@ class Recognizer:
         db = self.pet.db
         stored = db.face_embeddings() if db is not None else {}
         self.centres = {pid: class_centre([from_blob(b) for b in blobs]) for pid, blobs in stored.items()}
+        if self.keeper is not None and db is not None:
+            self.keeper.prune_fingerprints(db.face_embedding_ids())
 
     def knows_face(self, person_id: int) -> bool:
         return person_id in self.centres

@@ -56,7 +56,8 @@ class App:
         self.bus.bind_loop(asyncio.get_running_loop())
         if self.run_dir is not None and cfg.log.events:
             from .trace import EventTrace
-            self.trace = EventTrace(self.bus, self.run_dir / "events.jsonl")
+            self.trace = EventTrace(self.bus, self.run_dir / "events.jsonl",
+                                    max_bytes=int(cfg.log.max_file_mb * 1024 * 1024))
             self.trace.start()
 
         if cfg.vacuum.enabled:

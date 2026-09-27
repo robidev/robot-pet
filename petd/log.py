@@ -11,7 +11,8 @@ points at the newest), holding:
   had uncommitted changes), and the full effective config, so a log can be
   read against the settings it ran with.
 
-Only the newest `log.keep_runs` folders are kept.
+Only the newest `log.keep_runs` folders are kept, and of those the older
+runs together take at most `log.max_old_runs_mb` (the oldest go first).
 """
 
 from __future__ import annotations
@@ -86,18 +87,36 @@ def start_run_log(cfg: Config, tags: tuple = (), argv: Optional[list] = None,
     }
     (run_dir / "run.yaml").write_text(yaml.safe_dump(meta, sort_keys=False))
     _point_latest(base, run_dir)
-    prune_runs(base, cfg.log.keep_runs)
+    prune_runs(base, cfg.log.keep_runs, cfg.log.max_old_runs_mb, current=run_dir)
     return run_dir, handler
 
 
-def prune_runs(base: Path, keep: int) -> list[Path]:
-    """Deletes all but the newest `keep` run folders; anything else in `base` is left alone."""
+def prune_runs(base: Path, keep: int, max_old_mb: Optional[float] = None,
+               current: Optional[Path] = None) -> list[Path]:
+    """
+    Deletes all but the newest `keep` run folders, then the oldest of the rest
+    until the runs other than `current` take at most `max_old_mb`. Only run
+    folders (by name) directly in `base` are ever touched, never `current`.
+    """
     runs = sorted(p for p in base.iterdir()
                   if p.is_dir() and not p.is_symlink() and RUN_DIR_NAME.match(p.name))
     doomed = runs[:max(0, len(runs) - keep)]
+    if max_old_mb is not None:
+        older = [p for p in runs[len(doomed):] if current is None or p.resolve() != current.resolve()]
+        sizes = {p: _size(p) for p in older}
+        total, budget = sum(sizes.values()), max_old_mb * 1024 * 1024
+        for path in older:                      # oldest first
+            if total <= budget:
+                break
+            doomed.append(path)
+            total -= sizes[path]
     for path in doomed:
         shutil.rmtree(path, ignore_errors=True)
     return doomed
+
+
+def _size(folder: Path) -> int:
+    return sum(f.stat().st_size for f in folder.rglob("*") if f.is_file() and not f.is_symlink())
 
 
 def _point_latest(base: Path, run_dir: Path) -> None:

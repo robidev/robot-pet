@@ -206,6 +206,9 @@ class MemoryDB:
             (person_id, time.time() if t is None else t, vector, face_px, sharpness,
              brightness, source)).lastrowid
 
+    def face_embedding_ids(self) -> set[int]:
+        return {row["id"] for row in self._db.execute("SELECT id FROM face_embeddings")}
+
     def face_embeddings(self) -> dict[int, list[bytes]]:
         """person id -> their fingerprints, raw."""
         out: dict[int, list[bytes]] = {}

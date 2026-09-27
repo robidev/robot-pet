@@ -111,3 +111,17 @@ def test_kept_crops_are_named_by_verdict_and_pruned(tmp_path):
     assert len(list((tmp_path / "attempts").iterdir())) == 3
     keeper.fingerprint(41, face)
     assert (tmp_path / "fingerprints" / "41.jpg").exists()
+
+
+def test_a_fingerprint_crop_goes_with_its_fingerprint(tmp_path):
+    from PIL import Image
+    from petd.memory.recognition import sample
+    from petd.vision.kept import FaceKeeper
+    keeper = FaceKeeper(tmp_path, keep_attempts=3, name_of=str)
+    face = sample([1.0] + [0.0] * 127)
+    face.crop = Image.new("RGB", (112, 112))
+    for embedding_id in (41, 42, 47):
+        keeper.fingerprint(embedding_id, face)
+    (tmp_path / "fingerprints" / "notes.txt").write_text("not a crop")
+    assert keeper.prune_fingerprints({41, 47}) == 1
+    assert sorted(p.name for p in (tmp_path / "fingerprints").iterdir()) == ["41.jpg", "47.jpg", "notes.txt"]

@@ -5,7 +5,8 @@ The faces behind the numbers (PLAN.md 4.7, E6c, first part): the aligned
     runtime/faces/attempts/<time>_as-<verdict>_best-<name>-<similarity>.jpg
         every usable recognition attempt, the last `keep_attempts`
     runtime/faces/fingerprints/<id>.jpg
-        every stored fingerprint (enrolled or grown), by its face_embeddings id
+        every stored fingerprint (enrolled or grown), by its face_embeddings id;
+        a crop goes when its fingerprint does (prune_fingerprints)
 
 So a similarity in petd.log, or a fingerprint in the database, can be looked
 at. Photos of people: runtime/ stays out of git.
@@ -14,11 +15,14 @@ at. Photos of people: runtime/ stays out of git.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Callable, Optional
 
 log = logging.getLogger(__name__)
+
+FINGERPRINT_NAME = re.compile(r"^(\d+)\.jpg$")
 
 
 class FaceKeeper:
@@ -46,6 +50,16 @@ class FaceKeeper:
     def fingerprint(self, embedding_id: int, sample) -> None:
         if sample.crop is not None:
             self._save(sample.crop, self.fingerprints / f"{embedding_id}.jpg")
+
+    def prune_fingerprints(self, kept_ids: set) -> int:
+        """Removes the crops of fingerprints no longer stored (replaced, re-enrolled, forgotten)."""
+        removed = 0
+        for path in self.fingerprints.iterdir():
+            match = FINGERPRINT_NAME.match(path.name)
+            if match and path.is_file() and int(match.group(1)) not in kept_ids:
+                path.unlink(missing_ok=True)
+                removed += 1
+        return removed
 
     def _save(self, crop, path: Path) -> None:
         try:
