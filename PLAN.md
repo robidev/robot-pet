@@ -88,10 +88,13 @@ head. `scripts/calibrate_face.py`:
 4. **Microphone levels in the same positions** (backlog item, it fits here):
    one normal sentence at 0.5, 1, 2 and 3 m, and a minute of quiet, recorded
    from the UDP stream: speech and silence levels, silero's probabilities,
-   whisper's misses. "Come here" from 3 m has to be heard (Step 5). **Needs a
-   tool first**, buildable without anyone at the robot: `scripts/mic_levels.py`,
-   recording the face's audio (with petd stopped, or on a second port) and
-   printing dBFS per sentence and for the quiet.
+   whisper's misses. "Come here" from 3 m has to be heard (Step 5). With petd
+   stopped: `scripts/mic_levels.py quiet`, then `say 0.5m --text "..."` at each
+   distance, then `report` (levels in dBFS, SNR against the quiet, lost packets,
+   and what whisper-cli heard, with petd's models and name prompt). Tried
+   2026-09-27 evening, not a real measurement: room floor -71.7 dBFS (above the
+   mic's own ~-83), 4-7% of packets lost on the WiFi; a port other than petd's
+   5000 receives nothing until let through Windows' firewall.
 
 **Done when** the fit puts a standing and a sitting person within ~20% of the
 measured distance at 1-2.5 m, and the bearing within ~10°. If faces can't do it

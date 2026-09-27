@@ -155,6 +155,7 @@ it survive a Windows reboot, both outside this repository:
 | `scripts/latency.py [run]` | where each turn's time went, from a run's event trace |
 | `scripts/smoke.py vacuum \| face \| …` | hardware smoke tests of each adapter |
 | `scripts/fetch_face_models.py` | downloads the face recognition models |
+| `scripts/mic_levels.py quiet \| say <distance> \| report` | the microphone's levels: speech at a distance against the room's quiet, and what whisper made of it (petd stopped) |
 | `scripts/echo_timing.py` | how long the robot's voice outlasts what was sent (sets the echo gate) |
 | `scripts/tracking_log.py` | the head's face tracking, pass by pass |
 | `scripts/face_stress.py` | the face firmware under petd-like load (crash hunting) |
