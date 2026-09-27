@@ -26,7 +26,6 @@ Example:
 from __future__ import annotations
 
 import json
-import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -167,9 +166,13 @@ class FaceApiClient:
         scheme: str = "http",
         timeout: float = 10.0,
         session: Optional[requests.Session] = None,
+        snapshot_port: int = 81,
     ):
         self.host = host
         self.port = port
+        # Snapshots have their own server on the device, so a slow JPEG never
+        # holds up status or events (port 80 redirects there too).
+        self.snapshot_port = snapshot_port
         self.scheme = scheme
         self.timeout = timeout
         self.session = session or requests.Session()
@@ -183,15 +186,15 @@ class FaceApiClient:
         return f"ws://{self.host}:{self.port}/ws"
 
     @property
-    def stream_url(self) -> str:
-        return f"{self.base_url}/stream"
+    def snapshot_url(self) -> str:
+        return f"{self.scheme}://{self.host}:{self.snapshot_port}"
 
     # ------------------------------------------------------------------ #
     # low-level HTTP helpers
     # ------------------------------------------------------------------ #
 
-    def _get(self, path: str, params: Optional[dict] = None) -> requests.Response:
-        resp = self.session.get(f"{self.base_url}{path}", params=params, timeout=self.timeout)
+    def _get(self, path: str, params: Optional[dict] = None, base: Optional[str] = None) -> requests.Response:
+        resp = self.session.get(f"{base or self.base_url}{path}", params=params, timeout=self.timeout)
         if not resp.ok:
             raise FaceApiHTTPError(resp.status_code, resp.text)
         return resp
@@ -226,7 +229,7 @@ class FaceApiClient:
         timestamp from the moment it was captured (the device's
         X-Capture-Timestamp*/X-Servo-*-Deg response headers).
         """
-        resp = self._get("/api/snapshot")
+        resp = self._get("/api/snapshot", base=self.snapshot_url)
         headers = resp.headers
         return Snapshot(
             jpeg=resp.content,
@@ -256,36 +259,6 @@ class FaceApiClient:
     def list_enrolled_faces(self) -> list[int]:
         """GET /api/face/list: the currently enrolled face ids."""
         return self._get_json("/api/face/list")["ids"]
-
-    def iter_stream_frames(self, chunk_size: int = 4096):
-        """
-        GET /stream and yield raw JPEG frame bytes as they arrive, forever
-        (until the caller stops iterating or the connection drops).
-
-        Plain multipart/x-mixed-replace parser matching control_server.cpp's
-        stream_handler (boundary "--frame", a Content-Length header per
-        part). There's no per-frame metadata here (no servo pose/timestamp)
-        -- use get_snapshot() when you need a single tagged frame instead.
-        """
-        resp = self.session.get(self.stream_url, stream=True, timeout=self.timeout)
-        if not resp.ok:
-            raise FaceApiHTTPError(resp.status_code, resp.text)
-        buffer = b""
-        for chunk in resp.iter_content(chunk_size=chunk_size):
-            buffer += chunk
-            while True:
-                header_end = buffer.find(b"\r\n\r\n")
-                if header_end == -1:
-                    break
-                match = re.search(rb"Content-Length:\s*(\d+)", buffer[:header_end], re.IGNORECASE)
-                if not match:
-                    break
-                length = int(match.group(1))
-                body_start = header_end + 4
-                if len(buffer) < body_start + length:
-                    break
-                yield buffer[body_start:body_start + length]
-                buffer = buffer[body_start + length:]
 
     # ------------------------------------------------------------------ #
     # commands (these change device state -- GET calls, per the firmware)

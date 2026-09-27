@@ -23,9 +23,7 @@ face = FaceApiClient("192.168.4.1")
 
 # measurements
 face.get_status()             # full JSON: face/eye/servo/motion/time/...
-face.get_snapshot()           # Snapshot(jpeg=b'...', utc=..., servo_pan_deg=..., servo_tilt_deg=...)
-for jpeg in face.iter_stream_frames():
-    ...                       # live MJPEG frames, no per-frame metadata
+face.get_snapshot()           # Snapshot(jpeg=b'...', utc=..., servo_pan_deg=..., servo_tilt_deg=...), from port 81
 
 # commands
 face.set_face_detection(True)
@@ -91,10 +89,11 @@ Run `python3 status.py [ip]` for a quick read-only status dump (defaults to
   firmware change to be flashed; older firmware builds will send motion
   events without a `"servo"` key and `FaceEventStream._handle_motion` will
   raise a `KeyError` (surfaced via `on_error`, not silently dropped).
-- **No native MJPEG frame metadata.** `/stream` (used by `iter_stream_frames()`)
-  has no per-frame servo pose or timestamp, unlike `/api/snapshot`. Use
-  `get_snapshot()` when you need a single frame tied to a known pose/time,
-  and the stream only for smooth live viewing.
+- **Snapshots come from port 81**, the device's own server for them, so a
+  slow JPEG on a lossy link never holds up `/api/status` or `/ws` on port 80
+  (which redirects `/api/snapshot` there). `FaceApiClient(snapshot_port=...)`
+  if that ever changes. There's no MJPEG `/stream` any more: nothing used it,
+  and it held a server for as long as anyone watched (2026-09-27).
 - **Every command endpoint is a GET, not a PUT/POST.** Unlike
   `../vacuum-api`'s Valetudo client (which uses PUT for state-changing
   calls), the RobotFace firmware exposes commands as plain `GET
