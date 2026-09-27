@@ -1,22 +1,194 @@
-# Robot Pet: MVP design and implementation plan
+# Robot Pet: plan
 
-Status: design, ready to implement. Date: 2026-09-19.
-Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whisper-udp-stream + piper-tts into a pet.
+Rewritten 2026-09-27 from where things stand: **what works, then the work in
+order** (the part to follow), the decisions, and everything found on the way
+(Findings, dated, as it was written). The design reference keeps its numbered
+sections 1-5 (the findings refer to them, e.g. "4.7"), then the build log (6),
+milestones (7), phase 2 (8) and open questions (9). Setting up and running it:
+`README.md`.
 
----
-
-## 0. TL;DR
-
-- **One Python 3.12+ asyncio daemon (`petd`)** owns all the hardware connections, an event bus, a behavior state machine, a people/memory SQLite DB, and an LLM "brain" that can be swapped out.
-- **The existing clients are reused as they are.** Blocking calls run in a thread executor. `whisper-udp-stream` and `piper.http_server` stay as separate processes.
-- **The LLM is a pluggable backend.** `ClaudeCliBackend` (the MVP) keeps one persistent `claude -p` process in stream-json mode. `OllamaBackend` is designed now and built later. Tools are defined once in a registry. The Claude CLI reaches them through a tiny MCP shim, and Ollama calls them directly.
-- **Reflexes run locally, not in the LLM:** "stop", low battery, bump/stuck, self-hearing, and quiet hours. The LLM decides *what* to do. Local behaviors decide *how* to do it safely.
-- **"Drive to a person" starts as stop-and-look:** stop, let servo tracking center the face, then use the pan angle for bearing and the face box size for distance. Take the map pose while stationary, project the target, check it against the map, `go_to`, and re-acquire. This does not depend on timestamp fusion. Fusion (Player odometry and clock offset) is still built, for events seen while moving and for logging where people were seen.
-- **Four milestones:** M1 *It talks*, M2 *It knows you*, M3 *It comes to you*, M4 *It feels alive*.
+Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client +
+whisper-udp-stream + piper-tts, a Roborock V1 with Valetudo and a LilyGo
+ESP32-S3 face, into a pet with GLaDOS's personality.
 
 ---
 
-## 0.1 Decisions (answers from 2026-09-19)
+## Where it stands (2026-09-27)
+
+| Milestone | State |
+|---|---|
+| **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
+| **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Two people at once and a deliberate swap still to check (Step 1). |
+| **M3: It comes to you** | **Not built.** Driving, docking and places work; finding a person's distance and direction is the missing piece (Steps 2-5). |
+| **M4: It feels alive** | **Not built** (Step 7). |
+
+| Area | Works (tried on the hardware) | Built, not yet tried live | Not built |
+|---|---|---|---|
+| Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
+| Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py` | a deliberate swap; the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back` | C5: a person's position; E4: approach and search |
+| Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
+| Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | G2's start-after-reboot (a decision) |
+| Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` pausable by hand, which removed its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | the cause of the bad spells on the whole WiFi (2026-09-27, open) |
+
+---
+
+## The work, in order
+
+Each step says what it needs, what to do, what counts as done, and what gets
+built after it. Hands-on steps need people at the robot; the dashboard
+(http://127.0.0.1:8765: people, map, events) and `show_memory.py faces` are the
+instruments. Start petd with `scripts/start.sh`; pause the robot's roaming
+scans first (`/root/wlanmgr_pause.sh stop` on the robot).
+
+### Step 1: people coming and going (hands-on, two or three people, ~45 min)
+
+Finishes M2 and gives the first real latency numbers.
+
+- **Two at once:** Robin and Claudia side by side at ~1.5 m. Each named on the
+  dashboard's people panel, neither as the other, and speech credited to the
+  right one ("Robin says" / "Claudia says" in the events).
+- **A swap on purpose:** one walks out while the other walks in, inside the 5 s
+  presence debounce, and the other way round. The right name within ~10 s.
+  (Built after it went wrong live on 2026-09-27; so far only tested with fakes.)
+- **Leaving and coming back:** out of view for ~10 s, then back: named again,
+  not greeted twice within `greet_every_h`.
+- **A conversation of a few minutes** with someone sitting and sometimes
+  turned away: does the 10 s recheck take their name away too often?
+  (`recognition.recheck_every_s`)
+- **Noah again with a step back:** he enrolled with the 5 close-up crops only.
+  "Remember my face, I'm Noah" once more, stepping back when asked; then all
+  three in view.
+- **Backlit:** someone in front of the window.
+- **Latency (G4):** after a few questions, `scripts/latency.py` on the run: where
+  a turn's time goes, before Step 5 adds tool round trips.
+- **Along the way:** the robot's voice with `wlanmgr` paused (no dropouts
+  expected); if the face board is on the PC's USB, reset it once and check petd
+  switches tracking back on.
+
+**Done when** all of the above hold, and `show_memory.py faces` shows every
+stored fingerprint under the right person. **Then, from the step's data:**
+`grow_sim` (0.55 kept a hand-over-the-chin look; ~0.65?), keeping only telling
+recheck crops (the 200 kept attempts reach back only ~1 h with someone in view),
+and `unknown_sim`/`accept_sim`/`margin` against the day's scores.
+
+### Step 2: how far away, and in which direction (hands-on, one person, ~45 min)
+
+The face half of C3, the blocker of 2026-09-23 (a standing adult was never both
+in view and detectable); detection reaches 2.7 m since. Nothing moves but the
+head. `scripts/calibrate_face.py`:
+
+1. `aim`, then `hfov`: stand still at ~2 m while the pan servo sweeps: the
+   camera's horizontal field of view.
+2. `capture <m> [--bearing <deg>]`, standing, at 1.0, 1.5, 2.0 and 2.5 m straight
+   ahead, and at 2 m 30° left and right; then sitting at 1.5 and 2 m. Measure
+   from the camera, on the floor.
+3. `fit --face-height <m>`: the `calibration:` values (`K_face`, `hfov_deg`,
+   pan sign and offset).
+4. **Microphone levels in the same positions** (backlog item, it fits here):
+   one normal sentence at 0.5, 1, 2 and 3 m, and a minute of quiet, recorded
+   from the UDP stream: speech and silence levels, silero's probabilities,
+   whisper's misses. "Come here" from 3 m has to be heard (Step 5). **Needs a
+   tool first**, buildable without anyone at the robot: `scripts/mic_levels.py`,
+   recording the face's audio (with petd stopped, or on a second port) and
+   printing dBFS per sentence and for the quiet.
+
+**Done when** the fit puts a standing and a sitting person within ~20% of the
+measured distance at 1-2.5 m, and the bearing within ~10°. If faces can't do it
+for a standing adult (too high in the frame near the robot, too small far away),
+decide between the options of 2026-09-23: a person or feet detector on the PC's
+snapshot (distance from where the feet meet the floor), or tilting the camera up
+on its mount. **Then build C5:** `spatial/person.py` (bearing, distance, map
+target, `validate_target` with `is_free`/`march_back`) with the measured
+constants and synthetic tests, and the estimated person on the dashboard map.
+From the microphone data: a gain before truncation or a fixed gain with a
+limiter, if quiet speech is the weak point (Findings, the microphone, 2026-09-27).
+
+### Step 3: places on the map (hands-on, ~20 min)
+
+C1's live check; the approach in Step 5 drives with `go_to` and checks targets
+against the map.
+
+- **Teach the kitchen again:** park the robot there, "remember this as the
+  kitchen". Drive it elsewhere, "go to the kitchen". The log shows a
+  `map frame:` line (current map vs `runtime/map/reference.json`) and "arrived
+  at the kitchen", or "stopped N cm from the kitchen". The dashboard map shows
+  the place.
+- **A goal outside the room** (never tried): what Valetudo does with it.
+- **The map backup's restore** (`runtime/map-backups/2026-09-27_0001/`), once,
+  on purpose: copy the five files back to `/mnt/data/rockrobo/` and reboot at
+  once (it rewrites `last_map` after every go_to).
+
+**Done when** a named place is reached within `motion.arrive_cm` (20) after the
+robot has been elsewhere. **Then, if wanted:** our own zones (a kitchen area).
+
+### Step 4: a person on the map, live (hands-on, ~15 min)
+
+C5's check. Stand 2 m away at ~30°: the dashboard map shows the estimated person
+where you stand, and the target in front of you (standoff 1.0 m) is on free floor.
+Sitting and standing, left and right. **Done when** the target lands within ~30 cm
+of where it should. Also: sightings stored with the person's position instead of
+the robot's.
+
+### Step 5: it comes to you (build, then hands-on): M3
+
+**Decide first:** what a small child in the room changes (Noah): speed caps,
+the standoff, whether it approaches children at all, who may summon it
+(`only_known_people_can_summon`).
+
+**Build E4** with the fakes: `approach_person` (stop-and-look, 4.2),
+`search_for_person` (the pan sweep, then body turns), the "come here" shortcut
+before the LLM, and the arbiter's ownership of motors, head and eye.
+
+**Hands-on:**
+- From 3 m, "Come here, GLaDOS": it drives to ~1 m in front of you and faces you.
+- Called from out of view: it searches, finds you, "Did you call me?".
+- "Stop" in the middle of either.
+- A goal it can't reach (behind the couch): it says so.
+
+**Done when** those work three times in a row. Latency again (Step 1's numbers
+against these).
+
+### Step 6: loose ends before M4
+
+- **G2's start after a reboot** (a decision): `scripts/start.sh install`,
+  `loginctl enable-linger`, Windows starting WSL at logon (README.md); then a
+  Windows reboot brings the pet back.
+- **The WiFi's bad spells** (2026-09-27): look at the ping logger over a few
+  days: do they come at meal times (a microwave on 2.4 GHz)?
+- **The face board:** `internal_min_free` fell to 14.8 KB once, unexplained;
+  the ROM's "SHA-256 comparison failed" at every boot.
+- Whisper's "GLaDOS" misses ("Gladys", "Class"), and the head's "nobody in view"
+  while a face was in view (2026-09-23): still there?
+
+### Step 7: it feels alive (decide, build, hands-on): M4
+
+**Decide:** quiet hours, the windows for moving on its own, where it may go (our
+own zones: no Valetudo no-go areas here), how restless, and what it does near a
+child.
+
+**Build E5** with the fakes: drives (social, curiosity, energy), `sleep`,
+`attention` (turn toward motion, greet), `explore` (a place, `look()`, a caption),
+low battery, the schedule, and `emotions.yaml` keyframes. **Acceptance:** a
+simulated day with the fakes and a fast clock gives a sane timeline; then a live
+day: it explores in its window, notices you walking by, sleeps in quiet hours,
+docks on low battery.
+
+### Step 8: later
+
+- **F2 games:** 20 questions, riddles, guess what I see (`look()`), hide and
+  seek-lite (`search_for_person`), played through the dashboard's "hear" box
+  first, then by voice.
+- **Unknown faces:** keep their fingerprints; three alike from different visits
+  are someone it keeps seeing, and it can ask their name.
+- Phase 2 (section 8): barge-in, continuous following, photo memory, an API
+  backend. D5 against a real ollama, if one is ever installed.
+- The face clock's offset from the PC's (it was 6.7 s off once): only needed to
+  fuse what the head saw while the robot moved, which stop-and-look avoids.
+
+---
+
+## Decisions
 
 | Topic | Decision | Effect on the plan |
 |---|---|---|
@@ -33,18 +205,9 @@ Scope: the glue ("petd") that turns vacuum-api + face-api + playerc-client + whi
 
 ---
 
-## 0.2 Progress
+## Findings
 
-| Cluster | Status (2026-09-27) |
-|---|---|
-| **Milestones** | **M1 (It talks) works on the robot. M2 (It knows you) is back** with face recognition on the PC (E6b; verified live with Robin and Claudia, in daylight, and a child guest stayed unknown; two at once and backlight still to check). **M3 and M4 not started.** |
-| **A: firmware and C++** | **Done**, and the face firmware (`~/LilyGo-Cam-RobotFace`) has moved on since, all flashed: A1–A3 (`edc6f87`, `e6102eb`, `b3066da`); tilt clamp 58–105° (`6b6d3c7`); **detection-only head**: raw RGB565, VGA with stage one at 0.5, faces detected out to 2.7 m (`5bc6dca`); **stable tracking**: pose looked up at the frame's capture time, tilt's own gain (`95da934`); per-pass timing and a camera probe (`90eaf76`); WiFi reconnects whatever the reason, drops in `/api/status` (`0ec26d4`). A4 (`--json`) and `--prompt` are in `stt/udp-stream`. |
-| **B: foundations and I/O** | **Done and verified on hardware.** Since: a **log folder per run** (`runtime/logs/<run>/`: `petd.log` at DEBUG, `run.yaml` with the config, `events.jsonl` with every bus event); short network stalls no longer count as offline (`offline_after_s`); face-board reboots and WiFi drops are logged with their reason. |
-| **C: spatial** | **C4 done on hardware** (`spatial/motion.py`: `turn`/`move`, `remember_place`/`go_to_place`); a straight forward `move` leaves the dock. **Docking** (`spatial/dock.py`): `go_home` drives to a point 60 cm in front of the dock first, then docks, retrying once; verified live. **C1 built and wired in, not yet tried live** (2026-09-27): `spatial/mapgeo.py` (decode, `is_free`, `march_back`, `align`), `spatial/frame.py` (places kept in a reference map's frame); a `go_to` counts as arrived only within 20 cm of its goal. **Open:** C1's live check (Next up, item 1), **the face half of C3** (worth retrying now detection reaches 2.7 m), **C5**. C2 shrank to nothing (see 4.1). |
-| **D: brain** | **D1–D4 done and verified on hardware.** The claude process now starts before anyone speaks (`brain.prestart`). D5 (ollama) written, never run against a real ollama. |
-| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: M3), **E5** (drives, sleep, explore: M4). |
-| **F: personality** | **F1 done.** F2 (games) open. |
-| **G: polish and ops** | **G4 done** (turn timings on the bus, `scripts/latency.py`); real numbers still to take from a live run. G1–G3 open. Also `scripts/show_memory.py` (what the pet stored, places on the map). |
+Dated, as they were written at the time.
 
 **Findings from the first hardware smoke tests (2026-09-20):**
 
@@ -140,41 +303,25 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **Every face reboot switched tracking off:** the firmware starts in manual, and petd's re-initialization (after a reboot, when the device has forgotten its audio destination) didn't set the head. It now re-applies the mode petd last set, tracking by default. Not yet seen live (no board reboot since).
 - The firmware keeps starting in manual (Robin, 2026-09-27: maybe later, if it proves useful); petd sets tracking.
 
-**Next up (in order):**
+**The family session (2026-09-27, daylight, runs `20260927-095950` to `-104303`):**
 
-0. **E6, face recognition on the PC: the remaining live checks** (backlog; the family session of 2026-09-27 got through the first half).
-   - **Two people in view at once** (Robin and Claudia side by side, ~1.5 m): each named, neither as the other.
-   - **A swap on purpose:** one walks out while the other stays or walks in, within the 5 s presence debounce; the right name within ~10 s, and speech credited to the right person. Built after it went wrong live (below), tested only with fakes.
-   - **The 10 s recheck in a real conversation:** does someone sitting turned away lose their name too often? `recognition.recheck_every_s`.
-   - **Backlit** (someone in front of the window), then revisit `unknown_sim` / `accept_sim` / `margin` with today's numbers.
-   - **Enroll Noah**, then all three in view. A child's face changes quickly: expect growth to do more work, and a re-enrollment now and then.
-   - **Growth:** a look with a hand over the chin was kept (0.60, `grow_sim` 0.55); consider raising `grow_sim` to ~0.65. Short visits each grow 2, so Robin's 20 grown were mostly replaced by daylight looks within minutes.
-   - The head's "nobody in view" while Robin faced the camera (2026-09-23) and Whisper's "GLaDOS" misses ("Gladys", "GlaDOS" got through today) still stand.
+- **Robin in daylight**, from lamp-light fingerprints: named after 2 attempts at 0.67, then 0.55-0.86 on every attempt.
+- **A guest stays unknown:** Noah (a young child, not enrolled then), 38 attempts close up, far (48 px) and in profile, **-0.07 to 0.16** against Robin; never named. This also cleared two fingerprints grown at 10:03 when he might have been in view: they matched Robin's own at 0.73-0.76.
+- **Claudia enrolled** (5 close, 3 a step back; 197-292 px), then named at 0.81-0.91; Robin at 0.72-0.80 with her enrolled. Every stored fingerprint with a crop checked by eye: all the right person.
+- **Noah enrolled himself** at 11:01 ("My name is Noah", then asked to be remembered): 5 close-up crops, no step-back set; growth filled his set to 30 within ~40 min, first confident look 0.86.
+- **Found and fixed: a swap kept the old name.** Robin walked out and Claudia in during a 1-2 s detection gap, under the 5 s presence debounce: one face, one named track, so no new visit, and Claudia was "Robin" for four minutes ("Robin says" on all her speech). Now a drop in the face count, and every `recheck_every_s` (10) while a named face is in view, starts a fresh look (~2 snapshots); its names replace the old ones, and a face it can't name loses its name (`128f459`, `95c7ad5`).
+- **Growth:** a look with a hand over the chin was kept (0.60, `grow_sim` 0.55; later removed by hand with `fix_faces.py forget 47`). Short visits each grow 2, so Robin's 20 grown were mostly replaced by daylight looks within minutes. With someone in view, the 10 s recheck keeps ~2 near-identical crops every 10 s, so the 200 kept attempts reach back only ~1 h.
+- **E6c:** every attempt's aligned crop in `runtime/faces/attempts/` (the last 200) and every stored fingerprint's in `runtime/faces/fingerprints/<id>.jpg` (`da69dba`), then `show_memory.py faces` and `scripts/fix_faces.py` (`41748c2`). Fingerprints from before 2026-09-27 have no crop.
+- A power glitch rebooted the face board (`poweron`); petd reconnected in 9 s. A greeting took 9 s from recognition to speech: for G4.
 
-   **Done 2026-09-27 (family session, daylight, runs `20260927-095950` to `-104303`):**
-   - **Robin in daylight**, from lamp-light fingerprints: named after 2 attempts at 0.67, then 0.55-0.86 on every attempt.
-   - **A guest stays unknown:** Noah (a young child, not enrolled), 38 attempts close up, far (48 px) and in profile, **-0.07 to 0.16** against Robin; never named. This also cleared two fingerprints grown at 10:03 when he might have been in view: they matched Robin's own at 0.73-0.76.
-   - **Claudia enrolled** (5 close, 3 a step back; 197-292 px), then named at 0.81-0.91; Robin at 0.72-0.80 with her enrolled. Every stored fingerprint with a crop checked by eye: all the right person.
-   - **Found and fixed: a swap kept the old name.** Robin walked out and Claudia in during a 1-2 s detection gap, under the 5 s presence debounce: one face, one named track, so no new visit, and Claudia was "Robin" for four minutes ("Robin says" on all her speech). Now a drop in the face count, and every `recheck_every_s` (10) while a named face is in view, starts a fresh look (~2 snapshots); its names replace the old ones, and a face it can't name loses its name (`128f459`, `95c7ad5`).
-   - **E6c, first half:** every attempt's aligned crop in `runtime/faces/attempts/` (the last 200, named by time, verdict, best match and score) and every stored fingerprint's in `runtime/faces/fingerprints/<id>.jpg` (`da69dba`). Fingerprints from before have no crop.
-   - A power glitch rebooted the face board (`poweron`); petd reconnected in 9 s. A greeting took 9 s from recognition to speech: for G4.
-1. **C1, map geometry: try it live** (built 2026-09-27; how it works: the map findings above, and C1 under "Cluster C: spatial core").
-   - **Teach the kitchen again** (the old place was deleted: it was saved in a frame we have no map of): park the robot there, "remember this as the kitchen". Drive it elsewhere, then "go to the kitchen". The log should show a `map frame:` line (current map vs `runtime/map/reference.json`) and the arrival message: "arrived at the kitchen", or "stopped N cm from the kitchen".
-   - Then, if wanted: **our own zones** (a kitchen *area*, for "you're in the kitchen"), and `march_back` in use once E4 has person goals to check.
-   - **The map backup's restore is untested** (`runtime/map-backups/2026-09-27_0001/`): copy the five files back to `/mnt/data/rockrobo/` and reboot at once (it rewrites `last_map` after every go_to). Worth trying once, on purpose, while the backup is fresh.
-   - Unexplained: what makes a new map come in rotated (not a reboot, not a go_to; the user has seen it before).
-2. **The face half of C3, with Robin in the room:** stop-and-look gave up because a standing adult was never both in view and detectable (faces then stopped at ~1.5 m). Detection now reaches 2.7 m, and the PC's YuNet found a face the head missed: measure again whether a standing person can be seen and their distance estimated. Then **C5** (person on the map) and **E4** (`approach_person`, search, "come here", the arbiter): **M3**.
-3. **First real latency numbers (G4):** a few questions in a live session, then `scripts/latency.py`. Before E4, which adds model round trips per request.
-4. Later: **E6c's attempt window** (see E6c: rechecks fill it). **Microphone levels (backlog, 2026-09-27):** the firmware keeps the top 16 of the MSM261's 24 bits (`raw >> 16`) and applies `gain_` after that. By the datasheet as recalled (sensitivity -26 dBFS at 94 dB SPL, SNR ~57 dB: self-noise ~-83 dBFS, above 16-bit's ~-101), the dropped bits are mostly mic hiss, but speech sits low: ~-60 dBFS at 1 m, ~5-6 bits. Measure before changing anything: the UDP stream's speech and silence levels at 0.5/1/2/3 m and a minute of room quiet, silero's speech probabilities and whisper's misses at 2-3 m. Then, if quiet speech is the weak point: gain applied to the 24-bit value before truncating, a fixed gain putting speech at 2 m near -30 dBFS with a limiter, or per-utterance normalization on the PC. No AGC or compression on the device (pumps room noise into the VAD, changes the echo's level); no 24-bit transport (more traffic on a lossy WiFi for mic hiss). **E6c** (kept attempts, which also gives `show_memory.py` images), **E5** + `emotions.yaml` (**M4**), **F2** games, **G3** dashboard extras. **G2's reboot part (backlog, 2026-09-27):** `scripts/start.sh install`, `loginctl enable-linger`, and Windows starting WSL at logon (README.md, Starting with WSL); then check a Windows reboot brings the pet back.
-5. Loose ends: barge-in on the real mic (E2's hardware check); D5 against a real ollama; the face-clock offset (see the findings below).
+**The microphone (2026-09-27, not measured yet):** the firmware keeps the top 16 of the MSM261's 24 bits (`raw >> 16`) and applies `gain_` after that. By the datasheet as recalled (sensitivity -26 dBFS at 94 dB SPL, SNR ~57 dB: self-noise ~-83 dBFS, above 16-bit's ~-101), the dropped bits are mostly mic hiss, but speech sits low: ~-60 dBFS at 1 m, ~5-6 bits. Measure before changing anything (Step 2). Then, if quiet speech is the weak point: gain applied to the 24-bit value before truncating, a fixed gain putting speech at 2 m near -30 dBFS with a limiter, or per-utterance normalization on the PC. No AGC or compression on the device (pumps room noise into the VAD, changes the echo's level); no 24-bit transport (more traffic on a lossy WiFi for mic hiss).
 
-**Running it:**
+**Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
-- `.venv/bin/python -m petd`, with the dashboard at http://127.0.0.1:8765.
-- `--fake` runs without any hardware.
-- `--echo` repeats back what it hears, to test the audio path and the echo gate.
-- `scripts/smoke.py {vacuum,face,stt,say,echo}` exercises each adapter on its own.
-- `.venv/bin/python -m pytest` runs the tests.
+---
+
+## Where things are
+
 - Each run logs to `runtime/logs/<start time>/` (`latest` is the newest): `petd.log`, `run.yaml`, `events.jsonl`.
 - `scripts/latency.py [run]`: where each turn's time went. `scripts/show_memory.py [conversation N | map]`: what the pet has stored.
 - `scripts/tracking_log.py`: the head's tracking, pass by pass. `scripts/fetch_face_models.py`: the face recognition models (git-ignored).
@@ -183,6 +330,19 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - On the robot: `/root/wlanmgr_pause.sh stop | resume | status` pauses `wlanmgr`'s 30 s roaming scans, by hand only (see the robot's WiFi findings).
 - `runtime/e6a/`: E6a's face captures of Robin and Claudia (photos of people: never into git) and the probe that took them.
 - `runtime/map/reference.json`: the reference map places are kept in (spatial/frame.py). `runtime/map-backups/<date>/`: the robot's own map files (`last_map`, `ChargerPos.data`, `StartPos.data`, `slam_info.cfg`, `appproxy.map` from `/mnt/data/rockrobo/`, over root SSH, with the robot's md5sums) plus Valetudo's JSON of the same map; floor plans of the home, so never into git. `runtime/map-test/`: the go_to tests of 2026-09-26.
+
+---
+
+## Design summary (2026-09-19)
+
+- **One Python 3.12+ asyncio daemon (`petd`)** owns all the hardware connections, an event bus, a behavior state machine, a people/memory SQLite DB, and an LLM "brain" that can be swapped out.
+- **The existing clients are reused as they are.** Blocking calls run in a thread executor. `whisper-udp-stream` and `piper.http_server` stay as separate processes.
+- **The LLM is a pluggable backend.** `ClaudeCliBackend` (the MVP) keeps one persistent `claude -p` process in stream-json mode. `OllamaBackend` is designed now and built later. Tools are defined once in a registry. The Claude CLI reaches them through a tiny MCP shim, and Ollama calls them directly.
+- **Reflexes run locally, not in the LLM:** "stop", low battery, bump/stuck, self-hearing, and quiet hours. The LLM decides *what* to do. Local behaviors decide *how* to do it safely.
+- **"Drive to a person" starts as stop-and-look:** stop, let servo tracking center the face, then use the pan angle for bearing and the face box size for distance. Take the map pose while stationary, project the target, check it against the map, `go_to`, and re-acquire. This does not depend on timestamp fusion. Fusion (Player odometry and clock offset) is still built, for events seen while moving and for logging where people were seen.
+- **Four milestones:** M1 *It talks*, M2 *It knows you*, M3 *It comes to you*, M4 *It feels alive*.
+
+---
 
 ---
 
@@ -456,8 +616,8 @@ If the slots are full, tell the LLM "slots full" — and, since F6 was lifted, i
 detects: recognizing every face on every pass cost the tracking loop time and
 bought nothing (tracking needs only the box), and the head's 112x112 recognizer
 flickered even up close (similarity ~0.55). Recognition runs on the PC instead
-(E6b): built, and verified live with one person, but not yet fully trusted:
-two people, daylight and a guest are still to check (Next up, item 0). The design below borrows from Frigate's face recognition
+(E6b): verified live with Robin, Claudia and Noah, in daylight and lamp light,
+and a guest stayed unknown; two at once and a deliberate swap are Step 1. The design below borrows from Frigate's face recognition
 (the matching and voting) and Immich (grouping unknown faces); see "Prior art".
 
 *Stack.* `onnxruntime` + `numpy`: 122 MB installed, measured from the wheels
@@ -675,17 +835,24 @@ robot-pet/
 
 ---
 
-## 6. Implementation plan
+## 6. Build log
 
-Steps are **clustered by model and effort**, so each cluster can run as one session without switching. Within a cluster the steps run in order. Clusters A and B can run in parallel. Everything after them depends on B.
+The original steps, grouped by kind of work, with what was done. The order to
+follow now is "The work, in order" above; these tables are the record, and the
+definition of each step.
 
-**Model legend:**
+**Status by cluster, as it stood before the rewrite (2026-09-27):**
 
-- **Opus 5 / high:** tricky math, concurrency and architecture.
-- **Sonnet 5 / medium:** well-specified plumbing.
-- **Haiku 4.5 / low:** docs, config and boilerplate.
-
-Every step ends with its **acceptance check**.
+| Cluster | Status (2026-09-27) |
+|---|---|
+| **Milestones** | **M1 (It talks) works on the robot. M2 (It knows you) is back** with face recognition on the PC (E6b; verified live with Robin and Claudia, in daylight, and a child guest stayed unknown; two at once and backlight still to check). **M3 and M4 not started.** |
+| **A: firmware and C++** | **Done**, and the face firmware (`~/LilyGo-Cam-RobotFace`) has moved on since, all flashed: A1–A3 (`edc6f87`, `e6102eb`, `b3066da`); tilt clamp 58–105° (`6b6d3c7`); **detection-only head**: raw RGB565, VGA with stage one at 0.5, faces detected out to 2.7 m (`5bc6dca`); **stable tracking**: pose looked up at the frame's capture time, tilt's own gain (`95da934`); per-pass timing and a camera probe (`90eaf76`); WiFi reconnects whatever the reason, drops in `/api/status` (`0ec26d4`). A4 (`--json`) and `--prompt` are in `stt/udp-stream`. |
+| **B: foundations and I/O** | **Done and verified on hardware.** Since: a **log folder per run** (`runtime/logs/<run>/`: `petd.log` at DEBUG, `run.yaml` with the config, `events.jsonl` with every bus event); short network stalls no longer count as offline (`offline_after_s`); face-board reboots and WiFi drops are logged with their reason. |
+| **C: spatial** | **C4 done on hardware** (`spatial/motion.py`: `turn`/`move`, `remember_place`/`go_to_place`); a straight forward `move` leaves the dock. **Docking** (`spatial/dock.py`): `go_home` drives to a point 60 cm in front of the dock first, then docks, retrying once; verified live. **C1 built and wired in, not yet tried live** (2026-09-27): `spatial/mapgeo.py` (decode, `is_free`, `march_back`, `align`), `spatial/frame.py` (places kept in a reference map's frame); a `go_to` counts as arrived only within 20 cm of its goal. **Open:** C1's live check (Next up, item 1), **the face half of C3** (worth retrying now detection reaches 2.7 m), **C5**. C2 shrank to nothing (see 4.1). |
+| **D: brain** | **D1–D4 done and verified on hardware.** The claude process now starts before anyone speaks (`brain.prestart`). D5 (ollama) written, never run against a real ollama. |
+| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: M3), **E5** (drives, sleep, explore: M4). |
+| **F: personality** | **F1 done.** F2 (games) open. |
+| **G: polish and ops** | **G4 done** (turn timings on the bus, `scripts/latency.py`); real numbers still to take from a live run. G1–G3 open. Also `scripts/show_memory.py` (what the pet stored, places on the map). |
 
 ### Cluster A: firmware and C++ tweaks (Sonnet 5, medium). Can run in parallel with B.
 
@@ -742,7 +909,7 @@ Concurrency, state machines, and where the "feel" lives.
 | E1 | `memory/db.py`: schema, migrations, and the people, sightings, conversations, utterances and facts APIs. Add journal writing and compaction. | Unit tests. |
 | E2 | `behavior/arbiter.py` + `reflex.py` + `emotions.py` + `converse.py`: priorities, resource ownership (motors, servos, eye, speech), attention gate (name fuzzy match, window, gaze), reflex keywords, listening and thinking eye feedback. **This gives M1.** | With the fakes, and then with hardware: say its name and a question, get a spoken answer with emotes. "Stop" works while it is speaking or driving. |
 | E3 | Enrollment flow and the people tools (`remember_face`, `who_do_i_know`, `recall_person`, `note_about_person`), plus the greeting-on-recognition behavior (once per person per N hours, via an `[event]` turn). **This gives M2.** | Introduce yourself. It enrolls you, then greets you by name after a restart. |
-| E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 0.7 m, facing you. Calling from out of view triggers the search and "Did you call me?". |
+| E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 1 m (the standoff, raised from 0.7 m: see Decisions), facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
 | E6a | Measure first (4.7), in a venv outside petd's: YuNet + SFace on head snapshots of Robin and Claudia at 0.6/1.5/2.5 m, day and lamp light. **Lamp light done 2026-09-23** (`runtime/e6a/`); daylight and backlight to go. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim` 0.35, `accept_sim` 0.45, `margin` 0.15, `min_face_px` 45 and SFace fp32 chosen from them. |
 | E6b | **Built 2026-09-23, with fakes and E6a's real snapshots; verified live with Robin** (enrollment, recognition on return and after a restart), **and on 2026-09-27 with Claudia, in daylight, and a child guest** (unknown throughout); rechecks added after a swap kept the old name. Two at once, a deliberate swap and backlight still to check. Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |
@@ -764,38 +931,16 @@ Concurrency, state machines, and where the "feel" lives.
 | G3 | Dashboard extras (Sonnet): live event log, map with robot, people and target overlay, drives, and a manual tool console. **Done 2026-09-27** (drives wait for E5): a status summary; a **people** panel (in view, known here, recognition's tracks with their last score, the latest attempt crops); the live **map** (`/map.png`: robot with heading, dock, Valetudo's go_to target, named places, last sightings, moved from the reference frame); the **event log** with a filter, a quiet mode and pause; a **tool console** (pick a tool, arguments pre-filled from its schema, the result and any image). Tried with `--fake` in headless Edge (the page's script runs, every panel fills) and the map against the live robot; tests for the endpoints. | Useful for debugging M3 and M4. |
 | G4 | **Done 2026-09-23, with fakes; real numbers from the next live run.** The trace is always on, as `events.jsonl` in each run's log folder (`log.events`), rather than behind a `--trace` flag: the run folders came after this step was written. Latency instrumentation (4.9): publish the brain's turn and tool timings on the bus, time piper per sentence, a `--trace` flag appending every event to JSONL (the 300-event ring is for the last turn, not for a session), and `scripts/latency.py` to print a per-turn breakdown from `/events` or a trace. **Do this before E4.** | A spoken turn prints hear → think → synth → first word → done, with the numbers adding up to the wall clock. |
 
-### Suggested run order
-
-```
-A (you + Sonnet, parallel) ──┐
-B1–B6 (Sonnet) ──────────────┼─► D1–D2 (Opus) ─► F1 (Opus) ─► D3–D5 (Sonnet) ─► E1–E2 (Opus)  = M1
-                             │                                                  └► E3 (Opus)   = M2
-                             └─► C1–C5 (Opus, needs you for C3/C4) ─────────────► E4 (Opus)   = M3
-                                                                                  E5, F2 (Opus)= M4
-                                                                                  G1–G3 (Haiku/Sonnet)
-```
-
-Grouped by model to minimize switching:
-
-1. **Sonnet 5 / medium:** A1–A4, B1–B6.
-2. **Opus 5 / high:** D1, D2, C1–C5.
-3. **Opus 5 / medium:** F1.
-4. **Sonnet 5 / medium:** D3–D5.
-5. **Opus 5 / high:** E1–E5.
-6. **Opus 5 / medium:** F2.
-7. **Haiku 4.5 / low:** G1, G2.
-8. **Sonnet 5 / medium:** G3.
-
 ---
 
 ## 7. Milestones (MVP = M1 to M3; M4 is "nice MVP")
 
-| Milestone | Demo |
-|---|---|
-| **M1: It talks** | Say its name and a question. It turns toward you (tracking), its eye listens and then thinks, it answers in the GLaDOS voice with matching eye emotes, and it stops when told. |
-| **M2: It knows you** | "My name is Robin, remember me." It enrolls you. Tomorrow it greets you by name and remembers what you told it. |
-| **M3: It comes to you** | "Come here!" It drives to about 0.7 m in front of you. Called from another angle, it searches, finds you, and asks "Did you call me?" |
-| **M4: It feels alive** | It explores on a schedule, seeks attention when you walk by, sleeps at night on the dock, and docks on low battery. |
+| Milestone | Demo | State (2026-09-27) |
+|---|---|---|
+| **M1: It talks** | Say its name and a question. It turns toward you (tracking), its eye listens and then thinks, it answers in the GLaDOS voice with matching eye emotes, and it stops when told. | Works |
+| **M2: It knows you** | "My name is Robin, remember me." It enrolls you. Tomorrow it greets you by name and remembers what you told it. | Works; Step 1 finishes it |
+| **M3: It comes to you** | "Come here!" It drives to about 1 m in front of you. Called from another angle, it searches, finds you, and asks "Did you call me?" | Steps 2-5 |
+| **M4: It feels alive** | It explores on a schedule, seeks attention when you walk by, sleeps at night on the dock, and docks on low battery. | Step 7 |
 
 ## 8. Out of scope for the MVP (phase 2 ideas)
 
@@ -806,25 +951,12 @@ Grouped by model to minimize switching:
 - Multilingual STT (`ggml-base` instead of `.en`, or `small`).
 - An Anthropic API backend that uses the SDK directly (lowest latency and cost). It can be added behind the same `LLMBackend` interface.
 
+
 ---
 
 ## 9. Open questions
 
-Questions 1–9 were answered on 2026-09-19. See 0.1 for the decisions. The original list is kept below for reference.
-
-**Still open:**
-
-- The pet's **name**, which is also its wake word. "GLaDOS" transcribes reliably with Whisper and is the obvious default.
-- Is the tilt servo's 90° level with the floor? What is the maximum upward tilt? (C3 measures this, but it decides the standoff.)
-
-**Original questions:**
-
-1. **Name and personality.** What is the pet called? That is its wake word, so pick something Whisper transcribes reliably (2 syllables, uncommon). With a GLaDOS voice, do you want a GLaDOS-ish sardonic personality, or a sweet and curious pet with a funny voice?
-2. **Where does `petd` run?** On this WSL2 machine permanently (then mirrored networking is required for UDP, F7), or on a Pi or mini-PC near the robot? Does the face's audio already reach `whisper-udp-stream` in WSL today?
-3. **Firmware changes A1–A3.** Are you OK changing and flashing the face firmware? A1 and A2 matter most for M3 accuracy.
-4. **Claude via the CLI on your subscription.** Is that acceptable for always-on use (usage limits, and about 2–5 s of latency per turn)? Haiku 4.5 by default, or Sonnet 5?
-5. **Strangers.** Should it talk to, approach and summon-respond to unknown faces, or only to enrolled people? Should it store photos (`store_photos`)?
-6. **Language.** English only (current `base.en` model)?
-7. **Home rules.** Rooms and no-go zones can't come from Valetudo on this robot (2026-09-26). Are there areas it must never enter? (Carpets aren't off-limits now that it doesn't vacuum.) What are the quiet hours, and which windows allow autonomous movement?
-8. **Mechanical.** Does pan 90° point exactly at the robot's front, and is the camera mounted upright? What is the rough camera height? (C3 measures these, but knowing helps.)
-9. **Pets and kids.** Are there real pets or small children around? That affects the default speed caps and autonomous exploring.
+- **A child in the room** (Noah): speed caps, the standoff, whether it approaches a child, who may summon it. Decide before Step 5.
+- **Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.
+- **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
+- **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. The first list's other answers are under "Decisions".
