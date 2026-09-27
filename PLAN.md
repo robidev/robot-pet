@@ -138,7 +138,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **The eye stayed parked on "thinking".** SpeechEnded sets it; only a turn's end or converse's own drop handed it back to the device's animation, so a transcript the stt adapter dropped ([BLANK_AUDIO] at 11:28, and any `[Music]` or echo drop) left it frozen until the next turn. Now any `HeardDropped` hands it back (unless a turn is under way; the turn does so when it ends), and "thinking" with nothing after it times out after 15 s.
 - **Nods, shakes and glances left head tracking off** (set manual, never back). They now restore tracking if it was on; a glance holds its pose 1.5 s first, in the background.
 - **Every face reboot switched tracking off:** the firmware starts in manual, and petd's re-initialization (after a reboot, when the device has forgotten its audio destination) didn't set the head. It now re-applies the mode petd last set, tracking by default. Not yet seen live (no board reboot since).
-- Still open: should the firmware *start* in tracking mode, so the head tracks even without petd?
+- The firmware keeps starting in manual (Robin, 2026-09-27: maybe later, if it proves useful); petd sets tracking.
 
 **Next up (in order):**
 
