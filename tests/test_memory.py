@@ -522,3 +522,16 @@ async def test_the_backend_is_started_before_anyone_speaks(pet):
         assert backend.ended >= 1 and backend.episodes == 2       # the next one is up already
     finally:
         await brain.close()
+
+
+def test_a_place_is_found_with_or_without_the():
+    # 2026-09-28: the brain asked for "kitchen" first, every time, and was
+    # told there was no such place: it's "the kitchen".
+    db = MemoryDB(":memory:")
+    db.set_place("the kitchen", 1.0, 2.0)
+    db.set_place("Hallway", 3.0, 4.0)
+    assert db.place("kitchen") == db.place("The  Kitchen") == (1.0, 2.0)
+    assert db.place("the hallway") == (3.0, 4.0)
+    assert db.place("the kitchenette") is None
+    db.set_place("kitchen", 5.0, 6.0)             # the same place, moved: not a second one
+    assert db.places() == ["Hallway", "the kitchen"] and db.place("the kitchen") == (5.0, 6.0)

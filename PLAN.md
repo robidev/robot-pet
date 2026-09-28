@@ -342,6 +342,18 @@ and prompt; on AC, the i7-1185G7 (4 cores, 8 threads).
   do differently. "GLaDOS" said by piper is mostly "Gee Laddas" / "G-Lados"
   either way.
 
+**The brain's thinking (2026-09-28, `runtime/llm-bench/`):** Haiku 4.5 through
+the CLI began every reply with 1.4-2.8 s of extended thinking; the API itself
+answered in 0.5-1.1 s. With `MAX_THINKING_TOKENS=0` the first word came at
+0.54-0.67 s (`--effort low` made it worse: 8-10 s of thinking). Six planning
+requests in `--fake` mode (drive and look, battery for a trip, turn and look,
+remember a face, "come here", move then face the dock) got the same plans
+either way, 2-12 s sooner and at half the cost without it; its one slip, asking
+for "kitchen" when the place is "the kitchen", is now matched. **Thinking is off
+by default** (`brain.thinking`). A keyword ("think hard", "ultrathink") doesn't
+turn it back on for one reply; that would take a second CLI process or the API
+directly.
+
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
 ---

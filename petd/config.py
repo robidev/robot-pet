@@ -168,9 +168,10 @@ class BrainConfig:
     # The model reasons privately before replying (claude_cli). Off, the
     # first word comes as soon as the API answers: 0.54-0.67 s against
     # 2.0-3.7 s with it, of which 1.4-2.8 s was thinking (2026-09-28, three
-    # turns with the brain's own prompt). What it costs on turns that need
-    # planning (several tools, driving) isn't measured.
-    thinking: bool = True
+    # turns with the brain's own prompt). Six planning requests in --fake
+    # mode got the same plans either way, 2-12 s sooner and at half the cost
+    # without it (runtime/llm-bench/planning.py).
+    thinking: bool = False
     # A conversation ends after this much quiet, so context stays small.
     episode_idle_timeout_s: float = 600.0
     turn_timeout_s: float = 120.0

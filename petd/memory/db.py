@@ -138,6 +138,14 @@ class Conversation:
     summary: Optional[str]
 
 
+def _place_key(name: str) -> str:
+    """A place's name without case, spacing or a leading "the"."""
+    words = name.lower().split()
+    if words[:1] == ["the"]:
+        words = words[1:]
+    return " ".join(words)
+
+
 class MemoryDB:
     def __init__(self, path: Path | str):
         """path=':memory:' gives a throwaway database (tests, --fake)."""
@@ -352,14 +360,26 @@ class MemoryDB:
     # --- places and kv ----------------------------------------------------------
 
     def set_place(self, name: str, x: float, y: float) -> None:
+        name = self._stored_place_name(name) or name.strip()
         self._db.execute(
             "INSERT INTO places (name, x, y, created_at) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(name) DO UPDATE SET x = excluded.x, y = excluded.y",
-            (name.strip(), x, y, time.time()))
+            (name, x, y, time.time()))
 
     def place(self, name: str) -> Optional[tuple[float, float]]:
-        row = self._db.execute("SELECT x, y FROM places WHERE name = ?", (name.strip(),)).fetchone()
-        return (row["x"], row["y"]) if row else None
+        stored = self._stored_place_name(name)
+        if stored is None:
+            return None
+        row = self._db.execute("SELECT x, y FROM places WHERE name = ?", (stored,)).fetchone()
+        return (row["x"], row["y"])
+
+    def _stored_place_name(self, name: str) -> Optional[str]:
+        """
+        The place `name` refers to, as stored: "kitchen" is "the kitchen"
+        (2026-09-28: the brain asked for "kitchen" first every time).
+        """
+        key = _place_key(name)
+        return next((stored for stored in self.places() if _place_key(stored) == key), None)
 
     def places(self) -> list[str]:
         return [row["name"] for row in self._db.execute("SELECT name FROM places ORDER BY name")]
