@@ -129,6 +129,9 @@ def build_registry(pet: "App") -> ToolRegistry:
     def require_face():
         if pet.face is None:
             raise ToolError("I have no head attached right now")
+        if not pet.face.state.reachable:
+            # Each call to it would take seconds to fail.
+            raise ToolError("my head is offline right now: no camera, and I can't move it")
         return pet.face
 
     @registry.tool(
@@ -144,9 +147,19 @@ def build_registry(pet: "App") -> ToolRegistry:
                 "charging": s.battery_flag, "docked": s.docked,
                 "position": None if not s.pose else {"x": s.pose.x, "y": s.pose.y, "heading": s.pose.angle},
             }
-        if pet.face:
+        frame = None
+        if pet.face and pet.face.state.reachable:
+            # The rest of the senses don't depend on the head: if it has gone
+            # since its last status poll, say so rather than fail them all.
+            try:
+                frame = await pet.face.current_faces()
+            except Exception as exc:  # noqa: BLE001
+                log.info("get_senses: the head didn't answer: %s", exc)
+        if pet.face and frame is None:
+            out["head"] = {"reachable": False}
+            out["sees"] = "nothing: my head is offline, so no camera and no face detection"
+        elif pet.face:
             f = pet.face.state
-            frame = await pet.face.current_faces()
             out["head"] = {"reachable": f.reachable, "pan_deg": f.pan_deg, "tilt_deg": f.tilt_deg,
                            "servo_mode": f.servo_mode, "known_faces_stored": f.enrolled}
             out["sees"] = [
