@@ -354,6 +354,15 @@ by default** (`brain.thinking`). A keyword ("think hard", "ultrathink") doesn't
 turn it back on for one reply; that would take a second CLI process or the API
 directly.
 
+**The pet repeated itself after tools (2026-09-28):** not the model. When it
+stayed silent after a tool, as `style.md` asks when there's nothing new, the
+Claude CLI (2.1.283) sent it "[Your previous response had no visible output.
+Please continue and produce a user-visible response.]", and it said its last
+line again or explained that it already had ("I already spoke: ..."). 7 of 8
+tool turns in `runtime/llm-bench/after_tool.py`, greetings doubled too. petd
+now doesn't speak the reply to that nudge: 0 repeats in 9 tries. Accepted
+risk: a silence the model shouldn't have kept stays silent.
+
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
 ---

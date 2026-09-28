@@ -13,6 +13,11 @@ Protocol (verified against CLI 2.1.278):
        {"type":"stream_event","event":{...}}             deltas (thinking + text)
        {"type":"assistant","message":{...}}              complete blocks, incl. tool_use
        {"type":"result","subtype":"success","result":..., "total_cost_usd":...}
+
+When the model stays silent after a tool (as memory/style.md asks when
+there's nothing new to say), the CLI tells it "[Your previous response had
+no visible output. ...]", and it repeats its last line or explains that it
+already spoke (2026-09-28, CLI 2.1.283). That reply is not spoken.
 """
 
 from __future__ import annotations
@@ -26,6 +31,9 @@ from pathlib import Path
 from typing import AsyncIterator, Optional
 
 from ..config import BrainConfig, Config
+
+# The CLI's own message to the model after a reply with no text.
+_NUDGE = "Your previous response had no visible output"
 from .backend import BrainError, BrainEvent, TextDelta, ToolFinished, ToolStarted, TurnDone
 
 log = logging.getLogger(__name__)
@@ -148,6 +156,7 @@ class ClaudeCliBackend:
 
     async def _read_turn(self, started: float) -> AsyncIterator[BrainEvent]:
         assert self._proc is not None
+        nudged = False              # the CLI asked for words after the model chose silence
         while True:
             try:
                 line = await asyncio.wait_for(self._proc.stdout.readline(), self.cfg.turn_timeout_s)
@@ -168,7 +177,7 @@ class ClaudeCliBackend:
                 if event.get("type") == "content_block_delta":
                     delta = event.get("delta", {})
                     # thinking_delta / signature_delta are internal: not speech.
-                    if delta.get("type") == "text_delta" and delta.get("text"):
+                    if delta.get("type") == "text_delta" and delta.get("text") and not nudged:
                         yield TextDelta(delta["text"])
             elif kind == "assistant":
                 for block in msg.get("message", {}).get("content", []):
@@ -180,6 +189,9 @@ class ClaudeCliBackend:
                 for block in msg.get("message", {}).get("content", []):
                     if block.get("type") == "tool_result":
                         yield ToolFinished("", bool(block.get("is_error")))
+                    elif block.get("type") == "text" and _NUDGE in block.get("text", ""):
+                        log.info("the CLI asked for words after a silent reply: not speaking them")
+                        nudged = True
             elif kind == "system" and msg.get("subtype") == "init":
                 self._session_id = msg.get("session_id")
             elif kind == "result":
