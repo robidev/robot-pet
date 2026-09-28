@@ -1,8 +1,10 @@
 """
-Text-to-speech out of the robot's own speaker.
+Text-to-speech out of the robot's own speaker, or a sound card on this PC.
 
     text -> piper.http_server (/synthesize, WAV) -> raw S16LE PCM
          -> TCP robot:6000 -> socat -> aplay -f S16_LE -r 22050 -c 1
+            (speaker.sink: robot)
+         -> aplay -D speaker.local_device on this PC (speaker.sink: local)
 
 - An utterance is a stream of sentences (the brain adds them while the LLM
   is still generating). One TCP connection per utterance.
@@ -37,7 +39,7 @@ from collections import deque
 from typing import Awaitable, Callable, Optional
 
 from ..bus import EventBus
-from ..config import Config, SpeakerConfig
+from ..config import Config, ConfigError, SpeakerConfig
 from ..events import SentenceSynthesized, SpeakingFinished, SpeakingStarted
 from ..net import tcp_port_open
 from ..procs import ManagedProcess
@@ -138,6 +140,53 @@ class RobotTcpSink(AudioSink):
                 writer.close()
             except (OSError, asyncio.TimeoutError) as exc:
                 log.warning("robot stop port %s:%s: %s", self.host, self.stop_port, exc)
+
+
+class LocalSink(AudioSink):
+    """aplay on this PC, one per utterance as on the robot; abort() kills it."""
+
+    def __init__(self, device: str, sample_rate: int):
+        self.device = device
+        self.argv = ["aplay", "-q", "-D", device, "-t", "raw",
+                     "-f", "S16_LE", "-r", str(sample_rate), "-c", "1"]
+        self._proc: Optional[asyncio.subprocess.Process] = None
+
+    async def open(self) -> None:
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self.argv, stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        except OSError as exc:
+            raise ConnectionError(f"can't start aplay: {exc}") from exc
+
+    async def write(self, pcm: bytes) -> None:
+        try:
+            self._proc.stdin.write(pcm)
+            await self._proc.stdin.drain()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            # aplay gave up: no such device, busy, or no permission.
+            err = (await self._proc.stderr.read()).decode(errors="replace").strip()
+            await self.abort()
+            raise ConnectionError(f"aplay on {self.device!r} stopped: {err or exc}") from exc
+
+    async def close(self) -> None:
+        if self._proc is None:
+            return
+        proc, self._proc = self._proc, None
+        proc.stdin.close()                  # aplay plays what it has, then exits
+        try:
+            await asyncio.wait_for(proc.wait(), 5.0)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+
+    async def abort(self) -> None:
+        if self._proc is None:
+            return
+        proc, self._proc = self._proc, None
+        if proc.returncode is None:
+            proc.kill()
+        await proc.wait()
 
 
 class NullSink(AudioSink):
@@ -385,10 +434,12 @@ class Speaker:
             return
         end = self._open_span_end
         if interrupted:
-            # With a stop port the robot goes quiet almost at once. Without
-            # one, it plays until socat sees the reset (after the lead has
-            # drained through the pipe) and its 1 s grace for aplay is up.
-            quiet_after = INTERRUPT_S if self.cfg.stop_port else self.cfg.lead_s + 1.0
+            # With a stop port the robot goes quiet almost at once, as a
+            # local sink does. Without one, it plays until socat sees the
+            # reset (after the lead has drained through the pipe) and its
+            # 1 s grace for aplay is up.
+            instant = self.cfg.stop_port or self.cfg.sink != "robot"
+            quiet_after = INTERRUPT_S if instant else self.cfg.lead_s + 1.0
             end = min(end, time.time() + quiet_after + self.cfg.playback_latency_s)
         self._spans.append((self._open_span_start, end))
         self._open_span_start = None
@@ -397,8 +448,12 @@ class Speaker:
 def build_speaker(cfg: Config, bus: EventBus, fake: bool) -> tuple[Speaker, Optional[ManagedProcess]]:
     """The Speaker plus, if configured and not already running, a managed piper server."""
     sc = cfg.speaker
+    if sc.sink not in ("robot", "local", "null"):
+        raise ConfigError(f"speaker.sink must be robot, local or null, not {sc.sink!r}")
     if fake or sc.sink == "null":
         sink_factory: Callable[[], AudioSink] = NullSink
+    elif sc.sink == "local":
+        sink_factory = lambda: LocalSink(sc.local_device, sc.sample_rate)  # noqa: E731
     else:
         sink_factory = lambda: RobotTcpSink(cfg.vacuum.host, sc.robot_port, sc.stop_port)  # noqa: E731
 

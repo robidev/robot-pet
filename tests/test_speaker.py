@@ -6,9 +6,9 @@ import wave
 import pytest
 
 from petd.bus import EventBus
-from petd.config import SpeakerConfig
+from petd.config import Config, ConfigError, SpeakerConfig
 from petd.events import SpeakingFinished, SpeakingStarted
-from petd.io.speaker import NullSink, Speaker, apply_gain, wav_to_pcm
+from petd.io.speaker import LocalSink, NullSink, Speaker, apply_gain, build_speaker, wav_to_pcm
 
 RATE = 22050
 
@@ -98,3 +98,40 @@ async def test_echo_gate_spans():
     assert speaker.overlaps(after + 0.1, after + 0.1)          # within gate tail
     assert not speaker.overlaps(after + 1.0, after + 2.0)
     await speaker.close()
+
+
+async def test_local_sink_pipes_the_pcm_to_its_player(tmp_path):
+    out = tmp_path / "played.raw"
+    sink = LocalSink("test", RATE)
+    sink.argv = ["sh", "-c", f"cat > {out}"]         # aplay's stand-in
+    await sink.open()
+    await sink.write(b"\x01\x00" * 100)
+    await sink.close()
+    assert out.read_bytes() == b"\x01\x00" * 100
+
+
+async def test_local_sink_abort_is_immediate():
+    sink = LocalSink("test", RATE)
+    sink.argv = ["sleep", "30"]
+    await sink.open()
+    started = time.monotonic()
+    await sink.abort()
+    assert time.monotonic() - started < 1.0
+    await sink.close()                                 # after abort: nothing left to do
+
+
+async def test_local_sink_says_why_its_player_gave_up():
+    sink = LocalSink("test", RATE)
+    sink.argv = ["sh", "-c", "echo 'aplay: audio open error: No such device' >&2; exit 1"]
+    await sink.open()
+    await asyncio.sleep(0.2)
+    with pytest.raises(ConnectionError, match="No such device"):
+        for _ in range(50):
+            await sink.write(b"\x00" * 4096)
+
+
+def test_unknown_sink_is_a_config_error():
+    cfg = Config()
+    cfg.speaker.sink = "jabra"
+    with pytest.raises(ConfigError, match="speaker.sink"):
+        build_speaker(cfg, EventBus(), fake=True)

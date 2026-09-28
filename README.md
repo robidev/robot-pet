@@ -96,6 +96,28 @@ open `http://192.168.4.1/api/wifi?ssid=NETWORK&password=PASSWORD`. Its own page
 at `http://<face>/` lists every endpoint. Snapshots come from port 81 (port 80
 redirects); there is no video stream.
 
+### A sound card on the PC instead (optional)
+
+The pet can listen and speak through a sound card on the PC, e.g. a USB
+speakerphone, instead of the face's mic and the robot's speaker; each on its
+own. In `config.yaml`, `stt.source: local` and/or `speaker.sink: local`, with
+the ALSA device in `local_device` (`arecord -L` / `aplay -L` list them;
+a Jabra SPEAK 510 is `plughw:CARD=USB,DEV=0`). No extra software: petd runs
+`arecord` and `aplay`.
+
+- **Attach it to WSL** from Windows (admin PowerShell, [usbipd-win](https://github.com/dorssel/usbipd-win)):
+  `usbipd list`, `usbipd bind --busid <id>` once, then `usbipd attach --wsl --busid <id>`
+  after every WSL restart. It is WSL's alone while attached.
+- **Be in the `audio` group** (`sudo usermod -aG audio $USER`, then a new
+  login): without it ALSA reports "no soundcards found".
+- `scripts/preflight.py` opens both devices and says if it can't.
+
+A speakerphone cancels its own voice: with the Jabra the mic stays at the
+room's noise floor while the pet talks (−57 dBFS against −56 before), so it
+hears someone talking over it and the echo gate matters much less.
+`speaker.playback_latency_s` and `gate_tail_s` are the robot's; the robot's
+`lead_s` has no WiFi to ride out here, and interrupting kills `aplay` at once.
+
 ## Running
 
 ```sh
@@ -168,8 +190,8 @@ it survive a Windows reboot, both outside this repository:
 | section | what it sets |
 |---|---|
 | `face`, `vacuum`, `network` | the devices' addresses; `network.pc_ip` is where the face streams audio (`auto`: the PC's address towards the face) |
-| `stt` | the whisper binary, models, threads, extra VAD arguments |
-| `speaker` | piper's URL, the robot's ports, `volume`, `lead_s` (buffer against WiFi stalls) and the echo gate |
+| `stt` | `source` (the face's mic, or a `local` sound card), the whisper binary, models, threads, extra VAD arguments |
+| `speaker` | `sink` (the robot, a `local` sound card, or `null`), piper's URL, the robot's ports, `volume`, `lead_s` (buffer against WiFi stalls) and the echo gate |
 | `brain` | `backend` (`claude_cli`, or `ollama`), the model, the persona files in `memory/` |
 | `memory` | the database, how often it greets someone, familiarity tiers |
 | `recognition` | face recognition thresholds (from measurements: see PLAN.md 4.7), growth of the stored faces, the 10 s recheck |
@@ -197,7 +219,8 @@ into the PC is itself a power cycle.
 **It doesn't hear anything.** The face's `/api/status` should say
 `"audio_configured": true` (petd sets it); the stt process in `petd.log`
 should report `stt ready`. Without mirrored networking (setup, step 1) the
-audio never reaches WSL.
+audio never reaches WSL. With `stt.source: local`, `scripts/preflight.py` says
+whether the device opens; `arecord` complaints are in `petd.log` as `petd.proc.mic`.
 
 **It hears "Gladys", "Clovis", "Class" instead of GLaDOS.** Whisper, primed
 with the name; the name matcher accepts the common misses. Saying "Hey GLaDOS"

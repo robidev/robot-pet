@@ -80,6 +80,14 @@ class SttConfig:
     enabled: bool = True
     binary: str = "stt/udp-stream/whisper-udp-stream"
     cwd: str = "stt/udp-stream"
+    # Where the microphone is. face: the head's UDP stream (face.audio_port).
+    # local: a sound card on this PC (an ALSA device, e.g. a USB speakerphone),
+    # recorded with arecord and fed to whisper as the face's packets would be.
+    source: str = "face"                      # face | local
+    local_device: str = "default"             # arecord -D, for source: local
+    # whisper's UDP port for source: local. Not face.audio_port: the face
+    # keeps streaming there and the two would interleave.
+    local_port: int = 5002
     model: str = "models/ggml-base.en.bin"
     vad_model: str = "models/ggml-silero-v6.2.0.bin"
     threads: int = 8
@@ -102,8 +110,13 @@ class SttConfig:
 @dataclass
 class SpeakerConfig:
     enabled: bool = True
-    sink: str = "robot"                       # robot | null
+    # robot: socat -> aplay on the vacuum. local: aplay on this PC (e.g. a
+    # USB speakerphone). null: nowhere.
+    sink: str = "robot"                       # robot | local | null
     robot_port: int = 6000                    # socat -> aplay on the vacuum
+    # aplay -D for sink: local. A plughw: device converts piper's 22050 Hz
+    # mono to whatever the card plays.
+    local_device: str = "default"
     # Connecting here kills aplay on the robot, for an instant interrupt()
     # (/root/watchdog_scripts/speaker_stop.sh, started by WatchDoge):
     # socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay'
@@ -124,8 +137,11 @@ class SpeakerConfig:
     # How far ahead of real time audio is pushed to the robot: the jitter
     # buffer that rides out its WiFi stalls (measured up to 1.4 s). It costs
     # nothing on interrupt, which resets the connection and drops the lot.
+    # (A local sink has no WiFi to ride out; interrupting kills its aplay.)
     lead_s: float = 2.0
     # Rough delay between writing audio and hearing it (aplay startup + buffer).
+    # This and gate_tail_s are the robot's; measure a local sink's with
+    # scripts/echo_timing.py.
     playback_latency_s: float = 0.3
     # Extra time after playback during which the mic hears our own echo.
     # scripts/echo_timing.py on the robot: the voice ends up to ~1.0 s after

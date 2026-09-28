@@ -22,6 +22,9 @@ face:
   faces_lost_debounce_s: 5.0   # detection drops out for seconds with a face in view
 
 stt:
+  source: face                 # face (the head's UDP stream) | local (a sound card on this PC)
+  local_device: plughw:CARD=USB,DEV=0   # source: local; ALSA name (arecord -L), here the Jabra SPEAK 510
+  local_port: 5002             # source: local; whisper's port, away from the face's audio_port
   binary: stt/udp-stream/whisper-udp-stream
   cwd: stt/udp-stream
   model: models/ggml-base.en.bin
@@ -31,7 +34,8 @@ stt:
   max_no_speech_prob: 0.6
 
 speaker:
-  sink: robot              # robot | null
+  sink: robot              # robot (socat on the vacuum) | local (a sound card on this PC) | null
+  local_device: plughw:CARD=USB,DEV=0   # sink: local; plughw converts 22050 Hz mono for the card
   robot_port: 6000         # on the robot: socat -u TCP-LISTEN:6000,reuseaddr,fork EXEC:'aplay -f S16_LE -r 22050 -c 1 -t raw -'
   stop_port: 6001          # on the robot: socat -u TCP-LISTEN:6001,reuseaddr,fork EXEC:'killall aplay' (null if absent)
   piper_url: http://127.0.0.1:5001

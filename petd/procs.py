@@ -1,7 +1,7 @@
 """
-Supervised child processes (whisper-udp-stream, piper): restart with
-exponential backoff, stdout lines to a callback, stderr to the log,
-graceful terminate -> kill on shutdown.
+Supervised child processes (whisper-udp-stream, piper, arecord): restart
+with exponential backoff, stdout lines (or fixed-size binary chunks) to a
+callback, stderr to the log, graceful terminate -> kill on shutdown.
 """
 
 from __future__ import annotations
@@ -26,6 +26,9 @@ class ManagedProcess:
         cwd: Optional[Path] = None,
         env: Optional[dict] = None,
         on_stdout_line: Optional[Callable[[str], None]] = None,
+        on_stdout_chunk: Optional[Callable[[bytes], None]] = None,
+        chunk_size: int = 1024,
+        stderr_level: int = logging.DEBUG,
         bus: Optional[EventBus] = None,
         restart: bool = True,
         min_backoff_s: float = 1.0,
@@ -37,6 +40,10 @@ class ManagedProcess:
         self.cwd = cwd
         self.env = env
         self.on_stdout_line = on_stdout_line
+        # Binary stdout (PCM from arecord): exactly chunk_size bytes at a time.
+        self.on_stdout_chunk = on_stdout_chunk
+        self.chunk_size = chunk_size
+        self.stderr_level = stderr_level
         self.bus = bus
         self.restart = restart
         self.min_backoff_s = min_backoff_s
@@ -102,8 +109,11 @@ class ManagedProcess:
             else:
                 self.log.info("started (pid %d)", self._proc.pid)
                 self._publish(True)
+                stdout = (self._pump_chunks(self._proc.stdout, self.chunk_size, self._handle_chunk)
+                          if self.on_stdout_chunk is not None
+                          else self._pump(self._proc.stdout, self._handle_stdout))
                 await asyncio.gather(
-                    self._pump(self._proc.stdout, self._handle_stdout),
+                    stdout,
                     self._pump(self._proc.stderr, self._handle_stderr),
                 )
                 returncode = await self._proc.wait()
@@ -128,6 +138,21 @@ class ManagedProcess:
                 return
             handle(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
 
+    @staticmethod
+    async def _pump_chunks(stream: asyncio.StreamReader, size: int, handle: Callable[[bytes], None]) -> None:
+        while True:
+            try:
+                chunk = await stream.readexactly(size)
+            except asyncio.IncompleteReadError:
+                return
+            handle(chunk)
+
+    def _handle_chunk(self, chunk: bytes) -> None:
+        try:
+            self.on_stdout_chunk(chunk)
+        except Exception:  # noqa: BLE001 - a bad chunk must not kill the pump
+            self.log.exception("error handling stdout chunk")
+
     def _handle_stdout(self, line: str) -> None:
         if self.on_stdout_line is None:
             self.log.info("%s", line)
@@ -139,4 +164,4 @@ class ManagedProcess:
 
     def _handle_stderr(self, line: str) -> None:
         if line.strip():
-            self.log.debug("%s", line)
+            self.log.log(self.stderr_level, "%s", line)

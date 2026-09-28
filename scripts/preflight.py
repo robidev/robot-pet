@@ -45,6 +45,22 @@ def local_addresses() -> list[str]:
     return [word.split("/")[0] for line in out.splitlines() for word in line.split()[2:] if "/" in word]
 
 
+def alsa_error(tool: str, device: str) -> str:
+    """Why `tool` (aplay | arecord) can't open an ALSA device, or "" if it can."""
+    rate = "16000" if tool == "arecord" else "22050"
+    argv = [tool, "-q", "-D", device, "-t", "raw", "-f", "S16_LE", "-r", rate, "-c", "1"]
+    if tool == "arecord":
+        argv += ["-s", "160"]               # 10 ms and done
+    try:
+        result = subprocess.run([*argv, "/dev/null"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return str(exc)
+    if result.returncode == 0:
+        return ""
+    lines = result.stderr.strip().splitlines()
+    return lines[-1] if lines else f"exit code {result.returncode}"
+
+
 def checks(cfg: Config) -> list[tuple[str, str, str]]:
     """[(status, what, detail)]"""
     found: list[tuple[str, str, str]] = []
@@ -68,6 +84,15 @@ def checks(cfg: Config) -> list[tuple[str, str, str]]:
             model_path = path(cfg.stt.cwd) / model
             check(f"model {Path(model).name}", model_path.exists(),
                   f"{model_path} missing: download it (stt/README.md)")
+        if cfg.stt.source == "local":
+            err = alsa_error("arecord", cfg.stt.local_device)
+            check(f"microphone {cfg.stt.local_device}", not err,
+                  f"{err}: the pet will be deaf (plugged in, attached to WSL, in the audio group?)", WARN)
+
+    if cfg.speaker.enabled and cfg.speaker.sink == "local":
+        err = alsa_error("aplay", cfg.speaker.local_device)
+        check(f"speaker {cfg.speaker.local_device}", not err,
+              f"{err}: the pet will be silent (plugged in, attached to WSL, in the audio group?)", WARN)
 
     if cfg.speaker.enabled and cfg.speaker.manage_piper:
         cwd = path(cfg.speaker.piper_cwd)
@@ -89,7 +114,7 @@ def checks(cfg: Config) -> list[tuple[str, str, str]]:
               "missing: nobody will be recognized (scripts/fetch_face_models.py)", WARN)
 
     # Networking: the face's audio only reaches WSL with mirrored networking.
-    if shutil.which("wslinfo"):
+    if shutil.which("wslinfo") and cfg.stt.enabled and cfg.stt.source == "face":
         try:
             mode = subprocess.run(["wslinfo", "--networking-mode"], capture_output=True, text=True,
                                   timeout=3).stdout.strip()
