@@ -39,7 +39,7 @@ petd starts and supervises it in `--json` mode (see `petd/io/stt.py`). To run it
 
 ```sh
 cd stt/udp-stream
-./whisper-udp-stream --port 5000 --threads 8 \
+./whisper-udp-stream --port 5000 --threads 4 \
   --model models/ggml-base.en.bin --vad-model models/ggml-silero-v6.2.0.bin [--json]
 ```
 

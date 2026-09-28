@@ -222,6 +222,12 @@ struct Params {
 
     int max_speech_s = 30;
 
+    // Encode only the utterance plus this much, not whisper's whole 30 s
+    // window; -1 = the whole window. Shorter margins made whisper loop on
+    // short utterances ("who is in the who is in the ..." at 1 and 2 s);
+    // 5 s gave the full window's transcripts, 3.4x faster (PLAN.md).
+    int audio_ctx_pad_ms = 5000;
+
     bool use_gpu = false;
     bool verbose = false;
     bool log_levels = false;
@@ -311,6 +317,9 @@ Options:
   --speech-pad-ms N        Audio padding before/after speech [300]
 
   --max-speech-s N         Maximum utterance length [30]
+  --audio-ctx-pad-ms N     Encode the utterance plus N ms instead of
+                           whisper's whole 30 s window; -1 = the
+                           whole window [5000]
 
   --gpu                    Enable GPU
   --verbose                Show whisper.cpp/VAD internal logs
@@ -377,6 +386,9 @@ static bool parse_args(int argc, char ** argv, Params & params) {
         } else if (arg == "--max-speech-s") {
             params.max_speech_s =
                 std::stoi(require_value("--max-speech-s"));
+        } else if (arg == "--audio-ctx-pad-ms") {
+            params.audio_ctx_pad_ms =
+                std::stoi(require_value("--audio-ctx-pad-ms"));
         } else if (arg == "--gpu") {
             params.use_gpu = true;
         } else if (arg == "--verbose") {
@@ -452,10 +464,27 @@ public:
 
         const auto started = std::chrono::steady_clock::now();
 
+        // The encoder runs over a 30 s window whatever the utterance's
+        // length, and that was most of the time: ~950 ms for 0.8 s of speech
+        // or 8.5 s (2026-09-28). Its audio context is that window
+        // in 20 ms steps (1500 for 30 s); sized to the utterance plus a
+        // margin, only that much is encoded.
+        const int full_ctx = whisper_model_n_audio_ctx(ctx_);
+        int audio_ctx = 0;
+        if (params_->audio_ctx_pad_ms >= 0) {
+            const double seconds =
+                static_cast<double>(audio.size()) / SAMPLE_RATE +
+                params_->audio_ctx_pad_ms / 1000.0;
+            audio_ctx = std::min(
+                full_ctx,
+                static_cast<int>(std::ceil(seconds * full_ctx / 30.0)));
+        }
+
         std::fprintf(
             stderr,
-            "\n[STT] Transcribing %.2f seconds...\n",
-            static_cast<double>(audio.size()) / SAMPLE_RATE);
+            "\n[STT] Transcribing %.2f seconds (audio_ctx %d of %d)...\n",
+            static_cast<double>(audio.size()) / SAMPLE_RATE,
+            audio_ctx ? audio_ctx : full_ctx, full_ctx);
 
         whisper_full_params wparams =
             whisper_full_default_params(
@@ -478,7 +507,7 @@ public:
 
         wparams.temperature = 0.0f;
 
-        wparams.audio_ctx = 0;
+        wparams.audio_ctx = audio_ctx;
 
         if (!params_->prompt.empty()) {
             wparams.initial_prompt = params_->prompt.c_str();

@@ -90,7 +90,7 @@ class SttConfig:
     local_port: int = 5002
     model: str = "models/ggml-base.en.bin"
     vad_model: str = "models/ggml-silero-v6.2.0.bin"
-    threads: int = 8
+    threads: int = 4                          # faster than 8 on this PC's 4 cores (PLAN.md)
     extra_args: list = field(default_factory=list)
     max_no_speech_prob: float = 0.6
     # An utterance is the pet's own echo when at least this share of it

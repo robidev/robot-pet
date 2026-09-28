@@ -30,7 +30,7 @@ stt:
   cwd: stt/udp-stream
   model: models/ggml-base.en.bin
   vad_model: models/ggml-silero-v6.2.0.bin
-  threads: 8
+  threads: 4
   extra_args: []           # e.g. ["--vad-threshold", "0.4", "--min-silence-ms", "600"]
   max_no_speech_prob: 0.6
 

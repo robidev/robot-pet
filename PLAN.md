@@ -323,6 +323,25 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 
 **The microphone (2026-09-27, not measured yet):** the firmware keeps the top 16 of the MSM261's 24 bits (`raw >> 16`) and applies `gain_` after that. By the datasheet as recalled (sensitivity -26 dBFS at 94 dB SPL, SNR ~57 dB: self-noise ~-83 dBFS, above 16-bit's ~-101), the dropped bits are mostly mic hiss, but speech sits low: ~-60 dBFS at 1 m, ~5-6 bits. Measure before changing anything (Step 2). Then, if quiet speech is the weak point: gain applied to the 24-bit value before truncating, a fixed gain putting speech at 2 m near -30 dBFS with a limiter, or per-utterance normalization on the PC. No AGC or compression on the device (pumps room noise into the VAD, changes the echo's level); no 24-bit transport (more traffic on a lossy WiFi for mic hiss).
 
+**Whisper's speed (2026-09-28, `runtime/whisper-bench/bench.py`):** eight lines
+said by piper (0.8-8.5 s, the pet's name, "Stop.", one long sentence), sent to
+`whisper-udp-stream` as the mic's packets at real-time pace, with petd's VAD
+and prompt; on AC, the i7-1185G7 (4 cores, 8 threads).
+- **The encoder's 30 s window was most of the time:** ~950 ms per utterance
+  whatever its length (0.8 s or 8.5 s). Sized to the utterance plus a margin
+  (`--audio-ctx-pad-ms`, whisper's `audio_ctx`), the median at 4 threads was
+  178 ms (+1 s), 214 (+2 s), 200 (+3 s), 279 (+5 s).
+- **A short window loops:** with +1 s and +2 s the 1.6 s "Who is in the room
+  with me?" came out as "who is in the who is in the ..." (1.8 s and 4.0 s;
+  12.9 s at 8 threads), every time. +3 s lost "Stop." ("So..."). **+5 s is the
+  default:** every transcript as the full window's, "Stop" right where the full
+  window heard "SOP", 3.4x faster.
+- **4 threads, not 8:** full window 948 ms against 1126 ms, and faster in every
+  setup (hyperthreads don't help ggml here). `stt.threads: 4`.
+- Test speech is the pet's own synthetic voice; real voices at a distance may
+  do differently. "GLaDOS" said by piper is mostly "Gee Laddas" / "G-Lados"
+  either way.
+
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
 ---
