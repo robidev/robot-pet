@@ -62,6 +62,20 @@ def test_an_answer_begun_as_the_voice_dies_away_is_kept():
     assert isinstance(sub.get_nowait(), Heard)
 
 
+def test_an_echo_cancelled_mic_hears_everything():
+    # The same timing as test_echo_of_own_speech_is_dropped, but the mic
+    # can't hear the pet, so it's someone talking over it.
+    stt, bus = make(echo_spans=[(99.0, 101.0)])
+    stt.cfg.echo_cancelled = True
+    sub = bus.subscribe()
+    stt.handle_line(line(type="speech_start", t_utc=100.5))
+    stt.handle_line(line(type="text", text="What cake", t_start_utc=99.5,
+                         t_end_utc=101.2, no_speech_prob=0.0))
+    first, second = sub.get_nowait(), sub.get_nowait()
+    assert isinstance(first, SpeechStarted)
+    assert isinstance(second, Heard) and second.text == "What cake"
+
+
 def test_hallucination_filters():
     cfg = Config().stt
     assert drop_reason("[BLANK_AUDIO]", 0, cfg) == "non-speech tag"

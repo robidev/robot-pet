@@ -17,6 +17,10 @@ then the attention gate, then the brain.
   a tail), and here by content, for echoes that outlast that estimate:
   a transcript that mostly repeats the pet's last 10 s of speech is not
   someone talking to it.
+- With stt.echo_cancelled (a mic that doesn't hear the pet) neither filter
+  runs: whatever is heard is someone talking. A stop or quiet word said
+  over the pet's voice is then the barge-in, as in an echo-gated
+  transcript, and anything else said over it counts as talking to the pet.
 - The strict reflex match (the whole utterance is the command, give or take
   the name and a "please") keeps "don't stop" or "stop by the shop later"
   from halting the robot.
@@ -129,7 +133,7 @@ def match_reflex(words: list[str]) -> Optional[str]:
 
 
 def barge_in(heard: str, said: str) -> Optional[str]:
-    """A stop/quiet word in an echo-gated transcript that wasn't in our own speech."""
+    """A stop/quiet word in a transcript said over our voice that wasn't in our own speech."""
     ours = set(normalize(said).split())
     for word in normalize(heard).split():
         if word in BARGE_IN and word not in ours:
@@ -157,6 +161,7 @@ class Listener:
     def __init__(self, pet: "App"):
         self.pet = pet
         self.cfg = pet.cfg.converse
+        self.echo_cancelled = pet.cfg.stt.echo_cancelled
         self.names = NameMatcher(pet.cfg.pet.name, self.cfg.wake_words)
         self.window_until = 0.0
         self._task: Optional[asyncio.Task] = None
@@ -195,7 +200,8 @@ class Listener:
 
     async def on_heard(self, event: Heard) -> None:
         speaker = self.pet.speaker
-        if (speaker is not None and speaker.overlaps(event.t_start - ECHO_START_S, event.t_end)
+        if (speaker is not None and not self.echo_cancelled
+                and speaker.overlaps(event.t_start - ECHO_START_S, event.t_end)
                 and repeats_own_speech(event.text, speaker.said_recently(ECHO_WINDOW_S))):
             log.info("ignoring %r: repeats what I just said", event.text)
             self.pet.bus.publish(HeardDropped(text=event.text, reason="echo (repeats own words)"))
@@ -206,10 +212,21 @@ class Listener:
         if reflex in ALWAYS:
             await self.reflex(reflex, event.text)
             return
+        # Said over the pet's voice, which this mic doesn't hear: someone
+        # answering it or cutting in.
+        over_voice = (self.echo_cancelled and speaker is not None
+                      and speaker.overlaps(event.t_start, event.t_end))
+        if over_voice:
+            # All of it is theirs: no need to leave out the pet's own words.
+            barged = barge_in(event.text, "")
+            if barged:
+                log.warning("barge-in %r -> %s", event.text, barged)
+                await self.reflex(barged, event.text)
+                return
 
         if self.cfg.ignore_while_driving and self._driving() and not addressed:
             return self._ignore(event.text, "driving")
-        if not (addressed or self.window_open(event.t) or self._gaze()):
+        if not (addressed or over_voice or self.window_open(event.t) or self._gaze()):
             return self._ignore(event.text, "not addressed")
         self.window_until = event.t + self.cfg.window_s
 

@@ -3,7 +3,7 @@ Speech-to-text: supervises whisper-udp-stream in --json mode and turns its
 output into bus events.
 
 Filtering happens here, before anything reaches the brain:
-- echo: most of the utterance overlaps the pet's own playback (the mic is on
+- echo (unless stt.echo_cancelled: the mic doesn't hear the pet at all): most of the utterance overlaps the pet's own playback (the mic is on
   the same body as the speaker), judged by the utterance's own timestamps
   since transcription lands ~1-2 s after the speech ended. Only most: an
   answer begun just before the pet's voice had quite died away is still
@@ -136,7 +136,9 @@ class SttAdapter:
         await self.process.stop()
 
     def _echo_share(self, t_start: float, t_end: float) -> float:
-        return float(self.echo_gate(t_start, t_end)) if self.echo_gate is not None else 0.0
+        if self.echo_gate is None or self.cfg.echo_cancelled:
+            return 0.0
+        return float(self.echo_gate(t_start, t_end))
 
     def handle_line(self, line: str) -> None:
         try:

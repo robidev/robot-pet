@@ -113,10 +113,12 @@ a Jabra SPEAK 510 is `plughw:CARD=USB,DEV=0`). No extra software: petd runs
 - `scripts/preflight.py` opens both devices and says if it can't.
 
 A speakerphone cancels its own voice: with the Jabra the mic stays at the
-room's noise floor while the pet talks (−57 dBFS against −56 before), so it
-hears someone talking over it and the echo gate matters much less.
-`speaker.playback_latency_s` and `gate_tail_s` are the robot's; the robot's
-`lead_s` has no WiFi to ride out here, and interrupting kills `aplay` at once.
+room's noise floor while the pet talks (−57 dBFS against −56 before). For
+such a mic, `stt.echo_cancelled: true` turns the echo filtering off: what's
+said over the pet's voice reaches it, and a stop or quiet word anywhere in
+it interrupts. `speaker.gate_tail_s` (the robot's echo) can then be 0;
+`playback_latency_s` is the robot's. The robot's `lead_s` has no WiFi to
+ride out here, and interrupting kills `aplay` at once.
 
 ## Running
 

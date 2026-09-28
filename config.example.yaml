@@ -25,6 +25,7 @@ stt:
   source: face                 # face (the head's UDP stream) | local (a sound card on this PC)
   local_device: plughw:CARD=USB,DEV=0   # source: local; ALSA name (arecord -L), here the Jabra SPEAK 510
   local_port: 5002             # source: local; whisper's port, away from the face's audio_port
+  echo_cancelled: false        # true: the mic doesn't hear the pet (a speakerphone): no echo filtering
   binary: stt/udp-stream/whisper-udp-stream
   cwd: stt/udp-stream
   model: models/ggml-base.en.bin

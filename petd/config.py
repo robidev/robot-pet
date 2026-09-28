@@ -97,6 +97,12 @@ class SttConfig:
     # overlaps its audible speech (plus gate_tail_s). Any overlap at all used
     # to count, which dropped answers begun as the pet's voice died away.
     echo_overlap: float = 0.5
+    # The mic doesn't hear the pet's own voice (a speakerphone's echo
+    # cancellation, e.g. the Jabra SPEAK 510). Then nothing is filtered as
+    # echo, by time or by words (echo_overlap is unused), the pet's own
+    # speech doesn't hide someone starting to talk, and a stop or quiet word
+    # said over its voice interrupts it (converse.py).
+    echo_cancelled: bool = False
     # Whisper's initial prompt. Without it "GLaDOS" comes out as "Gladys",
     # "G let us" or "Clovis". None = the pet's name.
     prompt: Optional[str] = None

@@ -6,6 +6,7 @@ __pycache__/
 
 # Local config and runtime state
 config.yaml
+local_config.yaml
 runtime/
 
 # Third-party checkout, rebuilt from stt/README.md

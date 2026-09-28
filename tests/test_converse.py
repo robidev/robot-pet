@@ -159,6 +159,41 @@ async def test_stop_works_unaddressed_and_mid_sentence(pet):
     assert ("stop",) in pet.vacuum.commands
 
 
+def cancel_echo(pet):
+    pet.cfg.stt.echo_cancelled = True      # FakeStt shares this SttConfig
+    pet.listener.echo_cancelled = True
+
+
+async def test_with_echo_cancelled_a_stop_word_over_the_voice_interrupts(pet):
+    cancel_echo(pet)
+    pet.speaker.say("I have been thinking about the nature of cake.")
+    await until_audible(pet)
+    await asyncio.sleep(1.1)
+    pet.stt.inject("no no stop that is enough cake")
+    await asyncio.sleep(0.05)
+    assert ("stop",) in pet.vacuum.commands
+    assert pet.brain.told == [] and "no no stop" in pet.brain.notes[-1]
+
+
+async def test_with_echo_cancelled_talking_over_the_voice_reaches_the_brain(pet):
+    cancel_echo(pet)
+    pet.speaker.say("I have been thinking about the nature of cake.")
+    await until_audible(pet)
+    await asyncio.sleep(1.1)
+    pet.stt.inject("the nature of cake is a lie")    # our words, but not an echo
+    await asyncio.sleep(0.05)
+    assert pet.brain.told[-1][0] == "the nature of cake is a lie"
+    assert ("stop",) not in pet.vacuum.commands
+
+
+async def test_with_echo_cancelled_a_stop_word_is_no_barge_in_after_the_voice(pet):
+    cancel_echo(pet)
+    pet.listener.window_until = time.time() + 60
+    await hear(pet, "stop by the shop later")
+    assert ("stop",) not in pet.vacuum.commands
+    assert pet.brain.told[-1][0] == "stop by the shop later"
+
+
 async def test_be_quiet_hushes_without_stopping_the_wheels(pet):
     await hear(pet, "be quiet")
     assert pet.brain.hushed == 1 and ("stop",) not in pet.vacuum.commands
