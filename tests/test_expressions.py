@@ -142,3 +142,19 @@ async def test_an_unreachable_face_is_not_queued_for():
         expressions.fire(Action("nod"))
     await asyncio.sleep(0.05)
     assert face.commands == [] and not expressions._tasks
+
+
+async def test_a_pause_opening_the_reply_is_skipped():
+    # 2026-09-28: without thinking, replies often began "[pause]", holding
+    # the first sentence back 0.4 s for nothing.
+    added = []
+    pet = SimpleNamespace(cfg=Config(), face=FakeFace(Config().face, EventBus()), bus=EventBus(),
+                          speaker=SimpleNamespace(begin=lambda: SimpleNamespace(
+                              add=lambda s: added.append((s, time.monotonic())))))
+    brain = Brain(pet, backend=None)
+    started, utterance, said = time.monotonic(), None, []
+    for piece in SpeechStreamParser().feed("[pause] Four. [pause] Five. "):
+        utterance = await brain._emit(piece, utterance, said)
+    (first, t1), (second, t2) = added
+    assert (first, second) == ("Four.", "Five.")
+    assert t1 - started < 0.05 and t2 - t1 >= 0.4     # the second pause still a beat

@@ -57,7 +57,7 @@ class ClaudeCliBackend:
             # A tool result carrying a photo comes back as one base64 line,
             # far past asyncio's 64 KiB readline default.
             limit=64 * 1024 * 1024,
-            env={**os.environ, "PETD_API": self.api_url},
+            env=self._env(),
         )
         asyncio.create_task(self._log_stderr(), name="brain-stderr")
 
@@ -90,6 +90,12 @@ class ClaudeCliBackend:
             "env": {"PYTHONPATH": str(self.project_root)},
         }}}
         (self.runtime_dir / "mcp.json").write_text(json.dumps(config, indent=2))
+
+    def _env(self) -> dict:
+        env = {**os.environ, "PETD_API": self.api_url}
+        if not self.cfg.thinking:
+            env["MAX_THINKING_TOKENS"] = "0"      # the CLI's switch for extended thinking
+        return env
 
     def _argv(self) -> list[str]:
         c = self.cfg

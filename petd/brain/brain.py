@@ -280,7 +280,8 @@ class Brain:
             if self.expressions is None:
                 pass
             elif piece.kind == "pause":         # a beat in the speech, not the head's
-                await self.expressions.apply(piece)
+                if said:                        # opening a reply, it only held the words back
+                    await self.expressions.apply(piece)
             else:
                 self.expressions.fire(piece)    # the head never holds up the words
             return utterance

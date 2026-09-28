@@ -165,6 +165,12 @@ class BrainConfig:
     runtime_dir: str = "runtime/brain"        # generated system.md + mcp.json, claude's cwd
     memory_dir: str = "memory"                # persona/backstory/body/style markdown
     extra_args: list = field(default_factory=list)
+    # The model reasons privately before replying (claude_cli). Off, the
+    # first word comes as soon as the API answers: 0.54-0.67 s against
+    # 2.0-3.7 s with it, of which 1.4-2.8 s was thinking (2026-09-28, three
+    # turns with the brain's own prompt). What it costs on turns that need
+    # planning (several tools, driving) isn't measured.
+    thinking: bool = True
     # A conversation ends after this much quiet, so context stays small.
     episode_idle_timeout_s: float = 600.0
     turn_timeout_s: float = 120.0
