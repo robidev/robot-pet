@@ -35,6 +35,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 THINKING_TIMEOUT_S = 15.0     # "thinking" with no turn and no drop after it: hand the eye back
+# The eye's feedback around a turn, fired like the reply's own tags.
+LISTENING = Action("emote", "listening")
+THINKING = Action("emote", "thinking")
+REST = Action("rest")
 
 
 class Brain:
@@ -113,19 +117,19 @@ class Brain:
                     fallback.cancel()
                     fallback = None
                 if isinstance(event, SpeechStarted):
-                    await self.expressions.listening()
+                    self.expressions.fire(LISTENING)
                 elif isinstance(event, SpeechEnded) and not event.discarded:
-                    await self.expressions.thinking()
+                    self.expressions.fire(THINKING)
                     fallback = asyncio.create_task(self._rest_unless_busy(THINKING_TIMEOUT_S))
                 elif isinstance(event, HeardDropped) and not self.busy:
-                    await self.expressions.rest()
+                    self.expressions.fire(REST)
             except Exception:  # noqa: BLE001
                 log.debug("feedback expression failed", exc_info=True)
 
     async def _rest_unless_busy(self, delay_s: float) -> None:
         await asyncio.sleep(delay_s)
         if not self.busy and self.expressions is not None:
-            await self.expressions.rest()
+            self.expressions.fire(REST)
 
     # --- the turn loop --------------------------------------------------------
 
@@ -263,7 +267,7 @@ class Brain:
                 utterance.end()
                 await utterance.wait()
             if self.expressions is not None:
-                await self.expressions.rest()
+                self.expressions.fire(REST)
 
     def _record(self, speaker: str, text: str) -> None:
         if self._conversation_id is not None and self.pet.db is not None:
@@ -273,8 +277,12 @@ class Brain:
         if self._hushed:
             return utterance
         if isinstance(piece, Action):
-            if self.expressions is not None:
+            if self.expressions is None:
+                pass
+            elif piece.kind == "pause":         # a beat in the speech, not the head's
                 await self.expressions.apply(piece)
+            else:
+                self.expressions.fire(piece)    # the head never holds up the words
             return utterance
         if isinstance(piece, Sentence):
             log.info("<- brain says: %s", piece.text)

@@ -6,13 +6,18 @@ sequences loaded from memory/emotions.yaml (blinks, nods, breathing).
 
 Eye coordinates: x/y are -1..1 (the eye's gaze offset), aperture 0..1.5
 (how wide open it is).
+
+The brain fires expressions and forgets them (fire()): speech never waits
+for the head. Each face call is an HTTP request, and with the face offline
+one takes ~3 s to fail (2026-09-28), so an [emote] held the next sentence
+back ~6 s and a [nod] ~15 s.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Set
 
 from .tags import Action
 
@@ -58,6 +63,31 @@ class Expressions:
         self.pan_centre = pan_centre
         self.tilt_centre = tilt_centre
         self._resume: Optional[asyncio.Task] = None     # tracking back on after a glance
+        self._last: Optional[asyncio.Task] = None       # the newest fired expression
+        self._tasks: Set[asyncio.Task] = set()
+
+    def fire(self, action: Action) -> None:
+        """
+        Applies `action` in the background and returns at once; failures are
+        logged and forgotten. Fired expressions run one at a time, in order:
+        a nod mustn't interleave with a glance, and the eye's rest after a
+        reply must come after the reply's emotes. While the face is
+        unreachable they're skipped, not queued up behind each other.
+        """
+        if not self.face.state.reachable:
+            log.debug("face unreachable: skipping %s", action)
+            return
+        previous = self._last
+
+        async def run() -> None:
+            if previous is not None and not previous.done():
+                await asyncio.wait([previous])
+            await self.apply(action)
+
+        task = asyncio.create_task(run(), name=f"expression:{action.kind}")
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+        self._last = task
 
     async def apply(self, action: Action) -> None:
         log.info("expresses %s%s", action.kind, f":{action.value}" if action.value else "")
@@ -72,6 +102,8 @@ class Expressions:
                 await self.shake()
             elif action.kind == "pause":
                 await asyncio.sleep(0.4)
+            elif action.kind == "rest":
+                await self.rest()
             else:
                 log.debug("unknown action tag: %s", action)
         except Exception:  # noqa: BLE001 - expression must never break speech
@@ -138,12 +170,6 @@ class Expressions:
             await asyncio.sleep(0.22)
         if before == "track":           # a nod mustn't switch tracking off for good
             await self.face.set_servo(mode="track")
-
-    async def listening(self) -> None:
-        await self.emote("listening")
-
-    async def thinking(self) -> None:
-        await self.emote("thinking")
 
     async def rest(self) -> None:
         """Hands the eye back to the device's own idle/tracking behaviour."""

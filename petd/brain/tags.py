@@ -35,7 +35,7 @@ class Sentence:
 
 @dataclass(frozen=True)
 class Action:
-    kind: str           # emote | look | nod | shake | pause
+    kind: str           # emote | look | nod | shake | pause (| rest, the brain's own)
     value: str = ""
 
 
