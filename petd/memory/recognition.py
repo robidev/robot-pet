@@ -101,6 +101,18 @@ class Recognizer:
     def knows_face(self, person_id: int) -> bool:
         return person_id in self.centres
 
+    def biggest(self) -> Optional[int]:
+        """
+        Who has the biggest face in view, by each face's latest look, if
+        it's been named: the nearest person, whom the head tracks. None
+        while a fresh look hasn't seen the faces yet, or the biggest is
+        unknown.
+        """
+        latest = [(t.samples[-1][0].height, t) for t in self.tracks if t.samples]
+        if not latest:
+            return None
+        return max(latest, key=lambda pair: pair[0])[1].person_id
+
     # --- visits -----------------------------------------------------------------
 
     async def _watch(self, sub) -> None:

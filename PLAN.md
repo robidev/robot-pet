@@ -18,7 +18,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 | Milestone | State |
 |---|---|
 | **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
-| **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far, and their speech isn't credited to either yet (Step 1). |
+| **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far; their speech goes to the biggest face since 2026-10-05, not yet tried (Step 1). |
 | **M3: It comes to you** | **Not built.** Driving, docking and places work; finding a person's distance and direction is the missing piece (Steps 2-5). |
 | **M4: It feels alive** | **Not built** (Step 7). |
 
@@ -50,8 +50,10 @@ Finishes M2 and gives the first real latency numbers.
   right one ("Robin says" / "Claudia says" in the events). **Half done
   (2026-10-05):** Claudia and Noah were named together within ~11 s, never one
   as the other; Robin and Noah far off (faces 46-110 px) took ~60 s. Speech
-  with two in view is always "someone says": `converse.py` credits only a sole
-  person, and telling which of two is speaking isn't built (a decision).
+  with two in view was always "someone says". **Since 2026-10-05** it goes to
+  the biggest face, the one the head tracks (Robin's call; firmware `5536a4c`
+  tracks the biggest face, to flash): to check, two side by side, each
+  speaking, at different distances.
 - ~~**A swap on purpose**~~ **Done (2026-10-05):** Noah and Robin out, Claudia
   in: named in 6 s; Claudia out, Noah in: named at once.
 - ~~**Leaving and coming back**~~ **Done (2026-10-05):** Noah twice, Claudia
@@ -387,6 +389,12 @@ risk: a silence the model shouldn't have kept stays silent.
   off to the right. I'm dead center"). A glance now turns the head back to
   where it was, then tracking goes back on if it was on; a nod in the middle
   keeps the way back.
+- **The head tracked the smaller face** in 19 of 29 two-face passes: the
+  firmware followed the detector's first face, and the detector lists them by
+  score. With Claudia close up and Noah's ~47 px face behind, the head kept
+  turning to Noah. Firmware `5536a4c` tracks the biggest face, and petd
+  credits speech with two or more in view to the biggest named face
+  (`People.speaker()`); an unknown biggest face means "someone".
 
 **The head's servos remounted reversed (2026-10-05).** Firmware `1c6357d`
 (Robin): centre pan 75, tilt 110; tilt limits 67-180; tracking's directions

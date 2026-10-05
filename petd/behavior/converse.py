@@ -235,7 +235,7 @@ class Listener:
             return
         brain = self.pet.brain
         if brain is not None:
-            person = self.pet.people.sole_person() if self.pet.people else None
+            person = self.pet.people.speaker() if self.pet.people else None
             brain.tell(event.text, kind="heard", speaker=person.name if person else None)
 
     def _driving(self) -> bool:

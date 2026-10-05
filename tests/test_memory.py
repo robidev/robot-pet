@@ -260,6 +260,24 @@ async def test_a_known_face_is_named_greeted_once_and_sticks(pet):
     assert len(pet.told) == 1
 
 
+async def test_with_two_in_view_the_biggest_face_speaks(pet):
+    robin_face, claudia_face = someone(), someone()
+    store_face(pet, "Robin", robin_face)
+    store_face(pet, "Claudia", claudia_face)
+    arrived = pet.bus.subscribe(PersonArrived)
+    pet.recognizer.engine.default = [sample(view(robin_face), centre=(0.3, 0.4), height=80.0),
+                                     sample(view(claudia_face), centre=(0.7, 0.4), height=160.0)]
+    pet.face.show(face(cx=0.3), face(cx=0.7))
+    names = {(await asyncio.wait_for(arrived.get(), 2)).name for _ in range(2)}
+    assert names == {"Robin", "Claudia"}
+    assert pet.people.sole_person() is None
+    assert pet.people.speaker().name == "Claudia"
+
+    # The biggest face unknown: nobody is credited, not the smaller known one.
+    pet.recognizer.tracks[1].person_id = None
+    assert pet.people.speaker() is None
+
+
 async def test_a_swap_within_the_presence_debounce_is_noticed(pet):
     # 2026-09-27: Robin stepped out and Claudia in during a 1-2 s detection gap;
     # presence never dropped, so she stayed "Robin" for four minutes.

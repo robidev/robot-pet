@@ -84,6 +84,18 @@ class People:
             return next(iter(self.present.values()))
         return None
 
+    def speaker(self) -> Optional[Person]:
+        """
+        Whose speech it probably is: the sole person in view, or with more
+        than one, the one with the biggest face, the nearest and the one the
+        head tracks (2026-10-05, Robin's call). Nobody if that face has no
+        name.
+        """
+        sole = self.sole_person()
+        if sole is not None or self.faces_in_view < 2 or self.pet.recognizer is None:
+            return sole
+        return self.present.get(self.pet.recognizer.biggest())
+
     async def _watch(self, sub) -> None:
         async for event in sub:
             try:
