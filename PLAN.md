@@ -13,7 +13,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 
 ---
 
-## Where it stands (2026-09-27)
+## Where it stands (2026-09-27, updated 2026-10-05)
 
 | Milestone | State |
 |---|---|
@@ -29,7 +29,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 | Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | G2's start-after-reboot (a decision) |
-| Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` pausable by hand, which removed its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | the cause of the bad spells on the whole WiFi (2026-09-27, open) |
+| Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | the cause of the bad spells on the whole WiFi (2026-09-27, open) |
 
 ---
 
@@ -51,17 +51,17 @@ Finishes M2 and gives the first real latency numbers.
   (2026-10-05):** Claudia and Noah were named together within ~11 s, never one
   as the other; Robin and Noah far off (faces 46-110 px) took ~60 s. Speech
   with two in view was always "someone says". **Since 2026-10-05** it goes to
-  the biggest face, the one the head tracks (Robin's call; firmware `5536a4c`
-  tracks the biggest face, to flash): to check, two side by side, each
+  the biggest face, the one the head tracks (Robin's call; firmware `5536a4c`,
+  flashed, tracks the biggest face): to check, two side by side, each
   speaking, at different distances.
 - ~~**A swap on purpose**~~ **Done (2026-10-05):** Noah and Robin out, Claudia
   in: named in 6 s; Claudia out, Noah in: named at once.
 - ~~**Leaving and coming back**~~ **Done (2026-10-05):** Noah twice, Claudia
   twice: named again each time, never greeted again.
-- **A glance turns the head back** (built 2026-10-05, not yet seen live): a
-  reply with `[look:left]` while someone's in view; the head turns, then comes
-  back to them within ~2 s and keeps tracking. Likewise "look left": 30° the
-  right way, held 20 s, then back to them, tracking.
+- ~~**A glance turns the head back**~~ **Done (2026-10-05):** "look up" at
+  21:06 turned 15° the right way, held 20 s, went back to the pose before and
+  tracked; the reply's glance moved only the eye. Left, right and down are
+  covered by tests since the sign fix, not seen live again.
 - **"Look for me"** (built 2026-10-05, not yet tried live): stand out of
   view and ask. `search_for_faces` pans the head at tilt 110 between 0 and
   180, 20°/s in 10° steps, to the nearer end and back twice (~40 s), stops on
@@ -72,19 +72,25 @@ Finishes M2 and gives the first real latency numbers.
   (~2 s, 45° late): if it misses people, slower (`search_speed_deg_s`). The
   brain announced "I found one face" before the head had turned, and the
   found-event came 4 s before his name; the tool's reply now says nothing's
-  found yet, and the event waits up to 6 s for recognition.
+  found yet, and the event waits up to 6 s for recognition. Still to see:
+  no claimed find, then a greeting by name.
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
-  (`recognition.recheck_every_s`)
+  (`recognition.recheck_every_s`) **Partly (2026-10-05):** Claudia talked
+  ~2.5 min (19:25:18-19:27:55) and was named in every turn, rechecks scoring
+  0.48-0.74; Noah held his for 1.7 min. Whether she turned away isn't known.
 - **Noah again with a step back:** he enrolled with the 5 close-up crops only.
   "Remember my face, I'm Noah" once more, stepping back when asked; then all
   three in view.
 - **Backlit:** someone in front of the window.
-- **Latency (G4):** after a few questions, `scripts/latency.py` on the run: where
-  a turn's time goes, before Step 5 adds tool round trips.
-- **Along the way:** the robot's voice with `wlanmgr` paused (no dropouts
-  expected); if the face board is on the PC's USB, reset it once and check petd
-  switches tracking back on.
+- ~~**Latency (G4)**~~ **Done (2026-10-05, run `20261005-191541`, 41 turns):**
+  median 2.06 s from the end of speech to the first word: transcript 0.88 s,
+  the brain's first word 0.79 s, the first sentence 0.18 s, piper 0.14 s,
+  playback 0.01 s. Whisper and the brain are nearly all of it.
+- **Along the way:** the robot's voice with `wlanmgr` paused, now by petd
+  itself (no dropouts expected; "robot WiFi: ... is paused" in petd.log); if
+  the face board is on the PC's USB, reset it once and check petd switches
+  tracking back on.
 
 **Done when** all of the above hold, and `show_memory.py faces` shows every
 stored fingerprint under the right person. **Then, from the step's data:**
@@ -320,7 +326,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 
 - `wlanmgr` also **brings the WiFi up at boot** (it runs `wifi_start.sh -cn`, which starts `wpa_supplicant` or the `…_miap…` access-point fallback), re-runs it when the link is lost, and drives the WiFi LED. Once up, `wpa_supplicant` and `dhclient` run on their own (parent init). WatchDoge restarts it if it dies (`ProcessList.conf`, read at boot).
 - So it isn't removed or shimmed: a mistake in the boot path would leave the robot with no WiFi and no fallback AP, recoverable only over its serial console. **Paused instead** (SIGSTOP: alive, so WatchDoge leaves it be): no scans for 70 s and for 3 min, the link stayed up, Valetudo answered, and it resumed normally both times.
-- **`/root/wlanmgr_pause.sh stop | resume | status`** on the robot, **run by hand only**: nothing starts it, and neither the boot process nor `wlanmgr` is changed. While paused, nothing re-runs `wifi_start.sh` if the link is lost for good; a reboot (the nightly one at 21:54 included) always starts the robot stock.
+- **`/root/wlanmgr_pause.sh stop | resume | status`** on the robot, **run by hand only** (since 2026-10-05 petd runs it: see below): nothing starts it, and neither the boot process nor `wlanmgr` is changed. While paused, nothing re-runs `wifi_start.sh` if the link is lost for good; a reboot (the nightly one at 21:54 included) always starts the robot stock.
 - **Measured, 2026-09-27 afternoon:** PC-to-robot pings missed **128 an hour** with `wlanmgr` running, and **0.5-10 an hour** over 6 h paused (from 12:40), the same as the face's misses then: the robot's extra loss was the scans. (The PC was awake throughout: the face's serial log has no gap.) Not yet heard: the speaker's audio in a conversation with it paused.
 
 **The scans came back with every reboot (2026-10-05).** The pause by hand
@@ -461,7 +467,7 @@ firmware's comment on its tilt limits still says 58 (up) to 105 (down).
 - `scripts/tracking_log.py`: the head's tracking, pass by pass. `scripts/fetch_face_models.py`: the face recognition models (git-ignored).
 - `runtime/face-serial/`: the face board's serial log (`capture.py <log>`) and the ping watcher (`netwatch.sh <log>`); `20260927-robot-facewatch.log` is the robot-side watcher's. `runtime/faces/`: kept face crops (E6c).
 - **`runtime/` stays under ~300 MB** (2026-09-27, `89b12bf`): a run's `petd.log` 20 MB + 3 and `events.jsonl` 20 MB + 1; older runs at most 30 and 120 MB together (`log.max_old_runs_mb`), oldest first; face attempts the last 200, fingerprint crops only while their fingerprint exists; the two `face-serial` logs 10 MB + 1 each. `pet.db` isn't capped (184 KB after 5 days).
-- On the robot: `/root/wlanmgr_pause.sh stop | resume | status` pauses `wlanmgr`'s 30 s roaming scans, by hand only (see the robot's WiFi findings).
+- On the robot: `/root/wlanmgr_pause.sh stop | resume | status` pauses `wlanmgr`'s 30 s roaming scans; petd runs it whenever the robot becomes reachable (`petd/io/robot_wifi.py`, `vacuum.ssh_key` in the git-ignored `config.yaml`).
 - `runtime/e6a/`: E6a's face captures of Robin and Claudia (photos of people: never into git) and the probe that took them.
 - `runtime/map/reference.json`: the reference map places are kept in (spatial/frame.py). `runtime/map-backups/<date>/`: the robot's own map files (`last_map`, `ChargerPos.data`, `StartPos.data`, `slam_info.cfg`, `appproxy.map` from `/mnt/data/rockrobo/`, over root SSH, with the robot's md5sums) plus Valetudo's JSON of the same map; floor plans of the home, so never into git. `runtime/map-test/`: the go_to tests of 2026-09-26.
 
