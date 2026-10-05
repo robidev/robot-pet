@@ -249,12 +249,13 @@ class Expressions:
 
     # --- "look for me" ----------------------------------------------------------
 
-    def start_search(self, report: Optional[Callable[[str], None]] = None) -> None:
+    def start_search(self, report: Optional[Callable[[str, bool], None]] = None) -> None:
         """
         Pans the head slowly around the room until a face shows up, then
         back to where the frame with it was taken (the head has moved on
         since, ~1 s of detection) and tracking on. report() gets what came
-        of it. A held look or a glance ends; a new search starts over.
+        of it, and whether it found a face. A held look or a glance ends; a
+        new search starts over.
         """
         self.stop_search()
         if self.holding:
@@ -267,7 +268,7 @@ class Expressions:
         if self.searching:
             self._search.cancel()
 
-    async def _run_search(self, report: Optional[Callable[[str], None]]) -> None:
+    async def _run_search(self, report: Optional[Callable[[str, bool], None]]) -> None:
         cfg = self.face.cfg
         low, high = cfg.search_pan_min_deg, cfg.search_pan_max_deg
         tilt = max(self.tilt_min, min(self.tilt_max, cfg.search_tilt_deg))
@@ -310,7 +311,7 @@ class Expressions:
         finally:
             sub.close()
         if report is not None:
-            report(outcome)
+            report(outcome, found is not None)
 
     async def _pan_to(self, start: float, target: float, speed: float, sub) -> Optional[FacesChanged]:
         """Pans from start to target at speed; the first frame with a face, if one comes."""

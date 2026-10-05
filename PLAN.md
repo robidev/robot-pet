@@ -66,9 +66,13 @@ Finishes M2 and gives the first real latency numbers.
   view and ask. `search_for_faces` pans the head at tilt 110 between 0 and
   180, 20°/s in 10° steps, to the nearer end and back twice (~40 s), stops on
   the first face, goes back to the pose that frame was taken at and tracks;
-  the brain is told what came of it. All in `face.search_*`. To see: whether
-  20°/s finds a face at 1-3 m, and how far the head overshoots before it
-  turns back.
+  the brain is told what came of it. All in `face.search_*`. **Tried
+  21:21:** found Robin after 17 s; back to the frame's pan 15.1, and tracking
+  centred him at 29.7. He was in frame from pan ~60 but detected only at 15
+  (~2 s, 45° late): if it misses people, slower (`search_speed_deg_s`). The
+  brain announced "I found one face" before the head had turned, and the
+  found-event came 4 s before his name; the tool's reply now says nothing's
+  found yet, and the event waits up to 6 s for recognition.
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`)

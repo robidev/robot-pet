@@ -16,6 +16,7 @@ cleaning) is deliberately absent, not just disallowed.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import time
@@ -121,6 +122,7 @@ def _as_json(value: Any) -> str:
 def build_registry(pet: "App") -> ToolRegistry:
     """The MVP tool set (PLAN.md 4.5). Later clusters add movement and memory."""
     registry = ToolRegistry(pet.bus)
+    background: set = set()           # tasks the tools leave running (a search's report)
 
     def _face_name(face) -> Optional[str]:
         if not face.recognized:
@@ -253,8 +255,28 @@ def build_registry(pet: "App") -> ToolRegistry:
             await face.set_servo(mode="track")
             return "I can already see a face: following it now, no search needed"
         brain = pet.brain
-        pet.brain.expressions.start_search(lambda text: brain.tell(text, kind="event"))
-        return "searching: turning my head slowly around the room; I'll be told what I find"
+
+        async def tell_once_named(text: str, found: bool) -> None:
+            # The search stops on the first frame with a face; recognition
+            # names them a few seconds later. Told at once, the brain heard
+            # "sees someone I don't recognize" about Robin (2026-10-05).
+            if found and pet.people is not None and pet.recognition_on:
+                waited = 0.0
+                while waited < SEARCH_NAMING_WAIT_S and not pet.people.who_is_here()[0]:
+                    await asyncio.sleep(0.25)
+                    waited += 0.25
+            brain.tell(text, kind="event")
+
+        def report(text: str, found: bool) -> None:
+            task = asyncio.create_task(tell_once_named(text, found), name="search-report")
+            background.add(task)
+            task.add_done_callback(background.discard)
+
+        pet.brain.expressions.start_search(report)
+        # Told only "searching", Haiku announced "I found one face" before the
+        # head had turned (2026-10-05).
+        return ("search started: my head is turning slowly around the room. Nothing found yet, "
+                "so don't say I found or recognised anyone. When the search ends I'm told what came of it.")
 
     @registry.tool(
         "track_faces",
@@ -528,6 +550,10 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         db.add_fact(text)
         return "noted"
 
+
+# A search that found a face waits this long for recognition to name them
+# before telling the brain.
+SEARCH_NAMING_WAIT_S = 6.0
 
 # look_direction's relative turns: to the robot's left (+1) or right, up (+1) or down.
 LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -1)}

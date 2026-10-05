@@ -147,6 +147,7 @@ def face(cx=0.5):
 
 def search_app(monkeypatch, sweeps=2):
     monkeypatch.setattr("petd.brain.expressions.SEARCH_STEP_S", 0.01)
+    monkeypatch.setattr("petd.brain.tools.SEARCH_NAMING_WAIT_S", 0.3)
     cfg = Config()
     cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
     cfg.face.search_speed_deg_s = 1000.0      # 180 deg in 0.18 s
@@ -168,7 +169,7 @@ async def test_a_search_stops_on_a_face_and_tracks_it(monkeypatch):
     try:
         await app.face.set_servo(mode="manual", pan_deg=60.0, tilt_deg=90.0)
         result = await app.tools.call("search_for_faces", {})
-        assert "searching" in result.text
+        assert "Nothing found yet" in result.text
         for _ in range(100):                    # to the nearer end (0) first, then across
             if app.face.state.pan_deg is not None and app.face.state.pan_deg > 100.0:
                 break
@@ -179,6 +180,8 @@ async def test_a_search_stops_on_a_face_and_tracks_it(monkeypatch):
         app.face._state = replace(app.face.state, pan_deg=150.0)   # the head has moved on
         await asyncio.sleep(0.1)
         assert (app.face.state.pan_deg, app.face.state.servo_mode) == (130.0, "track")
+        assert not told                         # waiting for recognition to name them
+        await asyncio.sleep(0.8)                # nobody named within the wait: told anyway
         assert told and told[-1][0] == "event" and "found a face" in told[-1][1]
         assert not app.brain.expressions.searching
 
