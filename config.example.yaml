@@ -101,10 +101,11 @@ calibration:                   # measured conventions (PLAN.md 4.1) and the came
   K_face: 0.245                # distance (m) x face box height (fraction of the frame)
   hfov_deg: 60.0
   pan_forward_deg: 90.0
-  pan_sign: 1.0                # +1: pan grows to the robot's left
-  cx_per_pan_deg_sign: 1.0     # +1: a face moves right in the image as pan grows
+  # Signs measured 2026-10-05, after the servos were remounted reversed.
+  pan_sign: -1.0               # +1: pan grows to the robot's left
+  cx_per_pan_deg_sign: -1.0    # +1: a face moves right in the image as pan grows
   tilt_level_deg: 90.0
-  tilt_deg_per_elevation_deg: 1.0
+  tilt_deg_per_elevation_deg: -1.0   # +1: lower tilt looks up
 
 person:                        # where a person is (spatial/person.py, C5)
   standoff_m: 1.0              # stop this far in front of them

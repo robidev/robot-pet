@@ -47,7 +47,7 @@ class Brain:
         self.backend = backend
         self.cfg = pet.cfg.brain
         self.expressions: Optional[Expressions] = (
-            Expressions(pet.face) if pet.face is not None else None)
+            Expressions(pet.face, pet.cfg.calibration) if pet.face is not None else None)
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=2)
         self._tasks: list[asyncio.Task] = []
         self._last_turn_at = 0.0

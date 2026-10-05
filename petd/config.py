@@ -69,10 +69,12 @@ class FaceConfig:
     # to ride out detection dropouts (over 1.5 s with a face held still in
     # view; 3 s still lost a seated person several times a minute).
     faces_lost_debounce_s: float = 5.0
-    # The tilt mount's range, measured by hand: 58 (up) to 105 (down). Held
-    # against a stop, the servo browns the board out. Firmware clamps too.
-    tilt_min_deg: float = 58.0
-    tilt_max_deg: float = 105.0
+    # The tilt mount's range: 67 (down) to 180 (up) since the servos were
+    # remounted reversed (2026-10-05, the firmware's limits); before, 58 (up)
+    # to 105 (down), measured by hand. Held against a stop, the servo browns
+    # the board out. Firmware clamps too.
+    tilt_min_deg: float = 67.0
+    tilt_max_deg: float = 180.0
 
 
 @dataclass
@@ -206,10 +208,13 @@ class CalibrationConfig:
     hfov_deg: float = 60.0
     vfov_deg: Optional[float] = None          # None: from hfov_deg for a 4:3 frame
     pan_forward_deg: float = 90.0             # pan 90 = straight ahead (measured roughly)
-    pan_sign: float = 1.0                     # +1: pan grows to the robot's left
-    cx_per_pan_deg_sign: float = 1.0          # +1: a face moves right in the image as pan grows
-    tilt_level_deg: float = 90.0              # tilt 90 is level (2026-09-23)
-    tilt_deg_per_elevation_deg: float = 1.0   # lower tilt looks up
+    # The signs as measured on 2026-10-05, after the servos were remounted
+    # reversed: pan grows to the robot's right, a still scene moves left in
+    # the image as pan grows, and higher tilt looks up (all three were +1).
+    pan_sign: float = -1.0                    # +1: pan grows to the robot's left
+    cx_per_pan_deg_sign: float = -1.0         # +1: a face moves right in the image as pan grows
+    tilt_level_deg: float = 90.0              # tilt 90 was level before the remount (2026-09-23)
+    tilt_deg_per_elevation_deg: float = -1.0  # +1: lower tilt looks up
 
 
 @dataclass

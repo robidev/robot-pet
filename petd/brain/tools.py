@@ -22,6 +22,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
+from ..config import CalibrationConfig
 from ..events import ToolRan
 
 if TYPE_CHECKING:
@@ -164,7 +165,7 @@ def build_registry(pet: "App") -> ToolRegistry:
                            "servo_mode": f.servo_mode, "known_faces_stored": f.enrolled}
             out["sees"] = [
                 {"who": _face_name(face),
-                 "where": _describe_position(face.cx),
+                 "where": _describe_position(face.cx, pet.cfg.calibration),
                  "size": round(face.h, 2), "confidence": round(face.confidence, 2)}
                 for face in frame.faces
             ]
@@ -197,12 +198,11 @@ def build_registry(pet: "App") -> ToolRegistry:
 
     @registry.tool(
         "look_direction",
-        "Point my head. pan: 0 is far right, 90 straight ahead, 180 far left. "
-        "tilt: 90 is level, lower looks up (58 is as far up as it goes), higher looks down (105 at most). "
-        "Turns off face tracking while I hold the pose.",
+        _look_direction_help(pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg),
         {"type": "object",
          "properties": {"pan": {"type": "number", "minimum": 0, "maximum": 180},
-                        "tilt": {"type": "number", "minimum": 58, "maximum": 105}},
+                        "tilt": {"type": "number", "minimum": pet.cfg.face.tilt_min_deg,
+                                 "maximum": pet.cfg.face.tilt_max_deg}},
          "required": []})
     async def look_direction(args: dict) -> str:
         face = require_face()
@@ -485,20 +485,32 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         return "noted"
 
 
+def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: float) -> str:
+    """look_direction's description: which way the angles go comes from the calibration."""
+    pan_left, pan_right = (180, 0) if cal.pan_sign > 0 else (0, 180)
+    tilt_up, tilt_down = (tilt_min, tilt_max) if cal.tilt_deg_per_elevation_deg > 0 else (tilt_max, tilt_min)
+    up_word = "lower" if cal.tilt_deg_per_elevation_deg > 0 else "higher"
+    down_word = "higher" if up_word == "lower" else "lower"
+    return (f"Point my head. pan: {pan_right} is far right, {cal.pan_forward_deg:g} straight ahead, "
+            f"{pan_left} far left. tilt: {cal.tilt_level_deg:g} is level, {up_word} looks up "
+            f"({tilt_up:g} is as far up as it goes), {down_word} looks down ({tilt_down:g} at most). "
+            "Turns off face tracking while I hold the pose.")
+
+
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:
     return None if value is None else max(low, min(high, float(value)))
 
 
-def _describe_position(cx: float) -> str:
+def _describe_position(cx: float, cal: CalibrationConfig) -> str:
     """
     Horizontal position in the camera frame, in words the model can use.
-
-    NOTE: which side of the image is the robot's left depends on the camera
-    mount and its hmirror setting; C3's calibration pins that down (and
-    should replace this mapping with the calibrated sign).
+    Which side of the image is the robot's left follows the calibration
+    (spatial/person.py): on 2026-10-05, with the servos remounted, the
+    image's right was the robot's right.
     """
-    if cx < 0.35:
-        return "to my right"
-    if cx > 0.65:
+    toward_left = -cal.pan_sign * cal.cx_per_pan_deg_sign * (cx - 0.5)
+    if toward_left > 0.15:
         return "to my left"
+    if toward_left < -0.15:
+        return "to my right"
     return "straight ahead"

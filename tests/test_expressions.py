@@ -3,11 +3,13 @@ import time
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from petd.brain.brain import Brain
 from petd.brain.expressions import Expressions
 from petd.brain.tags import Action, SpeechStreamParser
 from petd.bus import EventBus
-from petd.config import Config
+from petd.config import CalibrationConfig, Config
 from petd.events import HeardDropped, SpeechEnded, SpeechStarted
 from petd.io.face import FakeFace
 
@@ -75,6 +77,52 @@ async def test_gestures_give_tracking_back(monkeypatch):
     await face.set_servo(mode="manual")
     await expressions.nod()
     assert servo_modes(face) == ["manual", "manual"]
+
+
+def poses(face):
+    return [(c[2], c[3]) for c in face.commands if c[0] == "servo" and c[1] is None]
+
+
+async def test_a_glance_turns_the_head_back(monkeypatch):
+    # 2026-10-05: tracking came back on after [look:left], but nobody was in
+    # frame any more, so the head looked at nothing for 2.5 minutes.
+    monkeypatch.setattr("petd.brain.expressions.GLANCE_HOLD_S", 0.05)
+    face = FakeFace(Config().face, EventBus())
+    await face.set_servo(mode="track", pan_deg=80.0, tilt_deg=100.0)
+    face.commands.clear()
+    expressions = Expressions(face)
+    await expressions.glance("left")
+    await expressions.glance("right")       # a second glance within the hold: back to the first pose
+    await asyncio.sleep(0.1)
+    assert poses(face)[-1] == (80.0, 100.0)
+    assert servo_modes(face)[-1] == "track"
+
+    face.commands.clear()                   # not tracking: back to the pose, tracking stays off
+    await face.set_servo(mode="manual")
+    await expressions.glance("up")
+    await expressions.nod()                 # a nod mid-glance doesn't lose the way back
+    await asyncio.sleep(0.1)
+    assert poses(face)[-1] == (80.0, 100.0)
+    assert servo_modes(face)[-1] == "manual"
+
+
+@pytest.mark.parametrize("pan_sign,tilt_sign,pan,tilt", [
+    (1.0, 1.0, 105.0, 65.0),                # before 2026-10-05: pan grew to the left, lower tilt looked up
+    (-1.0, -1.0, 55.0, 95.0),               # remounted: both reversed
+])
+async def test_left_and_up_follow_the_calibration(monkeypatch, pan_sign, tilt_sign, pan, tilt):
+    monkeypatch.setattr("petd.brain.expressions.GLANCE_HOLD_S", 10.0)
+    cfg = replace(Config().face, tilt_min_deg=0.0, tilt_max_deg=180.0)
+    face = FakeFace(cfg, EventBus())
+    await face.set_servo(mode="manual", pan_deg=80.0, tilt_deg=80.0)
+    cal = replace(CalibrationConfig(), pan_sign=pan_sign, tilt_deg_per_elevation_deg=tilt_sign)
+    expressions = Expressions(face, cal)
+    await expressions.glance("left")
+    await face.set_servo(pan_deg=80.0, tilt_deg=80.0)
+    await expressions.glance("up")
+    (left_pan, _), _, (_, up_tilt) = poses(face)[-3:]
+    assert (left_pan, up_tilt) == (pan, tilt)
+    expressions._resume.cancel()
 
 
 class SlowFace(FakeFace):
