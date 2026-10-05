@@ -62,7 +62,7 @@ def head_offset(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple
     the servos were remounted reversed on 2026-10-05, and the angles turned
     round with them.
     """
-    return cal.pan_sign * left_deg, -math.copysign(up_deg, cal.tilt_deg_per_elevation_deg)
+    return cal.pan_sign * left_deg, -up_deg * math.copysign(1.0, cal.tilt_deg_per_elevation_deg)
 
 
 class Expressions:
@@ -157,6 +157,20 @@ class Expressions:
             return self._return_to
         state = self.face.state
         return state.servo_mode, state.pan_deg, state.tilt_deg
+
+    def end_glance(self) -> Optional[tuple[Optional[float], Optional[float]]]:
+        """
+        For look_direction: a glance still holding doesn't turn back, and the
+        pose it started from is returned, to turn from. A reply says
+        "[look:left]" and calls look_direction(left) together; the glance's
+        turn-back undid the held pose 1.5 s later, and the tool turned from
+        the glance's pose, twice as far (2026-10-05).
+        """
+        if self._resume is None or self._resume.done():
+            return None
+        self._resume.cancel()
+        _, pan, tilt = self._return_to
+        return pan, tilt
 
     def _return_after(self, delay_s: float, mode: Optional[str], pan: Optional[float],
                       tilt: Optional[float]) -> None:

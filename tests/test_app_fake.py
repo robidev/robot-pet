@@ -1,8 +1,10 @@
 import asyncio
 import json
 from dataclasses import replace
+from types import SimpleNamespace
 
 from petd.app import App
+from petd.brain.expressions import Expressions
 from petd.config import Config
 from petd.events import Heard, SpeakingFinished
 
@@ -77,5 +79,31 @@ async def test_look_left_turns_a_little_not_to_the_end():
         assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (75.0, 90.0)
         result = await app.tools.call("look_direction", {"direction": "sideways"})
         assert result.is_error
+    finally:
+        await app.close()
+
+
+async def test_a_glance_with_look_direction_turns_once_and_stays(monkeypatch):
+    # 2026-10-05: "[look:left]" plus look_direction(left) in one reply turned
+    # 60 degrees, and the glance's turn-back undid the held pose 1.5 s later.
+    monkeypatch.setattr("petd.brain.expressions.GLANCE_HOLD_S", 0.05)
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        app.brain = SimpleNamespace(expressions=Expressions(app.face, cfg.calibration))
+        await app.face.set_servo(mode="track", pan_deg=90.0, tilt_deg=120.0)
+        await app.brain.expressions.glance("left")
+        assert app.face.state.pan_deg == 60.0
+        await app.tools.call("look_direction", {"direction": "left"})
+        await asyncio.sleep(0.15)
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (60.0, 120.0)
+        assert app.face.state.servo_mode == "manual"
+
+        await app.brain.expressions.glance("down")
+        await app.tools.call("look_direction", {"direction": "down"})
+        await asyncio.sleep(0.15)
+        assert app.face.state.tilt_deg == 105.0     # higher tilt looks up since the remount
     finally:
         await app.close()

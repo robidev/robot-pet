@@ -400,6 +400,10 @@ risk: a silence the model shouldn't have kept stays silent.
   `direction` (left/right/up/down/ahead): `face.look_turn_deg` (30) and
   `look_tilt_deg` (15) from where the head looks, the same amounts as a
   `[look:...]` glance; "ahead" is pan 75, tilt 90 (it had sent pan 90).
+  Tried at 20:52: it used `direction`, but "down" looked up (a sign bug since
+  the remount fix), and each reply's `[look:left]` glance with the call
+  turned 60° and then turned back over the held pose ~2 s later. The tool
+  now ends a pending glance and turns from where the glance started.
 
 **The head's servos remounted reversed (2026-10-05).** Firmware `1c6357d`
 (Robin): centre pan 75, tilt 110; tilt limits 67-180; tracking's directions

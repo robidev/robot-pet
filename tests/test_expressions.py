@@ -122,6 +122,9 @@ async def test_left_and_up_follow_the_calibration(monkeypatch, pan_sign, tilt_si
     await expressions.glance("up")
     (left_pan, _), _, (_, up_tilt) = poses(face)[-3:]
     assert (left_pan, up_tilt) == (pan, tilt)
+    await face.set_servo(pan_deg=80.0, tilt_deg=80.0)
+    await expressions.glance("down")        # 2026-10-05: down went up as well
+    assert poses(face)[-1][1] == 160.0 - tilt
     expressions._resume.cancel()
 
 

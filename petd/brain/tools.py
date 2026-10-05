@@ -213,19 +213,23 @@ def build_registry(pet: "App") -> ToolRegistry:
         direction, pan, tilt = args.get("direction"), args.get("pan"), args.get("tilt")
         if direction is None and pan is None and tilt is None:
             raise ToolError("give me a direction, or a pan and/or tilt angle")
+        if direction is not None and direction != "ahead" and direction not in LOOK_DIRECTIONS:
+            raise ToolError(f"direction is one of {', '.join(LOOK_DIRECTIONS)} or ahead")
+        # A glance in the same reply ("[look:left]" with this call) mustn't
+        # turn back over the held pose, and a turn starts from before it.
+        expressions = pet.brain.expressions if pet.brain is not None else None
+        before = expressions.end_glance() if expressions is not None else None
         if direction == "ahead":
             pan = cal.pan_forward_deg if pan is None else pan
             tilt = cal.tilt_level_deg if tilt is None else tilt
         elif direction is not None:
-            if direction not in LOOK_DIRECTIONS:
-                raise ToolError(f"direction is one of {', '.join(LOOK_DIRECTIONS)} or ahead")
             left, up = LOOK_DIRECTIONS[direction]
             pan_offset, tilt_offset = head_offset(left * fcfg.look_turn_deg, up * fcfg.look_tilt_deg, cal)
-            state = face.state
+            now_pan, now_tilt = before if before is not None else (face.state.pan_deg, face.state.tilt_deg)
             if pan_offset and pan is None:
-                pan = (state.pan_deg if state.pan_deg is not None else cal.pan_forward_deg) + pan_offset
+                pan = (now_pan if now_pan is not None else cal.pan_forward_deg) + pan_offset
             if tilt_offset and tilt is None:
-                tilt = (state.tilt_deg if state.tilt_deg is not None else cal.tilt_level_deg) + tilt_offset
+                tilt = (now_tilt if now_tilt is not None else cal.tilt_level_deg) + tilt_offset
         pan, tilt = _clamp(pan, 0, 180), _clamp(tilt, fcfg.tilt_min_deg, fcfg.tilt_max_deg)
         await face.set_servo(mode="manual")
         await face.set_servo(pan_deg=pan, tilt_deg=tilt)
