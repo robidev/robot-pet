@@ -11,6 +11,8 @@ network:
 vacuum:
   host: 192.168.101.43     # Valetudo; also the Player (6665) and speaker (6000) host
   poll_interval_s: 2.0
+  pause_wlanmgr: true          # pause the robot's 30 s WiFi roaming scans whenever it becomes reachable
+  ssh_key: ""                  # path to root's SSH key on the robot, e.g. ~/.ssh/robot_id_rsa; empty: no pausing
 
 player:
   port: 6665

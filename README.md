@@ -78,9 +78,12 @@ only) through small scripts in `/root/watchdog_scripts/`:
   (`speaker.sh`), and `killall aplay` on TCP 6001 for interrupting (`speaker_stop.sh`).
 - `RoboController`, `AppProxy` and the Xiaomi cloud clients run once at boot
   and can then be killed without WatchDoge restarting them (`*_once.sh`).
-- **`/root/wlanmgr_pause.sh stop | resume | status`**, run by hand only:
-  pauses Xiaomi's `wlanmgr`, whose roaming scan every 30 s leaves the radio
-  deaf for ~1.5 s. A reboot always starts it as stock. Don't remove
+- **`/root/wlanmgr_pause.sh stop | resume | status`** pauses Xiaomi's
+  `wlanmgr`, whose roaming scan every 30 s leaves the radio deaf for ~1.5 s.
+  A reboot always starts it as stock, so **petd runs it over SSH whenever the
+  robot becomes reachable** (its start, and after every reboot; it waits
+  until the robot has been up 2 minutes). That needs `vacuum.ssh_key` in
+  `config.yaml`: the path to root's key, kept out of git. Don't remove
   `wlanmgr` or change how it starts: it brings the WiFi up at boot, and a
   robot without WiFi can only be recovered over its serial console.
 
@@ -229,8 +232,9 @@ with the name; the name matcher accepts the common misses. Saying "Hey GLaDOS"
 helps most.
 
 **The voice cuts out mid-sentence.** The robot's WiFi: `wlanmgr`'s scan every
-30 s (`/root/wlanmgr_pause.sh stop` on the robot), and `speaker.lead_s` buffers
-2 s against other stalls.
+30 s. petd pauses it (look for "robot WiFi:" in petd.log: "is paused", or why
+not); by hand, `/root/wlanmgr_pause.sh stop` on the robot. `speaker.lead_s`
+buffers 2 s against other stalls.
 
 **It calls someone by the wrong name.** `scripts/show_memory.py faces` shows
 the crops behind each stored face and the recent attempts; `scripts/fix_faces.py`

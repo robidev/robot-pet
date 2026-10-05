@@ -38,8 +38,8 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 Each step says what it needs, what to do, what counts as done, and what gets
 built after it. Hands-on steps need people at the robot; the dashboard
 (http://127.0.0.1:8765: people, map, events) and `show_memory.py faces` are the
-instruments. Start petd with `scripts/start.sh`; pause the robot's roaming
-scans first (`/root/wlanmgr_pause.sh stop` on the robot).
+instruments. Start petd with `scripts/start.sh`; it pauses the robot's
+roaming scans itself (`vacuum.ssh_key`).
 
 ### Step 1: people coming and going (hands-on, two or three people, ~45 min)
 
@@ -322,6 +322,17 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - So it isn't removed or shimmed: a mistake in the boot path would leave the robot with no WiFi and no fallback AP, recoverable only over its serial console. **Paused instead** (SIGSTOP: alive, so WatchDoge leaves it be): no scans for 70 s and for 3 min, the link stayed up, Valetudo answered, and it resumed normally both times.
 - **`/root/wlanmgr_pause.sh stop | resume | status`** on the robot, **run by hand only**: nothing starts it, and neither the boot process nor `wlanmgr` is changed. While paused, nothing re-runs `wifi_start.sh` if the link is lost for good; a reboot (the nightly one at 21:54 included) always starts the robot stock.
 - **Measured, 2026-09-27 afternoon:** PC-to-robot pings missed **128 an hour** with `wlanmgr` running, and **0.5-10 an hour** over 6 h paused (from 12:40), the same as the face's misses then: the robot's extra loss was the scans. (The PC was awake throughout: the face's serial log has no gap.) Not yet heard: the speaker's audio in a conversation with it paused.
+
+**The scans came back with every reboot (2026-10-05).** The pause by hand
+lasted until the robot's own reboot at 21:54 that evening; every session
+since ran with a scan every 30 s (99 in the ~50 min the robot's `dmesg` still
+held, 1.45 s each). petd now pauses `wlanmgr` itself
+(`petd/io/robot_wifi.py`): over SSH whenever the robot becomes reachable, so
+at its start and after every reboot, once the robot has been up 2 minutes
+(`vacuum.wlanmgr_settle_s`). The key's path is `vacuum.ssh_key` in the
+git-ignored `config.yaml`; without it, a warning and no pause. Tried: paused,
+and no scan in the next 68 s. The nightly reboot stays: with `wlanmgr`
+paused, it's what reconnects a robot whose WiFi is lost for good.
 
 **Bad spells on the whole WiFi (2026-09-27):** heavy loss from ~10:31 to ~11:15 and again from ~12:30, hitting the face, the robot and even pings to the router from the PC. The PC is a laptop on WiFi too (Intel AX201, `Ziggo-gast679` on 5 GHz channel 44, -57 dBm), so every PC measurement crosses two radio links. The router's 2.4 GHz is on channel 1, alone there (neighbours on 10-11, -71 to -83 dBm). Breakfast and lunch time: a microwave is a suspect for the 2.4 GHz side; the 5 GHz router misses don't fit it as neatly (a busy router may just answer pings late). **Open.**
 

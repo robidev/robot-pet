@@ -47,6 +47,7 @@ class App:
         self.tools = None
         self.brain = None
         self.listener = None
+        self.robot_wifi = None
         self._piper: Optional[ManagedProcess] = None
         self._tasks: list[asyncio.Task] = []
         self._stopped = asyncio.Event()
@@ -69,6 +70,11 @@ class App:
         if cfg.stt.enabled:
             gate = self.speaker.overlap_fraction if self.speaker else None
             self.stt = FakeStt(cfg, self.bus, gate) if fake else SttAdapter(cfg, self.bus, gate)
+
+        if self.vacuum is not None and cfg.vacuum.pause_wlanmgr and not fake:
+            from .io.robot_wifi import WlanmgrPause
+            self.robot_wifi = WlanmgrPause(cfg.vacuum, self.bus)
+            self.robot_wifi.start()             # before the vacuum's first poll: it reacts to "reachable"
 
         if self._piper:
             self._piper.start()
@@ -139,7 +145,7 @@ class App:
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
         for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.stt,
-                     self.speaker, self.face, self.vacuum):
+                     self.speaker, self.face, self.vacuum, self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()

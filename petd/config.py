@@ -49,6 +49,13 @@ class VacuumConfig:
     offline_after_s: float = 10.0
     # Resend interval for Valetudo's manual-control dead-man's switch.
     drive_update_interval_s: float = 0.15
+    # Pause wlanmgr's 30 s roaming scans over SSH whenever the robot becomes
+    # reachable: at petd's start and after every reboot (io/robot_wifi.py).
+    # ssh_key is root's key on the robot; its path belongs in config.yaml
+    # (git-ignored), so the default is empty and nothing is paused without it.
+    pause_wlanmgr: bool = True
+    ssh_key: str = ""
+    wlanmgr_settle_s: float = 120.0           # after a boot, the WiFi up this long before pausing
 
 
 @dataclass
