@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from ..config import CalibrationConfig
+from .expressions import head_offset
 from ..events import ToolRan
 
 if TYPE_CHECKING:
@@ -198,21 +199,38 @@ def build_registry(pet: "App") -> ToolRegistry:
 
     @registry.tool(
         "look_direction",
-        _look_direction_help(pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg),
+        _look_direction_help(pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg,
+                             pet.cfg.face.look_turn_deg, pet.cfg.face.look_tilt_deg),
         {"type": "object",
-         "properties": {"pan": {"type": "number", "minimum": 0, "maximum": 180},
+         "properties": {"direction": {"type": "string", "enum": list(LOOK_DIRECTIONS) + ["ahead"]},
+                        "pan": {"type": "number", "minimum": 0, "maximum": 180},
                         "tilt": {"type": "number", "minimum": pet.cfg.face.tilt_min_deg,
                                  "maximum": pet.cfg.face.tilt_max_deg}},
          "required": []})
     async def look_direction(args: dict) -> str:
         face = require_face()
-        pan, tilt = args.get("pan"), args.get("tilt")
-        if pan is None and tilt is None:
-            raise ToolError("give me a pan and/or tilt angle")
+        fcfg, cal = pet.cfg.face, pet.cfg.calibration
+        direction, pan, tilt = args.get("direction"), args.get("pan"), args.get("tilt")
+        if direction is None and pan is None and tilt is None:
+            raise ToolError("give me a direction, or a pan and/or tilt angle")
+        if direction == "ahead":
+            pan = cal.pan_forward_deg if pan is None else pan
+            tilt = cal.tilt_level_deg if tilt is None else tilt
+        elif direction is not None:
+            if direction not in LOOK_DIRECTIONS:
+                raise ToolError(f"direction is one of {', '.join(LOOK_DIRECTIONS)} or ahead")
+            left, up = LOOK_DIRECTIONS[direction]
+            pan_offset, tilt_offset = head_offset(left * fcfg.look_turn_deg, up * fcfg.look_tilt_deg, cal)
+            state = face.state
+            if pan_offset and pan is None:
+                pan = (state.pan_deg if state.pan_deg is not None else cal.pan_forward_deg) + pan_offset
+            if tilt_offset and tilt is None:
+                tilt = (state.tilt_deg if state.tilt_deg is not None else cal.tilt_level_deg) + tilt_offset
+        pan, tilt = _clamp(pan, 0, 180), _clamp(tilt, fcfg.tilt_min_deg, fcfg.tilt_max_deg)
         await face.set_servo(mode="manual")
-        await face.set_servo(pan_deg=_clamp(pan, 0, 180),
-                             tilt_deg=_clamp(tilt, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg))
-        return "looking there"
+        await face.set_servo(pan_deg=pan, tilt_deg=tilt)
+        where = ", ".join(f"{name} {value:g}" for name, value in (("pan", pan), ("tilt", tilt)) if value is not None)
+        return f"looking there ({where})"
 
     @registry.tool(
         "track_faces",
@@ -485,13 +503,21 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         return "noted"
 
 
-def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: float) -> str:
+# look_direction's relative turns: to the robot's left (+1) or right, up (+1) or down.
+LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -1)}
+
+
+def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: float,
+                         turn_deg: float = 30.0, tilt_deg: float = 15.0) -> str:
     """look_direction's description: which way the angles go comes from the calibration."""
     pan_left, pan_right = (180, 0) if cal.pan_sign > 0 else (0, 180)
     tilt_up, tilt_down = (tilt_min, tilt_max) if cal.tilt_deg_per_elevation_deg > 0 else (tilt_max, tilt_min)
     up_word = "lower" if cal.tilt_deg_per_elevation_deg > 0 else "higher"
     down_word = "higher" if up_word == "lower" else "lower"
-    return (f"Point my head. pan: {pan_right} is far right, {cal.pan_forward_deg:g} straight ahead, "
+    return (f"Point my head. direction: left or right turns it {turn_deg:g} degrees from where it "
+            f"looks now, up or down {tilt_deg:g}; ahead looks straight ahead and level. Use direction "
+            "when asked to look somewhere; pan and tilt only for an exact angle. "
+            f"pan: {pan_right} is far right, {cal.pan_forward_deg:g} straight ahead, "
             f"{pan_left} far left. tilt: {cal.tilt_level_deg:g} is level, {up_word} looks up "
             f"({tilt_up:g} is as far up as it goes), {down_word} looks down ({tilt_down:g} at most). "
             "Turns off face tracking while I hold the pose.")

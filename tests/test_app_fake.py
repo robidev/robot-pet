@@ -58,3 +58,24 @@ async def test_senses_without_the_head():
             assert result.is_error and "offline" in result.text
     finally:
         await app.close()
+
+
+async def test_look_left_turns_a_little_not_to_the_end():
+    # 2026-10-05: asked to look left, the brain sent pan 0, the servo's end.
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        await app.face.set_servo(mode="track", pan_deg=75.0, tilt_deg=90.0)
+        result = await app.tools.call("look_direction", {"direction": "left"})
+        assert not result.is_error and "pan 45" in result.text      # pan grows to the right now
+        await app.tools.call("look_direction", {"direction": "up"})
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (45.0, 105.0)
+        assert app.face.state.servo_mode == "manual"
+        await app.tools.call("look_direction", {"direction": "ahead"})
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (75.0, 90.0)
+        result = await app.tools.call("look_direction", {"direction": "sideways"})
+        assert result.is_error
+    finally:
+        await app.close()

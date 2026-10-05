@@ -107,8 +107,8 @@ async def test_a_glance_turns_the_head_back(monkeypatch):
 
 
 @pytest.mark.parametrize("pan_sign,tilt_sign,pan,tilt", [
-    (1.0, 1.0, 105.0, 65.0),                # before 2026-10-05: pan grew to the left, lower tilt looked up
-    (-1.0, -1.0, 55.0, 95.0),               # remounted: both reversed
+    (1.0, 1.0, 110.0, 65.0),                # before 2026-10-05: pan grew to the left, lower tilt looked up
+    (-1.0, -1.0, 50.0, 95.0),               # remounted: both reversed
 ])
 async def test_left_and_up_follow_the_calibration(monkeypatch, pan_sign, tilt_sign, pan, tilt):
     monkeypatch.setattr("petd.brain.expressions.GLANCE_HOLD_S", 10.0)

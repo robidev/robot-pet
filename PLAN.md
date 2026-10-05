@@ -395,6 +395,11 @@ risk: a silence the model shouldn't have kept stays silent.
   turning to Noah. Firmware `5536a4c` tracks the biggest face, and petd
   credits speech with two or more in view to the biggest named face
   (`People.speaker()`); an unknown biggest face means "someone".
+- **"Look left" turned the head to its end** (20:09, after flashing): the
+  brain called `look_direction` with pan 0, the only way it had. It now takes
+  `direction` (left/right/up/down/ahead): `face.look_turn_deg` (30) and
+  `look_tilt_deg` (15) from where the head looks, the same amounts as a
+  `[look:...]` glance; "ahead" is pan 75, tilt 90 (it had sent pan 90).
 
 **The head's servos remounted reversed (2026-10-05).** Firmware `1c6357d`
 (Robin): centre pan 75, tilt 110; tilt limits 67-180; tracking's directions

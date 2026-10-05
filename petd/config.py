@@ -75,6 +75,11 @@ class FaceConfig:
     # the board out. Firmware clamps too.
     tilt_min_deg: float = 67.0
     tilt_max_deg: float = 180.0
+    # How far "left"/"right" and "up"/"down" turn the head from where it's
+    # looking, for a [look:...] glance and look_direction alike. Asked to
+    # look left, the brain sent pan 0, the servo's end (2026-10-05).
+    look_turn_deg: float = 30.0
+    look_tilt_deg: float = 15.0
 
 
 @dataclass

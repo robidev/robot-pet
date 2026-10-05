@@ -42,19 +42,27 @@ EMOTIONS: dict[str, tuple[float, float, float]] = {
     "listening": (0.0,  0.05, 1.25),
 }
 
-# look -> (x, y) gaze, and the head's turn in degrees to the robot's left and
-# up. Which way pan and tilt go for that is the calibration's pan_sign and
-# tilt_deg_per_elevation_deg: the servos were remounted reversed on
-# 2026-10-05, and the angles turned round with them.
-GLANCES: dict[str, tuple[float, float, float, float]] = {
-    "left":  (-0.8, 0.0, 25.0, 0.0),
-    "right": (0.8, 0.0, -25.0, 0.0),
-    "up":    (0.0, 0.7, 0.0, -15.0),
-    "down":  (0.0, -0.7, 0.0, 15.0),
-    "ahead": (0.0, 0.0, 0.0, 0.0),
-    "away":  (-0.7, 0.4, 0.0, 0.0),
+# look -> (x, y) gaze, and which way the head turns: to the robot's left (+1)
+# or right (-1), up (+1) or down (-1), by face.look_turn_deg / look_tilt_deg.
+GLANCES: dict[str, tuple[float, float, int, int]] = {
+    "left":  (-0.8, 0.0, 1, 0),
+    "right": (0.8, 0.0, -1, 0),
+    "up":    (0.0, 0.7, 0, 1),
+    "down":  (0.0, -0.7, 0, -1),
+    "ahead": (0.0, 0.0, 0, 0),
+    "away":  (-0.7, 0.4, 0, 0),
 }
 GLANCE_HOLD_S = 1.5         # a glance holds this long, then the head turns back
+
+
+def head_offset(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
+    """
+    Degrees to the robot's left and up, as pan and tilt offsets. Which way
+    they go is the calibration's pan_sign and tilt_deg_per_elevation_deg:
+    the servos were remounted reversed on 2026-10-05, and the angles turned
+    round with them.
+    """
+    return cal.pan_sign * left_deg, -math.copysign(up_deg, cal.tilt_deg_per_elevation_deg)
 
 
 class Expressions:
@@ -65,6 +73,8 @@ class Expressions:
         self.cal = cal or CalibrationConfig()
         self.tilt_min = getattr(face.cfg, "tilt_min_deg", 0.0)
         self.tilt_max = getattr(face.cfg, "tilt_max_deg", 180.0)
+        self.turn_deg = getattr(face.cfg, "look_turn_deg", 30.0)
+        self.tilt_deg = getattr(face.cfg, "look_tilt_deg", 15.0)
         self.pan_centre = self.cal.pan_forward_deg        # where the head is, if its pose isn't known
         self.tilt_centre = self.cal.tilt_level_deg
         self._resume: Optional[asyncio.Task] = None     # the head back after a glance
@@ -123,13 +133,12 @@ class Expressions:
         await self.face.set_eye(x, y, aperture)
 
     async def glance(self, direction: str) -> None:
-        x, y, left_deg, up_deg = GLANCES.get(direction, GLANCES["ahead"])
+        x, y, left, up = GLANCES.get(direction, GLANCES["ahead"])
         await self.face.set_eye_mode("manual")
         await self.face.set_eye(x, y, 1.1)
-        if left_deg or up_deg:
+        if left or up:
             mode, pan, tilt = self._where_to_return()
-            pan_offset = self.cal.pan_sign * left_deg
-            tilt_offset = -math.copysign(up_deg, self.cal.tilt_deg_per_elevation_deg)
+            pan_offset, tilt_offset = head_offset(left * self.turn_deg, up * self.tilt_deg, self.cal)
             await self.face.set_servo(mode="manual")
             await self.face.set_servo(
                 pan_deg=max(0.0, min(180.0, (pan if pan is not None else self.pan_centre) + pan_offset)),
