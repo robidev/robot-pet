@@ -22,6 +22,7 @@ face:
   faces_lost_debounce_s: 5.0   # detection drops out for seconds with a face in view
   look_turn_deg: 30.0          # "look left/right" turns the head this far from where it looks
   look_tilt_deg: 15.0          # "look up/down", likewise
+  look_hold_s: 20.0            # a look asked for holds this long, then back to tracking
 
 stt:
   source: face                 # face (the head's UDP stream) | local (a sound card on this PC)

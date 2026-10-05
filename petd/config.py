@@ -80,6 +80,9 @@ class FaceConfig:
     # look left, the brain sent pan 0, the servo's end (2026-10-05).
     look_turn_deg: float = 30.0
     look_tilt_deg: float = 15.0
+    # A look asked for holds this long, then the head goes back to where it
+    # was and tracking comes back on if it was on (it stared on, 2026-10-05).
+    look_hold_s: float = 20.0
 
 
 @dataclass

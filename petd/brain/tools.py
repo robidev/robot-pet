@@ -192,6 +192,8 @@ def build_registry(pet: "App") -> ToolRegistry:
         returns_image=True)
     async def look(args: dict) -> dict:
         snap = await require_face().snapshot()
+        if pet.brain is not None and pet.brain.expressions is not None:
+            pet.brain.expressions.extend_hold()     # looking at the held view: keep holding
         if snap is None:
             raise ToolError("my camera is not working right now: no photo came back, so I saw nothing at all")
         return {"image": snap.jpeg, "mime": "image/jpeg",
@@ -200,7 +202,7 @@ def build_registry(pet: "App") -> ToolRegistry:
     @registry.tool(
         "look_direction",
         _look_direction_help(pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg,
-                             pet.cfg.face.look_turn_deg, pet.cfg.face.look_tilt_deg),
+                             pet.cfg.face.look_turn_deg, pet.cfg.face.look_tilt_deg, pet.cfg.face.look_hold_s),
         {"type": "object",
          "properties": {"direction": {"type": "string", "enum": list(LOOK_DIRECTIONS) + ["ahead"]},
                         "pan": {"type": "number", "minimum": 0, "maximum": 180},
@@ -215,24 +217,25 @@ def build_registry(pet: "App") -> ToolRegistry:
             raise ToolError("give me a direction, or a pan and/or tilt angle")
         if direction is not None and direction != "ahead" and direction not in LOOK_DIRECTIONS:
             raise ToolError(f"direction is one of {', '.join(LOOK_DIRECTIONS)} or ahead")
-        # A glance in the same reply ("[look:left]" with this call) mustn't
-        # turn back over the held pose, and a turn starts from before it.
         expressions = pet.brain.expressions if pet.brain is not None else None
-        before = expressions.end_glance() if expressions is not None else None
         if direction == "ahead":
             pan = cal.pan_forward_deg if pan is None else pan
             tilt = cal.tilt_level_deg if tilt is None else tilt
         elif direction is not None:
             left, up = LOOK_DIRECTIONS[direction]
             pan_offset, tilt_offset = head_offset(left * fcfg.look_turn_deg, up * fcfg.look_tilt_deg, cal)
-            now_pan, now_tilt = before if before is not None else (face.state.pan_deg, face.state.tilt_deg)
+            now_pan, now_tilt = (expressions.base_pose() if expressions is not None
+                                 else (face.state.pan_deg, face.state.tilt_deg))
             if pan_offset and pan is None:
                 pan = (now_pan if now_pan is not None else cal.pan_forward_deg) + pan_offset
             if tilt_offset and tilt is None:
                 tilt = (now_tilt if now_tilt is not None else cal.tilt_level_deg) + tilt_offset
         pan, tilt = _clamp(pan, 0, 180), _clamp(tilt, fcfg.tilt_min_deg, fcfg.tilt_max_deg)
-        await face.set_servo(mode="manual")
-        await face.set_servo(pan_deg=pan, tilt_deg=tilt)
+        if expressions is not None:
+            await expressions.hold(pan, tilt, fcfg.look_hold_s)
+        else:
+            await face.set_servo(mode="manual")
+            await face.set_servo(pan_deg=pan, tilt_deg=tilt)
         where = ", ".join(f"{name} {value:g}" for name, value in (("pan", pan), ("tilt", tilt)) if value is not None)
         return f"looking there ({where})"
 
@@ -243,6 +246,8 @@ def build_registry(pet: "App") -> ToolRegistry:
         "it does not learn or remember anyone's face.",
         {"type": "object", "properties": {"on": {"type": "boolean"}}, "required": ["on"]})
     async def track_faces(args: dict) -> str:
+        if pet.brain is not None and pet.brain.expressions is not None:
+            pet.brain.expressions.end_hold()
         await require_face().set_servo(mode="track" if args.get("on", True) else "manual")
         return "tracking on" if args.get("on", True) else "tracking off"
 
@@ -512,7 +517,7 @@ LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -
 
 
 def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: float,
-                         turn_deg: float = 30.0, tilt_deg: float = 15.0) -> str:
+                         turn_deg: float = 30.0, tilt_deg: float = 15.0, hold_s: float = 20.0) -> str:
     """look_direction's description: which way the angles go comes from the calibration."""
     pan_left, pan_right = (180, 0) if cal.pan_sign > 0 else (0, 180)
     tilt_up, tilt_down = (tilt_min, tilt_max) if cal.tilt_deg_per_elevation_deg > 0 else (tilt_max, tilt_min)
@@ -524,7 +529,8 @@ def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: floa
             f"pan: {pan_right} is far right, {cal.pan_forward_deg:g} straight ahead, "
             f"{pan_left} far left. tilt: {cal.tilt_level_deg:g} is level, {up_word} looks up "
             f"({tilt_up:g} is as far up as it goes), {down_word} looks down ({tilt_down:g} at most). "
-            "Turns off face tracking while I hold the pose.")
+            f"Face tracking is off while I hold the pose, {hold_s:g} s (longer while I take photos "
+            "with look); then my head goes back to where it was and tracking comes back on.")
 
 
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:

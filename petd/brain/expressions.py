@@ -53,6 +53,9 @@ GLANCES: dict[str, tuple[float, float, int, int]] = {
     "away":  (-0.7, 0.4, 0, 0),
 }
 GLANCE_HOLD_S = 1.5         # a glance holds this long, then the head turns back
+# A look asked for (look_direction) holds face.look_hold_s, then turns back
+# the same way: without it, the head stared at the held pose until someone
+# turned tracking back on (2026-10-05).
 
 
 def head_offset(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
@@ -79,6 +82,9 @@ class Expressions:
         self.tilt_centre = self.cal.tilt_level_deg
         self._resume: Optional[asyncio.Task] = None     # the head back after a glance
         self._return_to: Optional[tuple[Optional[str], Optional[float], Optional[float]]] = None
+        self._hold: Optional[asyncio.Task] = None       # the head back after a held look
+        self._hold_origin: Optional[tuple[Optional[str], Optional[float], Optional[float]]] = None
+        self._hold_s = 0.0
         self._last: Optional[asyncio.Task] = None       # the newest fired expression
         self._tasks: Set[asyncio.Task] = set()
 
@@ -136,7 +142,7 @@ class Expressions:
         x, y, left, up = GLANCES.get(direction, GLANCES["ahead"])
         await self.face.set_eye_mode("manual")
         await self.face.set_eye(x, y, 1.1)
-        if left or up:
+        if (left or up) and not self.holding:        # a held look keeps the head; the eye glances
             mode, pan, tilt = self._where_to_return()
             pan_offset, tilt_offset = head_offset(left * self.turn_deg, up * self.tilt_deg, self.cal)
             await self.face.set_servo(mode="manual")
@@ -158,19 +164,71 @@ class Expressions:
         state = self.face.state
         return state.servo_mode, state.pan_deg, state.tilt_deg
 
-    def end_glance(self) -> Optional[tuple[Optional[float], Optional[float]]]:
+    # --- a held look (look_direction) ---------------------------------------------
+
+    @property
+    def holding(self) -> bool:
+        return self._hold is not None and not self._hold.done()
+
+    def _glance_pending(self) -> bool:
+        return self._resume is not None and not self._resume.done()
+
+    def base_pose(self) -> tuple[Optional[float], Optional[float]]:
         """
-        For look_direction: a glance still holding doesn't turn back, and the
-        pose it started from is returned, to turn from. A reply says
-        "[look:left]" and calls look_direction(left) together; the glance's
-        turn-back undid the held pose 1.5 s later, and the tool turned from
-        the glance's pose, twice as far (2026-10-05).
+        Where a look turns from: where the head is, or where it was before a
+        glance still holding. A reply says "[look:left]" and calls
+        look_direction(left) together; turning from the glance's pose went
+        twice as far (2026-10-05).
         """
-        if self._resume is None or self._resume.done():
-            return None
-        self._resume.cancel()
-        _, pan, tilt = self._return_to
-        return pan, tilt
+        if self._glance_pending():
+            _, pan, tilt = self._return_to
+            return pan, tilt
+        return self.face.state.pan_deg, self.face.state.tilt_deg
+
+    async def hold(self, pan: Optional[float], tilt: Optional[float], hold_s: float) -> None:
+        """
+        Turns the head to (pan, tilt) with tracking off, for hold_s; then back
+        to where it was before the first of these looks, and tracking back on
+        if it was on. A glance still holding is ended, and its pose is the
+        one to go back to.
+        """
+        if self.holding:
+            self._hold.cancel()
+            origin = self._hold_origin
+        else:
+            origin = self._where_to_return()
+            if self._glance_pending():
+                self._resume.cancel()
+        await self.face.set_servo(mode="manual")
+        await self.face.set_servo(pan_deg=pan, tilt_deg=tilt)
+        self._hold_origin, self._hold_s = origin, hold_s
+        self._hold = asyncio.create_task(self._release_after(hold_s), name="look-held")
+
+    def extend_hold(self) -> None:
+        """Still looking (a photo of the held view): the hold starts over."""
+        if self.holding:
+            self._hold.cancel()
+            self._hold = asyncio.create_task(self._release_after(self._hold_s), name="look-held")
+
+    def end_hold(self) -> None:
+        """Tracking switched on or off on purpose: the head stays as it's told."""
+        if self.holding:
+            self._hold.cancel()
+        if self._glance_pending():
+            self._resume.cancel()
+
+    async def _release_after(self, delay_s: float) -> None:
+        await asyncio.sleep(delay_s)
+        mode, pan, tilt = self._hold_origin
+        log.info("the held look is over: back to pan %s, tilt %s%s", pan, tilt,
+                 ", tracking" if mode == "track" else "")
+        try:
+            if pan is not None or tilt is not None:
+                await self.face.set_servo(pan_deg=pan, tilt_deg=tilt)
+            if mode == "track":
+                await self.face.set_servo(mode="track")
+        except Exception:  # noqa: BLE001 - the next look or init tries again
+            log.debug("could not turn the head back after a held look", exc_info=True)
 
     def _return_after(self, delay_s: float, mode: Optional[str], pan: Optional[float],
                       tilt: Optional[float]) -> None:

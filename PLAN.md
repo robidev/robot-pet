@@ -60,7 +60,8 @@ Finishes M2 and gives the first real latency numbers.
   twice: named again each time, never greeted again.
 - **A glance turns the head back** (built 2026-10-05, not yet seen live): a
   reply with `[look:left]` while someone's in view; the head turns, then comes
-  back to them within ~2 s and keeps tracking.
+  back to them within ~2 s and keeps tracking. Likewise "look left": 30° the
+  right way, held 20 s, then back to them, tracking.
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`)
@@ -404,6 +405,11 @@ risk: a silence the model shouldn't have kept stays silent.
   the remount fix), and each reply's `[look:left]` glance with the call
   turned 60° and then turned back over the held pose ~2 s later. The tool
   now ends a pending glance and turns from where the glance started.
+- **A look left tracking off for good**: `look_direction` held its pose
+  until someone turned tracking back on. A look now holds `face.look_hold_s`
+  (20 s), then the head goes back to where it was before the first look and
+  tracking comes back on if it was on. More looks and photos (`look`) start
+  the hold over; glances meanwhile move only the eye; `track_faces` ends it.
 
 **The head's servos remounted reversed (2026-10-05).** Firmware `1c6357d`
 (Robin): centre pan 75, tilt 110; tilt limits 67-180; tracking's directions

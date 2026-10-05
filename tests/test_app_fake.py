@@ -107,3 +107,34 @@ async def test_a_glance_with_look_direction_turns_once_and_stays(monkeypatch):
         assert app.face.state.tilt_deg == 105.0     # higher tilt looks up since the remount
     finally:
         await app.close()
+
+
+async def test_a_held_look_goes_back_to_tracking():
+    # 2026-10-05: after "look left" tracking stayed off and the head stared on.
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    cfg.face.look_hold_s = 0.2
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        expressions = Expressions(app.face, cfg.calibration)
+        app.brain = SimpleNamespace(expressions=expressions)
+        await app.face.set_servo(mode="track", pan_deg=90.0, tilt_deg=120.0)
+        await app.tools.call("look_direction", {"direction": "left"})
+        await app.tools.call("look_direction", {"direction": "up"})   # a second look: back to the first's start
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg, app.face.state.servo_mode) == (60.0, 135.0, "manual")
+
+        await asyncio.sleep(0.12)
+        await expressions.glance("right")       # the reply's glance moves the eye, not the held head
+        await app.tools.call("look", {})        # a photo of the held view: the hold starts over
+        await asyncio.sleep(0.12)
+        assert (app.face.state.pan_deg, app.face.state.servo_mode) == (60.0, "manual")
+        await asyncio.sleep(0.2)
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg, app.face.state.servo_mode) == (90.0, 120.0, "track")
+
+        await app.tools.call("look_direction", {"direction": "right"})
+        await app.tools.call("track_faces", {"on": False})   # on purpose: no turning back later
+        await asyncio.sleep(0.3)
+        assert (app.face.state.pan_deg, app.face.state.servo_mode) == (120.0, "manual")
+    finally:
+        await app.close()
