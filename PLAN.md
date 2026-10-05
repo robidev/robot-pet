@@ -28,8 +28,8 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
 | Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
-| Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | G2's start-after-reboot (a decision) |
-| Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | the cause of the bad spells on the whole WiFi (2026-09-27, open) |
+| Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | |
+| Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | |
 
 ---
 
@@ -185,15 +185,19 @@ against these).
 
 ### Step 6: loose ends before M4
 
-- **G2's start after a reboot** (a decision): `scripts/start.sh install`,
-  `loginctl enable-linger`, Windows starting WSL at logon (README.md); then a
-  Windows reboot brings the pet back.
-- **The WiFi's bad spells** (2026-09-27): look at the ping logger over a few
-  days: do they come at meal times (a microwave on 2.4 GHz)?
 - **The face board:** `internal_min_free` fell to 14.8 KB once, unexplained;
   the ROM's "SHA-256 comparison failed" at every boot.
-- Whisper's "GLaDOS" misses ("Gladys", "Class"), and the head's "nobody in view"
-  while a face was in view (2026-09-23): still there?
+- Whisper's "GLaDOS" misses ("Gladys", "Class", "GluDOS" on 2026-10-05):
+  maybe a new name Whisper hears reliably (Robin, 2026-10-05). `pet.name`
+  feeds Whisper's prompt and the name matcher; the personality and voice
+  (`memory/*.md`, piper) would need rewording. Candidates can be tried first
+  with piper-spoken lines through Whisper, as on 2026-09-22.
+- The head's "nobody in view" while a face was in view (2026-09-23): still
+  there?
+
+Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
+started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
+back as a problem.
 
 ### Step 7: it feels alive (decide, build, hands-on): M4
 
@@ -340,7 +344,7 @@ git-ignored `config.yaml`; without it, a warning and no pause. Tried: paused,
 and no scan in the next 68 s. The nightly reboot stays: with `wlanmgr`
 paused, it's what reconnects a robot whose WiFi is lost for good.
 
-**Bad spells on the whole WiFi (2026-09-27):** heavy loss from ~10:31 to ~11:15 and again from ~12:30, hitting the face, the robot and even pings to the router from the PC. The PC is a laptop on WiFi too (Intel AX201, `Ziggo-gast679` on 5 GHz channel 44, -57 dBm), so every PC measurement crosses two radio links. The router's 2.4 GHz is on channel 1, alone there (neighbours on 10-11, -71 to -83 dBm). Breakfast and lunch time: a microwave is a suspect for the 2.4 GHz side; the 5 GHz router misses don't fit it as neatly (a busy router may just answer pings late). **Open.**
+**Bad spells on the whole WiFi (2026-09-27):** heavy loss from ~10:31 to ~11:15 and again from ~12:30, hitting the face, the robot and even pings to the router from the PC. The PC is a laptop on WiFi too (Intel AX201, `Ziggo-gast679` on 5 GHz channel 44, -57 dBm), so every PC measurement crosses two radio links. The router's 2.4 GHz is on channel 1, alone there (neighbours on 10-11, -71 to -83 dBm). Breakfast and lunch time: a microwave is a suspect for the 2.4 GHz side; the 5 GHz router misses don't fit it as neatly (a busy router may just answer pings late). **Open.** (2026-10-05: left unless it comes back as a problem.)
 
 **The eye and the head stuck in petd's pose (2026-09-27, `af2995a`):**
 
@@ -1067,7 +1071,7 @@ Concurrency, state machines, and where the "feel" lives.
 | # | Step | Acceptance |
 |---|---|---|
 | G1 | `README.md` for petd: setup, the WSL `.wslconfig` note, how to run, config reference, and troubleshooting. Update `todo.txt`. **Done 2026-09-27:** `README.md` (how it fits together, setup of the PC, robot and face, running, the tools, the config sections, troubleshooting from the findings so far); `todo.txt` kept as the original plan, with a status note on top. | Someone else could set it up. |
-| G2 | `scripts/start.sh` or a systemd user unit, log rotation, and `runtime/` layout creation. **Done 2026-09-27:** `scripts/start.sh` (`run`, `start`/`stop`/`restart`/`status` as the systemd user unit `petd`, transient unless installed; `log`; `check`; `install`/`uninstall`), `scripts/preflight.py` (what petd needs, from the config: errors stop the start, unreachable devices warn); log rotation and size limits since `89b12bf`. Tried: the checks on the real setup (15 ok), a background start and clean stop with `--fake`. **Not yet:** `install` (a user decision), linger, and the Windows side (README.md, Starting with WSL). | One command starts the pet. A reboot restores it. |
+| G2 | `scripts/start.sh` or a systemd user unit, log rotation, and `runtime/` layout creation. **Done 2026-09-27:** `scripts/start.sh` (`run`, `start`/`stop`/`restart`/`status` as the systemd user unit `petd`, transient unless installed; `log`; `check`; `install`/`uninstall`), `scripts/preflight.py` (what petd needs, from the config: errors stop the start, unreachable devices warn); log rotation and size limits since `89b12bf`. Tried: the checks on the real setup (15 ok), a background start and clean stop with `--fake`. **Not yet:** `install` (a user decision), linger, and the Windows side (README.md, Starting with WSL). **Not wanted (2026-10-05):** petd is started by hand. | One command starts the pet. A reboot restores it. |
 | G3 | Dashboard extras (Sonnet): live event log, map with robot, people and target overlay, drives, and a manual tool console. **Done 2026-09-27** (drives wait for E5): a status summary; a **people** panel (in view, known here, recognition's tracks with their last score, the latest attempt crops); the live **map** (`/map.png`: robot with heading, dock, Valetudo's go_to target, named places, last sightings, moved from the reference frame); the **event log** with a filter, a quiet mode and pause; a **tool console** (pick a tool, arguments pre-filled from its schema, the result and any image). Tried with `--fake` in headless Edge (the page's script runs, every panel fills) and the map against the live robot; tests for the endpoints. | Useful for debugging M3 and M4. |
 | G4 | **Done 2026-09-23, with fakes; real numbers from the next live run.** The trace is always on, as `events.jsonl` in each run's log folder (`log.events`), rather than behind a `--trace` flag: the run folders came after this step was written. Latency instrumentation (4.9): publish the brain's turn and tool timings on the bus, time piper per sentence, a `--trace` flag appending every event to JSONL (the 300-event ring is for the last turn, not for a session), and `scripts/latency.py` to print a per-turn breakdown from `/events` or a trace. **Do this before E4.** | A spoken turn prints hear → think → synth → first word → done, with the numbers adding up to the wall clock. |
 
