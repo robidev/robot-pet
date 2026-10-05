@@ -18,14 +18,14 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 | Milestone | State |
 |---|---|
 | **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
-| **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Two people at once and a deliberate swap still to check (Step 1). |
+| **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far, and their speech isn't credited to either yet (Step 1). |
 | **M3: It comes to you** | **Not built.** Driving, docking and places work; finding a person's distance and direction is the missing piece (Steps 2-5). |
 | **M4: It feels alive** | **Not built** (Step 7). |
 
 | Area | Works (tried on the hardware) | Built, not yet tried live | Not built |
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
-| Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py` | a deliberate swap; the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
+| Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
 | Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | G2's start-after-reboot (a decision) |
@@ -47,12 +47,18 @@ Finishes M2 and gives the first real latency numbers.
 
 - **Two at once:** Robin and Claudia side by side at ~1.5 m. Each named on the
   dashboard's people panel, neither as the other, and speech credited to the
-  right one ("Robin says" / "Claudia says" in the events).
-- **A swap on purpose:** one walks out while the other walks in, inside the 5 s
-  presence debounce, and the other way round. The right name within ~10 s.
-  (Built after it went wrong live on 2026-09-27; so far only tested with fakes.)
-- **Leaving and coming back:** out of view for ~10 s, then back: named again,
-  not greeted twice within `greet_every_h`.
+  right one ("Robin says" / "Claudia says" in the events). **Half done
+  (2026-10-05):** Claudia and Noah were named together within ~11 s, never one
+  as the other; Robin and Noah far off (faces 46-110 px) took ~60 s. Speech
+  with two in view is always "someone says": `converse.py` credits only a sole
+  person, and telling which of two is speaking isn't built (a decision).
+- ~~**A swap on purpose**~~ **Done (2026-10-05):** Noah and Robin out, Claudia
+  in: named in 6 s; Claudia out, Noah in: named at once.
+- ~~**Leaving and coming back**~~ **Done (2026-10-05):** Noah twice, Claudia
+  twice: named again each time, never greeted again.
+- **A glance turns the head back** (built 2026-10-05, not yet seen live): a
+  reply with `[look:left]` while someone's in view; the head turns, then comes
+  back to them within ~2 s and keeps tracking.
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`)
@@ -84,7 +90,11 @@ head. `scripts/calibrate_face.py`:
    ahead, and at 2 m 30° left and right; then sitting at 1.5 and 2 m. Measure
    from the camera, on the floor.
 3. `fit --face-height <m>`: the `calibration:` values (`K_face`, `hfov_deg`,
-   pan sign and offset).
+   pan sign and offset). Since the remount (2026-10-05) `pan_forward_deg` and
+   `tilt_level_deg` are unknown, and two things in the scripts still assume
+   the old mount: `fit`'s fixed-tilt branch takes lower tilt as up
+   (`tilt_level = tilt + centre`), and `tracking_log.py` flags 58/105 as the
+   limits. `aim` and `hfov` hold pan 90.
 4. **Microphone levels in the same positions** (backlog item, it fits here):
    one normal sentence at 0.5, 1, 2 and 3 m, and a minute of quiet, recorded
    from the UDP stream: speech and silence levels, silero's probabilities,
@@ -261,7 +271,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 **Findings from the face calibration attempt (2026-09-23, around midnight): stop-and-look can't see a standing adult.**
 
 - **Tilt: lower looks up** (snapshots at 60 and 120). `look_direction`'s description and the `[look:up]` glance had it backwards; fixed.
-- **The tilt mount only moves between 58 (up) and 105 (down)**, measured by hand; face tracking drove the servo into it following a standing face: the stall browned out the board and reset it. Firmware now clamps tilt (58–105, measured by hand; `~/LilyGo-Cam-RobotFace` HEAD, **built, not yet flashed**), and petd clamps what it asks for too. Until it's flashed, don't leave tracking on with a face near the top of the frame.
+- **The tilt mount only moves between 58 (up) and 105 (down)** (until the servos were remounted reversed, 2026-10-05: 67 down to 180 up), measured by hand; face tracking drove the servo into it following a standing face: the stall browned out the board and reset it. Firmware now clamps tilt (58–105, measured by hand; `~/LilyGo-Cam-RobotFace` HEAD, **built, not yet flashed**), and petd clamps what it asks for too. Until it's flashed, don't leave tracking on with a face near the top of the frame.
 - **The head sees up to ~45° of elevation at most** (tilt 58 plus half the frame). A standing adult's eyes (1.70 m) are 45° up from 1.5 m away and 56° from 1.0 m.
 - **Faces aren't detected much beyond ~1.5 m**, even in full room light: stage one of the detector (`HumanFaceDetectMSR01(..., 0.2F)`) runs on the VGA frame scaled to 20%, 128×96, where a face 2 m away is ~8 px. Robin was only detected at 1.5 m when bending their knees.
 - **So there's no distance at which a standing adult is both high enough in the frame and big enough to detect.** The face-distance calibration wasn't possible; `scripts/calibrate_face.py` (fixed-tilt captures, no tracking) is ready for when it is. Options, roughly in order of payoff for "come here": (1) **a person/feet detector on the PC**, run on `/snapshot`: legs are in view at tilt 90, the bearing comes from the box, and the distance from where the feet meet the floor (camera 0.20 m up, known tilt) needs no face height at all; face recognition stays for *who*, up close; (2) the detector's resize scale 0.2 → 0.3–0.4 for range, at a CPU cost to measure against the vision duty cycle; (3) tilting the camera up on its mount by 15–20°.
@@ -362,6 +372,38 @@ line again or explained that it already had ("I already spoke: ..."). 7 of 8
 tool turns in `runtime/llm-bench/after_tool.py`, greetings doubled too. petd
 now doesn't speak the reply to that nudge: 0 repeats in 9 tries. Accepted
 risk: a silence the model shouldn't have kept stays silent.
+
+**People coming and going (2026-10-05, run `20261005-191541`, Robin, Claudia and Noah):**
+
+- **Swaps and coming back work**, and nobody was named as someone else all
+  session (Step 1). Claudia and Noah were named together at 19:28, Noah's face
+  only ~47 px (he was there).
+- **Two far-off faces took ~60 s** (19:23:12 to 19:24:18, Robin and Noah,
+  46-110 px): recognition gave up on all four tracks after 12 attempts, the
+  pet asked "Who are you?", and then, told it saw two strangers, answered "One
+  of you I've met before... the other one is new": made up.
+- **A glance left the head looking at nothing for 2.5 minutes.**
+  `[look:left]` turned it 25° away and tracking came back on 1.5 s later, but
+  with nobody in frame tracking had nothing to follow (19:28:38 to 19:31:18,
+  13 turns with "nobody in view" while Claudia sat in front: "you keep looking
+  off to the right. I'm dead center"). A glance now turns the head back to
+  where it was, then tracking goes back on if it was on; a nod in the middle
+  keeps the way back.
+
+**The head's servos remounted reversed (2026-10-05).** Firmware `1c6357d`
+(Robin): centre pan 75, tilt 110; tilt limits 67-180; tracking's directions
+inverted (`servo_pan_invert`, `servo_tilt_invert`); `hmirror`/`vflip`
+unchanged. So manual angles turned round, and petd's `[look]` glances went the
+wrong way. Checked on the head: pan 75 -> 100 turned it to the robot's
+**right** (seen by Robin), a still scene moved **left** in the image, and tilt
+110 -> 95 looked **down** (more floor in the snapshot); with the new signs,
+pan 50 / tilt 125 was left and up (seen). `calibration:` now has `pan_sign`,
+`cx_per_pan_deg_sign` and `tilt_deg_per_elevation_deg` all -1 (in
+`config.py`'s defaults and the example too), and glances, `look_direction`'s
+description and `get_senses`' "to my left/right" follow them. `face.tilt_min_deg`
+/ `tilt_max_deg` are the firmware's 67-180 (180 up). Not re-measured:
+`pan_forward_deg` and `tilt_level_deg` (both still 90; Step 2); the
+firmware's comment on its tilt limits still says 58 (up) to 105 (down).
 
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
@@ -1006,4 +1048,4 @@ Concurrency, state machines, and where the "feel" lives.
 - **Noah near the robot:** approaching him is fine; speed caps, the standoff near him and who may summon it are to decide before Step 5.
 - **Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.
 - **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
-- **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. The first list's other answers are under "Decisions".
+- **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. Both changed with the remount of 2026-10-05: higher tilt looks up, 67 to 180, and level is to measure again (Findings). The first list's other answers are under "Decisions".
