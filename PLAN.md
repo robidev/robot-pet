@@ -192,12 +192,11 @@ against these).
   feeds Whisper's prompt and the name matcher; the personality and voice
   (`memory/*.md`, piper) would need rewording. Candidates can be tried first
   with piper-spoken lines through Whisper, as on 2026-09-22.
-- The head's "nobody in view" while a face was in view (2026-09-23): still
-  there?
 
 Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
 started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
-back as a problem.
+back as a problem. Gone: the head's "nobody in view" while a face was in view
+(2026-09-23), not seen since.
 
 ### Step 7: it feels alive (decide, build, hands-on): M4
 
