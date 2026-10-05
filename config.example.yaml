@@ -23,6 +23,11 @@ face:
   look_turn_deg: 30.0          # "look left/right" turns the head this far from where it looks
   look_tilt_deg: 15.0          # "look up/down", likewise
   look_hold_s: 20.0            # a look asked for holds this long, then back to tracking
+  search_tilt_deg: 110.0       # "look for me": the head pans at this tilt...
+  search_pan_min_deg: 0.0      # ...between these...
+  search_pan_max_deg: 180.0
+  search_speed_deg_s: 20.0     # ...this slowly...
+  search_sweeps: 2             # ...to one end and back this often, and stops on a face
 
 stt:
   source: face                 # face (the head's UDP stream) | local (a sound card on this PC)

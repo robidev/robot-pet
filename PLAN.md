@@ -62,6 +62,13 @@ Finishes M2 and gives the first real latency numbers.
   reply with `[look:left]` while someone's in view; the head turns, then comes
   back to them within ~2 s and keeps tracking. Likewise "look left": 30° the
   right way, held 20 s, then back to them, tracking.
+- **"Look for me"** (built 2026-10-05, not yet tried live): stand out of
+  view and ask. `search_for_faces` pans the head at tilt 110 between 0 and
+  180, 20°/s in 10° steps, to the nearer end and back twice (~40 s), stops on
+  the first face, goes back to the pose that frame was taken at and tracks;
+  the brain is told what came of it. All in `face.search_*`. To see: whether
+  20°/s finds a face at 1-3 m, and how far the head overshoots before it
+  turns back.
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`)

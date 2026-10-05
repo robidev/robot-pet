@@ -7,6 +7,7 @@ from petd.app import App
 from petd.brain.expressions import Expressions
 from petd.config import Config
 from petd.events import Heard, SpeakingFinished
+from petd.io.face import Face
 
 
 async def test_fake_app_echo_loop_and_stop():
@@ -136,5 +137,76 @@ async def test_a_held_look_goes_back_to_tracking():
         await app.tools.call("track_faces", {"on": False})   # on purpose: no turning back later
         await asyncio.sleep(0.3)
         assert (app.face.state.pan_deg, app.face.state.servo_mode) == (120.0, "manual")
+    finally:
+        await app.close()
+
+
+def face(cx=0.5):
+    return Face(-1, 0.9, cx - 0.1, 0.3, cx + 0.1, 0.6)
+
+
+def search_app(monkeypatch, sweeps=2):
+    monkeypatch.setattr("petd.brain.expressions.SEARCH_STEP_S", 0.01)
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    cfg.face.search_speed_deg_s = 1000.0      # 180 deg in 0.18 s
+    cfg.face.search_sweeps = sweeps
+    return cfg
+
+
+async def started(cfg):
+    app = App(cfg, fake=True)
+    await app.start()
+    told = []
+    app.brain = SimpleNamespace(expressions=Expressions(app.face, cfg.calibration),
+                                tell=lambda text, kind="heard", speaker=None: told.append((kind, text)))
+    return app, told
+
+
+async def test_a_search_stops_on_a_face_and_tracks_it(monkeypatch):
+    app, told = await started(search_app(monkeypatch))
+    try:
+        await app.face.set_servo(mode="manual", pan_deg=60.0, tilt_deg=90.0)
+        result = await app.tools.call("search_for_faces", {})
+        assert "searching" in result.text
+        for _ in range(100):                    # to the nearer end (0) first, then across
+            if app.face.state.pan_deg is not None and app.face.state.pan_deg > 100.0:
+                break
+            await asyncio.sleep(0.005)
+        assert app.face.state.tilt_deg == 110.0
+        app.face._state = replace(app.face.state, pan_deg=130.0)
+        app.face.show(face())                   # seen in a frame taken at pan 130
+        app.face._state = replace(app.face.state, pan_deg=150.0)   # the head has moved on
+        await asyncio.sleep(0.1)
+        assert (app.face.state.pan_deg, app.face.state.servo_mode) == (130.0, "track")
+        assert told and told[-1][0] == "event" and "found a face" in told[-1][1]
+        assert not app.brain.expressions.searching
+
+        result = await app.tools.call("search_for_faces", {})   # a face in view: no search
+        assert "already see a face" in result.text and not app.brain.expressions.searching
+    finally:
+        await app.close()
+
+
+async def test_a_search_without_faces_ends_ahead_and_tracking(monkeypatch):
+    app, told = await started(search_app(monkeypatch, sweeps=1))
+    try:
+        await app.face.set_servo(mode="manual", pan_deg=150.0, tilt_deg=90.0)
+        expressions = app.brain.expressions
+        await app.tools.call("search_for_faces", {})
+        await asyncio.sleep(0.05)
+        await expressions.glance("left")        # a glance mid-search moves only the eye
+        assert expressions.searching and not expressions._glance_pending()
+        for _ in range(200):
+            if not expressions.searching:
+                break
+            await asyncio.sleep(0.01)
+        assert (app.face.state.pan_deg, app.face.state.servo_mode) == (75.0, "track")
+        assert "found nobody" in told[-1][1]
+
+        await app.tools.call("search_for_faces", {})
+        await app.tools.call("look_direction", {"direction": "ahead"})   # a look ends the search
+        await asyncio.sleep(0.05)
+        assert not expressions.searching and app.face.state.servo_mode == "manual"
     finally:
         await app.close()

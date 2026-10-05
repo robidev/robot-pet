@@ -83,6 +83,14 @@ class FaceConfig:
     # A look asked for holds this long, then the head goes back to where it
     # was and tracking comes back on if it was on (it stared on, 2026-10-05).
     look_hold_s: float = 20.0
+    # "Look for me" (search_for_faces): the head pans slowly between these,
+    # to one end and back search_sweeps times at search_tilt_deg, and stops
+    # on the first face (2026-10-05, Robin's spec).
+    search_tilt_deg: float = 110.0
+    search_pan_min_deg: float = 0.0
+    search_pan_max_deg: float = 180.0
+    search_speed_deg_s: float = 20.0
+    search_sweeps: int = 2
 
 
 @dataclass

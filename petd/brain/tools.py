@@ -240,6 +240,23 @@ def build_registry(pet: "App") -> ToolRegistry:
         return f"looking there ({where})"
 
     @registry.tool(
+        "search_for_faces",
+        _search_help(pet.cfg.face),
+        {"type": "object", "properties": {}, "required": []})
+    async def search_for_faces(args: dict) -> str:
+        face = require_face()
+        if pet.brain is None or pet.brain.expressions is None:
+            raise ToolError("I can't move my head on my own right now")
+        frame = face.last_faces
+        if frame is not None and frame.faces:
+            pet.brain.expressions.end_hold()
+            await face.set_servo(mode="track")
+            return "I can already see a face: following it now, no search needed"
+        brain = pet.brain
+        pet.brain.expressions.start_search(lambda text: brain.tell(text, kind="event"))
+        return "searching: turning my head slowly around the room; I'll be told what I find"
+
+    @registry.tool(
         "track_faces",
         "Turn face tracking on or off. On means my head follows whoever I'm looking at, "
         "keeping eye contact. Turn it on when someone is with me. It only moves my head: "
@@ -531,6 +548,15 @@ def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: floa
             f"({tilt_up:g} is as far up as it goes), {down_word} looks down ({tilt_down:g} at most). "
             f"Face tracking is off while I hold the pose, {hold_s:g} s (longer while I take photos "
             "with look); then my head goes back to where it was and tracking comes back on.")
+
+
+def _search_help(fcfg) -> str:
+    sweep_s = 2 * (fcfg.search_pan_max_deg - fcfg.search_pan_min_deg) / max(1.0, fcfg.search_speed_deg_s)
+    return ("Look around the room for a face: my head pans slowly from side to side, "
+            f"{fcfg.search_sweeps} times (up to ~{fcfg.search_sweeps * sweep_s:.0f} s), stops on the first "
+            "face it sees and follows it. Use it when someone asks me to look for them or find them "
+            "and I can't see anyone. It returns at once; when it's over I'm told whether I found a "
+            "face, and recognition names them if it can.")
 
 
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:

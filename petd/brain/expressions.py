@@ -18,9 +18,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from typing import TYPE_CHECKING, Optional, Set
+import time
+from typing import TYPE_CHECKING, Callable, Optional, Set
 
 from ..config import CalibrationConfig
+from ..events import FacesChanged
 from .tags import Action
 
 if TYPE_CHECKING:
@@ -53,6 +55,10 @@ GLANCES: dict[str, tuple[float, float, int, int]] = {
     "away":  (-0.7, 0.4, 0, 0),
 }
 GLANCE_HOLD_S = 1.5         # a glance holds this long, then the head turns back
+# A search moves the head in steps this far apart (the firmware jumps to a
+# manual pose): 10 deg at 20 deg/s. Jumpy is fine (Robin), and a head
+# standing still between steps gives the detector sharper frames.
+SEARCH_STEP_S = 0.5
 # A look asked for (look_direction) holds face.look_hold_s, then turns back
 # the same way: without it, the head stared at the held pose until someone
 # turned tracking back on (2026-10-05).
@@ -85,6 +91,7 @@ class Expressions:
         self._hold: Optional[asyncio.Task] = None       # the head back after a held look
         self._hold_origin: Optional[tuple[Optional[str], Optional[float], Optional[float]]] = None
         self._hold_s = 0.0
+        self._search: Optional[asyncio.Task] = None     # "look for me"
         self._last: Optional[asyncio.Task] = None       # the newest fired expression
         self._tasks: Set[asyncio.Task] = set()
 
@@ -142,7 +149,7 @@ class Expressions:
         x, y, left, up = GLANCES.get(direction, GLANCES["ahead"])
         await self.face.set_eye_mode("manual")
         await self.face.set_eye(x, y, 1.1)
-        if (left or up) and not self.holding:        # a held look keeps the head; the eye glances
+        if (left or up) and not self.head_busy:      # a held look or a search keeps the head; the eye glances
             mode, pan, tilt = self._where_to_return()
             pan_offset, tilt_offset = head_offset(left * self.turn_deg, up * self.tilt_deg, self.cal)
             await self.face.set_servo(mode="manual")
@@ -170,6 +177,14 @@ class Expressions:
     def holding(self) -> bool:
         return self._hold is not None and not self._hold.done()
 
+    @property
+    def searching(self) -> bool:
+        return self._search is not None and not self._search.done()
+
+    @property
+    def head_busy(self) -> bool:
+        return self.holding or self.searching
+
     def _glance_pending(self) -> bool:
         return self._resume is not None and not self._resume.done()
 
@@ -192,6 +207,7 @@ class Expressions:
         if it was on. A glance still holding is ended, and its pose is the
         one to go back to.
         """
+        self.stop_search()
         if self.holding:
             self._hold.cancel()
             origin = self._hold_origin
@@ -212,6 +228,7 @@ class Expressions:
 
     def end_hold(self) -> None:
         """Tracking switched on or off on purpose: the head stays as it's told."""
+        self.stop_search()
         if self.holding:
             self._hold.cancel()
         if self._glance_pending():
@@ -229,6 +246,86 @@ class Expressions:
                 await self.face.set_servo(mode="track")
         except Exception:  # noqa: BLE001 - the next look or init tries again
             log.debug("could not turn the head back after a held look", exc_info=True)
+
+    # --- "look for me" ----------------------------------------------------------
+
+    def start_search(self, report: Optional[Callable[[str], None]] = None) -> None:
+        """
+        Pans the head slowly around the room until a face shows up, then
+        back to where the frame with it was taken (the head has moved on
+        since, ~1 s of detection) and tracking on. report() gets what came
+        of it. A held look or a glance ends; a new search starts over.
+        """
+        self.stop_search()
+        if self.holding:
+            self._hold.cancel()
+        if self._glance_pending():
+            self._resume.cancel()
+        self._search = asyncio.create_task(self._run_search(report), name="face-search")
+
+    def stop_search(self) -> None:
+        if self.searching:
+            self._search.cancel()
+
+    async def _run_search(self, report: Optional[Callable[[str], None]]) -> None:
+        cfg = self.face.cfg
+        low, high = cfg.search_pan_min_deg, cfg.search_pan_max_deg
+        tilt = max(self.tilt_min, min(self.tilt_max, cfg.search_tilt_deg))
+        speed = max(1.0, cfg.search_speed_deg_s)
+        pan = self.face.state.pan_deg if self.face.state.pan_deg is not None else self.pan_centre
+        pan = max(low, min(high, pan))
+        near, far = (low, high) if pan - low <= high - pan else (high, low)
+        legs = [near] + [far, near] * max(1, cfg.search_sweeps)
+        sub = self.face.bus.subscribe(FacesChanged)
+        started = time.monotonic()
+        found: Optional[FacesChanged] = None
+        log.info("searching for a face: pan %g..%g at tilt %g, %g deg/s", low, high, tilt, speed)
+        try:
+            await self.face.set_servo(mode="manual")
+            await self.face.set_servo(pan_deg=pan, tilt_deg=tilt)
+            for target in legs:
+                found = await self._pan_to(pan, target, speed, sub)
+                if found is not None:
+                    break
+                pan = target
+            if found is not None:
+                await self.face.set_servo(pan_deg=found.pan_deg, tilt_deg=found.tilt_deg)
+                await self.face.set_servo(mode="track")
+                log.info("search: a face at pan %.1f, tilt %.1f after %.0f s; tracking",
+                         found.pan_deg, found.tilt_deg, time.monotonic() - started)
+                outcome = (f"My search found a face after {time.monotonic() - started:.0f} s; "
+                           "I'm following it now.")
+            else:
+                await self.face.set_servo(pan_deg=self.pan_centre, tilt_deg=tilt)
+                await self.face.set_servo(mode="track")
+                log.info("search: no face after %.0f s", time.monotonic() - started)
+                outcome = (f"My search found nobody: I looked around the room {max(1, cfg.search_sweeps)} "
+                           "times. I'm looking ahead again, following any face that shows up.")
+        except asyncio.CancelledError:
+            log.info("search stopped")
+            raise
+        except Exception:  # noqa: BLE001 - a lost head mustn't take the brain down
+            log.exception("search failed")
+            outcome = "My search broke off: my head stopped answering."
+        finally:
+            sub.close()
+        if report is not None:
+            report(outcome)
+
+    async def _pan_to(self, start: float, target: float, speed: float, sub) -> Optional[FacesChanged]:
+        """Pans from start to target at speed; the first frame with a face, if one comes."""
+        began = time.monotonic()
+        span = abs(target - start)
+        while True:
+            for event in iter(sub.get_nowait, None):
+                if event.faces:
+                    return event
+            done = min(span, speed * (time.monotonic() - began))
+            pan = start + math.copysign(done, target - start)
+            await self.face.set_servo(pan_deg=pan)
+            if done >= span:
+                return None
+            await asyncio.sleep(SEARCH_STEP_S)
 
     def _return_after(self, delay_s: float, mode: Optional[str], pan: Optional[float],
                       tilt: Optional[float]) -> None:
