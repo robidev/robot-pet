@@ -207,13 +207,13 @@ class CalibrationConfig:
     K_face: float = 0.245                     # horizontal distance (m) x face box height (fraction of the frame)
     hfov_deg: float = 60.0
     vfov_deg: Optional[float] = None          # None: from hfov_deg for a 4:3 frame
-    pan_forward_deg: float = 90.0             # pan 90 = straight ahead (measured roughly)
+    pan_forward_deg: float = 75.0             # pan 75 = straight ahead, the firmware's centre (2026-10-05)
     # The signs as measured on 2026-10-05, after the servos were remounted
     # reversed: pan grows to the robot's right, a still scene moves left in
     # the image as pan grows, and higher tilt looks up (all three were +1).
     pan_sign: float = -1.0                    # +1: pan grows to the robot's left
     cx_per_pan_deg_sign: float = -1.0         # +1: a face moves right in the image as pan grows
-    tilt_level_deg: float = 90.0              # tilt 90 was level before the remount (2026-09-23)
+    tilt_level_deg: float = 90.0              # tilt 90 is level, before and after the remount (2026-10-05)
     tilt_deg_per_elevation_deg: float = -1.0  # +1: lower tilt looks up
 
 

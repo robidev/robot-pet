@@ -43,6 +43,11 @@ sys.path.insert(0, str(ROOT / "face-api"))
 
 from face_client import FaceApiClient  # noqa: E402
 
+sys.path.insert(0, str(ROOT))
+from petd.config import load_config  # noqa: E402
+_FACE = load_config().face
+TILT_MIN, TILT_MAX = _FACE.tilt_min_deg, _FACE.tilt_max_deg     # the mount's stops
+
 LOG_DIR = ROOT / "runtime" / "calibration"
 DEADBAND = 0.06              # servo_service.cpp tracking_deadband
 STILL_DEG = 0.5              # tilt moves smaller than this count as "didn't move"
@@ -129,8 +134,9 @@ def summarize(rows: list[dict], servo: dict) -> None:
 def summarize_axis(rows: list[dict], faces: list[dict], axis: str, centre: str, gain) -> None:
     angles = [r[axis] for r in faces]
     lo, hi = min(angles), max(angles)
-    limit = axis == "tilt" and (lo <= 58.5 or hi >= 104.5)
-    print(f"\n-- {axis}: {lo:.1f}..{hi:.1f} deg" + ("  (at a limit: 58/105)" if limit else ""))
+    limit = axis == "tilt" and (lo <= TILT_MIN + 0.5 or hi >= TILT_MAX - 0.5)
+    print(f"\n-- {axis}: {lo:.1f}..{hi:.1f} deg"
+          + (f"  (at a limit: {TILT_MIN:g}/{TILT_MAX:g})" if limit else ""))
 
     pairs = [(a, b) for a, b in zip(rows, rows[1:])
              if a.get("faces") == 1 and b.get("faces") == 1 and b["seq"] == a["seq"] + 1]

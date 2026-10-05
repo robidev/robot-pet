@@ -90,11 +90,9 @@ head. `scripts/calibrate_face.py`:
    ahead, and at 2 m 30° left and right; then sitting at 1.5 and 2 m. Measure
    from the camera, on the floor.
 3. `fit --face-height <m>`: the `calibration:` values (`K_face`, `hfov_deg`,
-   pan sign and offset). Since the remount (2026-10-05) `pan_forward_deg` and
-   `tilt_level_deg` are unknown, and two things in the scripts still assume
-   the old mount: `fit`'s fixed-tilt branch takes lower tilt as up
-   (`tilt_level = tilt + centre`), and `tracking_log.py` flags 58/105 as the
-   limits. `aim` and `hfov` hold pan 90.
+   pan sign and offset). Since the remount (2026-10-05) the script takes
+   straight ahead (pan 75), level (tilt 90) and which way tilt looks up from
+   the config.
 4. **Microphone levels in the same positions** (backlog item, it fits here):
    one normal sentence at 0.5, 1, 2 and 3 m, and a minute of quiet, recorded
    from the UDP stream: speech and silence levels, silero's probabilities,
@@ -401,8 +399,10 @@ pan 50 / tilt 125 was left and up (seen). `calibration:` now has `pan_sign`,
 `cx_per_pan_deg_sign` and `tilt_deg_per_elevation_deg` all -1 (in
 `config.py`'s defaults and the example too), and glances, `look_direction`'s
 description and `get_senses`' "to my left/right" follow them. `face.tilt_min_deg`
-/ `tilt_max_deg` are the firmware's 67-180 (180 up). Not re-measured:
-`pan_forward_deg` and `tilt_level_deg` (both still 90; Step 2); the
+/ `tilt_max_deg` are the firmware's 67-180 (180 up). Pan 75 is straight
+ahead (the firmware's centre) and tilt 90 level (Robin): `pan_forward_deg` 75,
+`tilt_level_deg` 90. `calibrate_face.py` and `tracking_log.py` take all of it
+from the config now (its `aim`/`hfov` default tilt is 30° up: 120). The
 firmware's comment on its tilt limits still says 58 (up) to 105 (down).
 
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
@@ -1048,4 +1048,4 @@ Concurrency, state machines, and where the "feel" lives.
 - **Noah near the robot:** approaching him is fine; speed caps, the standoff near him and who may summon it are to decide before Step 5.
 - **Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.
 - **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
-- **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. Both changed with the remount of 2026-10-05: higher tilt looks up, 67 to 180, and level is to measure again (Findings). The first list's other answers are under "Decisions".
+- **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. Both changed with the remount of 2026-10-05: higher tilt looks up, 67 to 180; tilt 90 is still level and pan 75 is straight ahead (Findings). The first list's other answers are under "Decisions".

@@ -14,8 +14,9 @@ straight ahead unless --bearing says how many degrees to the robot's left
 move across the frame, which gives the camera's horizontal field of view.
 `fit` turns runtime/calibration/face.jsonl into the `calibration:` values.
 
-Conventions checked so far: tilt 90 is level and LOWER tilt looks UP
-(snapshots at 60 and 120). Nothing moves but the head.
+Conventions from the config's `calibration:` (since the servos were
+remounted reversed, 2026-10-05: pan 75 straight ahead, tilt 90 level, HIGHER
+tilt looks UP). Nothing moves but the head.
 """
 
 from __future__ import annotations
@@ -37,7 +38,10 @@ from face_client import FaceApiClient  # noqa: E402
 LOG = ROOT / "runtime" / "calibration" / "face.jsonl"
 # From the config: the head's design may still change it (calibration.camera_height_m).
 from petd.config import load_config  # noqa: E402
-CAMERA_HEIGHT_M = load_config().calibration.camera_height_m
+CAL = load_config().calibration
+CAMERA_HEIGHT_M = CAL.camera_height_m
+PAN_AHEAD = CAL.pan_forward_deg
+TILT_UP_30 = CAL.tilt_level_deg - CAL.tilt_deg_per_elevation_deg * 30     # 30 deg up from level
 
 
 def client(args) -> FaceApiClient:
@@ -69,10 +73,10 @@ def medians(rows: list[dict]) -> dict:
 
 def cmd_aim(args) -> None:
     c = client(args)
-    c.set_servo(mode="manual", pan_deg=90, tilt_deg=args.tilt)
+    c.set_servo(mode="manual", pan_deg=PAN_AHEAD, tilt_deg=args.tilt)
     time.sleep(1.0)
     c.set_servo(mode="track")
-    print(f"head at pan 90, tilt {args.tilt}; tracking on")
+    print(f"head at pan {PAN_AHEAD:g}, tilt {args.tilt:g}; tracking on")
 
 
 def cmd_capture(args) -> None:
@@ -80,7 +84,7 @@ def cmd_capture(args) -> None:
     if args.tilt is not None:
         # Fixed head, no tracking: safe near the tilt stop, and where the face
         # lands in the frame then measures the vertical field of view.
-        c.set_servo(mode="manual", pan_deg=90, tilt_deg=args.tilt)
+        c.set_servo(mode="manual", pan_deg=PAN_AHEAD, tilt_deg=args.tilt)
     else:
         c.set_servo(mode="track")
     print("settling 2 s ...")
@@ -103,7 +107,7 @@ def cmd_hfov(args) -> None:
     c = client(args)
     tilt = args.tilt            # held fixed: no tracking near the tilt stop
     points = []
-    for pan in (80, 90, 100):
+    for pan in (PAN_AHEAD - 10, PAN_AHEAD, PAN_AHEAD + 10):
         c.set_servo(mode="manual", pan_deg=pan, tilt_deg=tilt)
         time.sleep(1.5)
         rows = sample(c, 2.0)
@@ -112,7 +116,7 @@ def cmd_hfov(args) -> None:
             print(f"pan {pan}: face cx {points[-1][1]:.3f} ({len(rows)} frames)")
         else:
             print(f"pan {pan}: face not in view")
-    c.set_servo(mode="manual", pan_deg=90, tilt_deg=tilt)
+    c.set_servo(mode="manual", pan_deg=PAN_AHEAD, tilt_deg=tilt)
     if len(points) >= 2:
         (p0, x0), (p1, x1) = points[0], points[-1]
         slope = (x1 - x0) / (p1 - p0)            # image widths per pan degree
@@ -161,8 +165,8 @@ def cmd_fit(args) -> None:
         centre = my - vfov * mx
         tilt = fixed[0]["fixed_tilt"]
         out["vfov_deg"] = round(vfov, 1)
-        # Lower tilt looks up; assuming servo degrees are real degrees.
-        out["tilt_level_deg"] = round(tilt + centre, 1)
+        # Which way tilt looks up is the config's; servo degrees taken as real degrees.
+        out["tilt_level_deg"] = round(tilt + math.copysign(centre, CAL.tilt_deg_per_elevation_deg), 1)
         print(f"fixed tilt {tilt}: frame centre looks {centre:.1f} deg up, vertical FOV {vfov:.1f} deg")
         for x, y, e in zip(off, elev, fixed):
             print(f"  {e['distance_m']} m: elevation {y:.1f} deg, cy {e['cy']:.3f} (model {centre + vfov * x:.1f})")
@@ -170,7 +174,7 @@ def cmd_fit(args) -> None:
     tracked = [e for e in ahead if e.get("fixed_tilt") is None]
     if args.face_height and len(tracked) >= 2:
         ahead = tracked
-        # tilt = level - elevation * scale (lower tilt looks up), with the face
+        # tilt = level - elevation * scale (scale > 0: lower tilt looks up), with the face
         # nearly centred by tracking; the residual cy offset is ignored here.
         elev = [math.degrees(math.atan2(args.face_height - CAMERA_HEIGHT_M, e["distance_m"])) for e in ahead]
         tilts = [e["tilt"] for e in ahead]
@@ -193,12 +197,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="192.168.101.40")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("aim"); p.add_argument("--tilt", type=float, default=60.0); p.set_defaults(fn=cmd_aim)
+    p = sub.add_parser("aim"); p.add_argument("--tilt", type=float, default=TILT_UP_30); p.set_defaults(fn=cmd_aim)
     p = sub.add_parser("capture"); p.add_argument("distance", type=float)
     p.add_argument("--bearing", type=float, default=0.0); p.add_argument("--seconds", type=float, default=4.0)
     p.add_argument("--tilt", type=float, help="hold the head at this tilt instead of tracking")
     p.set_defaults(fn=cmd_capture)
-    p = sub.add_parser("hfov"); p.add_argument("--tilt", type=float, default=60.0); p.set_defaults(fn=cmd_hfov)
+    p = sub.add_parser("hfov"); p.add_argument("--tilt", type=float, default=TILT_UP_30); p.set_defaults(fn=cmd_hfov)
     p = sub.add_parser("fit"); p.add_argument("--face-height", type=float); p.set_defaults(fn=cmd_fit)
     args = parser.parse_args()
     args.fn(args)

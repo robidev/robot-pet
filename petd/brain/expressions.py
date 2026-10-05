@@ -60,14 +60,13 @@ GLANCE_HOLD_S = 1.5         # a glance holds this long, then the head turns back
 class Expressions:
     """Applies Action pieces from the reply stream to the face."""
 
-    def __init__(self, face: "FaceAdapter", cal: Optional[CalibrationConfig] = None,
-                 pan_centre: float = 90.0, tilt_centre: float = 90.0):
+    def __init__(self, face: "FaceAdapter", cal: Optional[CalibrationConfig] = None):
         self.face = face
         self.cal = cal or CalibrationConfig()
         self.tilt_min = getattr(face.cfg, "tilt_min_deg", 0.0)
         self.tilt_max = getattr(face.cfg, "tilt_max_deg", 180.0)
-        self.pan_centre = pan_centre
-        self.tilt_centre = tilt_centre
+        self.pan_centre = self.cal.pan_forward_deg        # where the head is, if its pose isn't known
+        self.tilt_centre = self.cal.tilt_level_deg
         self._resume: Optional[asyncio.Task] = None     # the head back after a glance
         self._return_to: Optional[tuple[Optional[str], Optional[float], Optional[float]]] = None
         self._last: Optional[asyncio.Task] = None       # the newest fired expression
