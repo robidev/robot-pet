@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from typing import TYPE_CHECKING, Optional, Set
 
 from ..config import CalibrationConfig
@@ -63,9 +62,22 @@ def head_offset(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple
     Degrees to the robot's left and up, as pan and tilt offsets. Which way
     they go is the calibration's pan_sign and tilt_deg_per_elevation_deg:
     the servos were remounted reversed on 2026-10-05, and the angles turned
-    round with them.
+    round with them. The tilt servo turns 1.1 degrees per degree of
+    elevation since the 2026-10-11 remount, so "30 up" is 33 on the servo.
     """
-    return cal.pan_sign * left_deg, -up_deg * math.copysign(1.0, cal.tilt_deg_per_elevation_deg)
+    return cal.pan_sign * left_deg, -up_deg * cal.tilt_deg_per_elevation_deg
+
+
+def head_servo(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
+    """Servo angles (pan, tilt) for degrees to the robot's left of straight ahead and up from level."""
+    pan_offset, tilt_offset = head_offset(left_deg, up_deg, cal)
+    return cal.pan_forward_deg + pan_offset, cal.tilt_level_deg + tilt_offset
+
+
+def head_direction(pan_deg: float, tilt_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
+    """Where servo angles point: degrees to the robot's left of straight ahead, and up from level."""
+    return (cal.pan_sign * (pan_deg - cal.pan_forward_deg),
+            (cal.tilt_level_deg - tilt_deg) / cal.tilt_deg_per_elevation_deg)
 
 
 class Expressions:

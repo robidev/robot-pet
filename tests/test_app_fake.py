@@ -3,6 +3,8 @@ import json
 from dataclasses import replace
 from types import SimpleNamespace
 
+import pytest
+
 from petd.app import App
 from petd.brain.expressions import Expressions
 from petd.config import Config
@@ -55,7 +57,7 @@ async def test_senses_without_the_head():
         app.face._state = replace(app.face.state, reachable=False)   # known offline: not asked
         result = await app.tools.call("get_senses", {})
         assert not result.is_error and "offline" in json.loads(result.text)["sees"]
-        for tool, args in (("look", {}), ("look_direction", {"pan": 90})):
+        for tool, args in (("look", {}), ("look_direction", {"direction": "left"})):
             result = await app.tools.call(tool, args)
             assert result.is_error and "offline" in result.text
     finally:
@@ -71,7 +73,8 @@ async def test_look_left_turns_a_little_not_to_the_end():
     try:
         await app.face.set_servo(mode="track", pan_deg=75.0, tilt_deg=90.0)
         result = await app.tools.call("look_direction", {"direction": "left"})
-        assert not result.is_error and "pan 45" in result.text      # pan grows to the right now
+        assert not result.is_error and result.text == "looking 30° left, level"
+        assert app.face.state.pan_deg == 45.0                       # pan grows to the right now
         await app.tools.call("look_direction", {"direction": "up"})
         assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (45.0, 105.0)
         assert app.face.state.servo_mode == "manual"
@@ -79,6 +82,73 @@ async def test_look_left_turns_a_little_not_to_the_end():
         assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (75.0, 90.0)
         result = await app.tools.call("look_direction", {"direction": "sideways"})
         assert result.is_error
+    finally:
+        await app.close()
+
+
+def todays_head(cfg):
+    """The calibration measured 2026-10-11, after the camera was remounted."""
+    cfg.calibration.pan_forward_deg = 76.4
+    cfg.calibration.tilt_level_deg = 82.3
+    cfg.calibration.tilt_deg_per_elevation_deg = -1.101
+
+
+async def test_the_head_turns_the_way_it_is_asked_by_however_much():
+    # 2026-10-11: "30 degrees to the right" turned the head 30 to its left, and
+    # "another 30 up" turned it down: the brain worked out servo angles itself.
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    todays_head(cfg)
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        await app.tools.call("look_direction", {"direction": "ahead"})
+        result = await app.tools.call("look_direction", {"direction": "right", "degrees": 30})
+        assert result.text == "looking 30° right, level"
+        assert app.face.state.pan_deg == pytest.approx(106.4)       # pan grows to the robot's right
+        result = await app.tools.call("look_direction", {"direction": "up", "degrees": 30})
+        assert result.text == "looking 30° right, 30° up"
+        assert app.face.state.tilt_deg == pytest.approx(82.3 + 33.03)   # higher tilt looks up, 1.1 a degree
+        await app.tools.call("look_direction", {"direction": "up", "degrees": 30})
+        assert app.face.state.tilt_deg == pytest.approx(82.3 + 66.06)   # another 30 up is further up
+        await app.tools.call("look_direction", {"direction": "down", "degrees": 30})
+        await app.tools.call("look_direction", {"direction": "left", "degrees": 60})
+        result = await app.tools.call("look_direction", {"direction": "down", "degrees": 30})
+        assert result.text == "looking 30° left, level"
+
+        result = await app.tools.call("look_direction", {"left_deg": -45, "up_deg": 10})
+        assert result.text == "looking 45° right, 10° up"
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (pytest.approx(121.4), pytest.approx(93.31))
+        result = await app.tools.call("look_direction", {"direction": "down", "degrees": 40})
+        assert result.text == "looking 45° right, 14° down: as far as my head goes"
+        assert app.face.state.tilt_deg == 67.0
+    finally:
+        await app.close()
+
+
+async def test_the_brain_never_handles_servo_angles():
+    cfg = Config()
+    cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    todays_head(cfg)
+    app = App(cfg, fake=True)
+    await app.start()
+    try:
+        await app.face.set_servo(mode="track", pan_deg=76.4, tilt_deg=82.3)
+        for args in ({"pan": 46.4}, {"tilt": 103.6}, {"direction": "right", "pan": 46.4}):
+            result = await app.tools.call("look_direction", args)
+            assert result.is_error and "I don't take" in result.text
+        assert (app.face.state.pan_deg, app.face.state.tilt_deg) == (76.4, 82.3)    # didn't move
+        for args in ({"direction": "ahead", "degrees": 30}, {"direction": "left", "left_deg": 10},
+                     {"direction": "up", "degrees": 0}, {}):
+            assert (await app.tools.call("look_direction", args)).is_error
+
+        tool = next(t for t in app.tools.list() if t["name"] == "look_direction")
+        assert "pan" not in tool["description"] and "tilt" not in tool["description"]
+        assert set(tool["schema"]["properties"]) == {"direction", "degrees", "left_deg", "up_deg"}
+        senses = json.loads((await app.tools.call("get_senses", {})).text)
+        assert senses["head"]["looking"] == "straight ahead, level"
+        assert not {"pan_deg", "tilt_deg"} & set(senses["head"])
+        assert "pan" not in (await app.tools.call("look", {})).text
     finally:
         await app.close()
 

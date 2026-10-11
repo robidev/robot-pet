@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from ..config import CalibrationConfig
-from .expressions import head_offset
+from .expressions import head_direction, head_offset, head_servo
 from ..events import ToolRan
 
 if TYPE_CHECKING:
@@ -177,8 +177,9 @@ def build_registry(pet: "App") -> ToolRegistry:
             out["sees"] = "nothing: my head is offline, so no camera and no face detection"
         elif pet.face:
             f = pet.face.state
-            out["head"] = {"reachable": f.reachable, "pan_deg": f.pan_deg, "tilt_deg": f.tilt_deg,
-                           "servo_mode": f.servo_mode}
+            out["head"] = {"reachable": f.reachable,
+                           "looking": _describe_look(f.pan_deg, f.tilt_deg, pet.cfg.calibration),
+                           "following_faces": f.servo_mode == "track"}
             out["sees"] = [
                 {"who": _face_name(face),
                  "where": _describe_position(face.cx, pet.cfg.calibration),
@@ -212,48 +213,81 @@ def build_registry(pet: "App") -> ToolRegistry:
         if snap is None:
             raise ToolError("my camera is not working right now: no photo came back, so I saw nothing at all")
         return {"image": snap.jpeg, "mime": "image/jpeg",
-                "text": f"photo taken at pan {snap.servo_pan_deg}, tilt {snap.servo_tilt_deg}"}
+                "text": "photo taken looking "
+                        + _describe_look(snap.servo_pan_deg, snap.servo_tilt_deg, pet.cfg.calibration)}
+
+    max_left, max_right, max_up, max_down = _head_range(
+        pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg)
 
     @registry.tool(
         "look_direction",
         _look_direction_help(pet.cfg.calibration, pet.cfg.face.tilt_min_deg, pet.cfg.face.tilt_max_deg,
                              pet.cfg.face.look_turn_deg, pet.cfg.face.look_tilt_deg, pet.cfg.face.look_hold_s),
         {"type": "object",
-         "properties": {"direction": {"type": "string", "enum": list(LOOK_DIRECTIONS) + ["ahead"]},
-                        "pan": {"type": "number", "minimum": 0, "maximum": 180},
-                        "tilt": {"type": "number", "minimum": pet.cfg.face.tilt_min_deg,
-                                 "maximum": pet.cfg.face.tilt_max_deg}},
-         "required": []})
+         "properties": {
+             "direction": {"type": "string", "enum": list(LOOK_DIRECTIONS) + ["ahead"]},
+             "degrees": {"type": "number", "exclusiveMinimum": 0, "maximum": 180,
+                         "description": "How far left, right, up or down to turn from where I look now"},
+             "left_deg": {"type": "number", "minimum": -round(max_right), "maximum": round(max_left),
+                          "description": "Exact: degrees to my left of straight ahead, negative to my right"},
+             "up_deg": {"type": "number", "minimum": -round(max_down), "maximum": round(max_up),
+                        "description": "Exact: degrees above level, negative below"}},
+         "required": [], "additionalProperties": False})
     async def look_direction(args: dict) -> str:
+        # The brain never handles servo angles: it worked them out the wrong
+        # way round ("30 degrees right" sent the head 30 left, "another 30
+        # up" turned it down; 2026-10-11). It says where in its own terms and
+        # the calibration turns that into servo angles.
         face = require_face()
         head_owner_check()
         fcfg, cal = pet.cfg.face, pet.cfg.calibration
-        direction, pan, tilt = args.get("direction"), args.get("pan"), args.get("tilt")
-        if direction is None and pan is None and tilt is None:
-            raise ToolError("give me a direction, or a pan and/or tilt angle")
+        stray = sorted(set(args) - {"direction", "degrees", "left_deg", "up_deg"})
+        if stray:
+            raise ToolError(f"I don't take {', '.join(stray)}: say where in my own terms, a direction "
+                            "(and degrees), or left_deg and up_deg from straight ahead and level")
+        direction, degrees = args.get("direction"), args.get("degrees")
+        left_deg, up_deg = args.get("left_deg"), args.get("up_deg")
+        exact = left_deg is not None or up_deg is not None
+        if direction is None and not exact:
+            raise ToolError("give me a direction, or left_deg and/or up_deg")
+        if direction is not None and exact:
+            raise ToolError("either a direction or left_deg/up_deg, not both")
         if direction is not None and direction != "ahead" and direction not in LOOK_DIRECTIONS:
             raise ToolError(f"direction is one of {', '.join(LOOK_DIRECTIONS)} or ahead")
+        if degrees is not None and direction not in LOOK_DIRECTIONS:
+            raise ToolError("degrees goes with a direction: left, right, up or down")
+        if degrees is not None and degrees <= 0:
+            raise ToolError("degrees must be more than 0; to look straight ahead, direction ahead")
         expressions = pet.brain.expressions if pet.brain is not None else None
+        pan = tilt = None
         if direction == "ahead":
-            pan = cal.pan_forward_deg if pan is None else pan
-            tilt = cal.tilt_level_deg if tilt is None else tilt
+            pan, tilt = cal.pan_forward_deg, cal.tilt_level_deg
         elif direction is not None:
             left, up = LOOK_DIRECTIONS[direction]
-            pan_offset, tilt_offset = head_offset(left * fcfg.look_turn_deg, up * fcfg.look_tilt_deg, cal)
+            pan_offset, tilt_offset = head_offset(
+                left * (degrees if degrees is not None else fcfg.look_turn_deg),
+                up * (degrees if degrees is not None else fcfg.look_tilt_deg), cal)
             now_pan, now_tilt = (expressions.base_pose() if expressions is not None
                                  else (face.state.pan_deg, face.state.tilt_deg))
-            if pan_offset and pan is None:
+            if pan_offset:
                 pan = (now_pan if now_pan is not None else cal.pan_forward_deg) + pan_offset
-            if tilt_offset and tilt is None:
+            if tilt_offset:
                 tilt = (now_tilt if now_tilt is not None else cal.tilt_level_deg) + tilt_offset
+        else:
+            exact_pan, exact_tilt = head_servo(left_deg or 0.0, up_deg or 0.0, cal)
+            pan = exact_pan if left_deg is not None else None
+            tilt = exact_tilt if up_deg is not None else None
+        wanted = (pan, tilt)
         pan, tilt = _clamp(pan, 0, 180), _clamp(tilt, fcfg.tilt_min_deg, fcfg.tilt_max_deg)
+        stopped = any(w is not None and abs(w - got) > 0.5 for w, got in zip(wanted, (pan, tilt)))
         if expressions is not None:
             await expressions.hold(pan, tilt, fcfg.look_hold_s)
         else:
             await face.set_servo(mode="manual")
             await face.set_servo(pan_deg=pan, tilt_deg=tilt)
-        where = ", ".join(f"{name} {value:g}" for name, value in (("pan", pan), ("tilt", tilt)) if value is not None)
-        return f"looking there ({where})"
+        where = _describe_look(pan if pan is not None else face.state.pan_deg,
+                               tilt if tilt is not None else face.state.tilt_deg, cal)
+        return f"looking {where}" + (": as far as my head goes" if stopped else "")
 
     def named_person(args: dict):
         """The person a tool is asked about by name, or None for anyone."""
@@ -620,19 +654,34 @@ LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -
 
 def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: float,
                          turn_deg: float = 30.0, tilt_deg: float = 15.0, hold_s: float = 20.0) -> str:
-    """look_direction's description: which way the angles go comes from the calibration."""
-    pan_left, pan_right = (180, 0) if cal.pan_sign > 0 else (0, 180)
-    tilt_up, tilt_down = (tilt_min, tilt_max) if cal.tilt_deg_per_elevation_deg > 0 else (tilt_max, tilt_min)
-    up_word = "lower" if cal.tilt_deg_per_elevation_deg > 0 else "higher"
-    down_word = "higher" if up_word == "lower" else "lower"
-    return (f"Point my head. direction: left or right turns it {turn_deg:g} degrees from where it "
-            f"looks now, up or down {tilt_deg:g}; ahead looks straight ahead and level. Use direction "
-            "when asked to look somewhere; pan and tilt only for an exact angle. "
-            f"pan: {pan_right} is far right, {cal.pan_forward_deg:g} straight ahead, "
-            f"{pan_left} far left. tilt: {cal.tilt_level_deg:g} is level, {up_word} looks up "
-            f"({tilt_up:g} is as far up as it goes), {down_word} looks down ({tilt_down:g} at most). "
-            f"Face tracking is off while I hold the pose, {hold_s:g} s (longer while I take photos "
-            "with look); then my head goes back to where it was and tracking comes back on.")
+    """look_direction's description, in my own terms: no servo angles in it."""
+    max_left, max_right, max_up, max_down = _head_range(cal, tilt_min, tilt_max)
+    return (f"Point my head. Left and right are mine, unless someone says they mean theirs (facing me, "
+            f"their left is my right); up and down are from level. direction left, right, up or down "
+            f"turns it from where it looks now: by degrees when asked for an amount (\"30 degrees "
+            f"right\": direction right, degrees 30), otherwise {turn_deg:g} left or right, "
+            f"{tilt_deg:g} up or down. direction ahead looks straight ahead and level. For an exact "
+            f"direction instead, left_deg and up_deg from straight ahead and level (left_deg -45: "
+            f"45 degrees to my right). My head turns about {max_left:.0f} degrees left and "
+            f"{max_right:.0f} right, {max_up:.0f} up and only {max_down:.0f} down. I'm told where it "
+            f"ended up. Face tracking is off while I hold the pose, {hold_s:g} s (longer while I take "
+            "photos with look); then my head goes back to where it was and tracking comes back on.")
+
+
+def _head_range(cal: CalibrationConfig, tilt_min: float, tilt_max: float) -> tuple[float, float, float, float]:
+    """How far my head turns from straight ahead and level: (left, right, up, down), in degrees."""
+    lefts = [head_direction(pan, cal.tilt_level_deg, cal)[0] for pan in (0.0, 180.0)]
+    ups = [head_direction(cal.pan_forward_deg, tilt, cal)[1] for tilt in (tilt_min, tilt_max)]
+    return max(lefts), -min(lefts), max(ups), -min(ups)
+
+
+def _describe_look(pan: Optional[float], tilt: Optional[float], cal: CalibrationConfig) -> str:
+    """Where the head points, in my own terms: "30° right, 15° up"; never servo angles."""
+    left, up = head_direction(cal.pan_forward_deg if pan is None else pan,
+                              cal.tilt_level_deg if tilt is None else tilt, cal)
+    side = "straight ahead" if round(left) == 0 else f"{abs(left):.0f}° {'left' if left > 0 else 'right'}"
+    level = "level" if round(up) == 0 else f"{abs(up):.0f}° {'up' if up > 0 else 'down'}"
+    return f"{side}, {level}"
 
 
 def _search_help(fcfg) -> str:
