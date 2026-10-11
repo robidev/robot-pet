@@ -740,6 +740,26 @@ threads, utterance + 5 s; medians per utterance, two rounds each.
   about a real voice. Parakeet reports no `no_speech_prob` (0); its mean token
   probability goes out as `token_p`, not used for filtering yet.
 
+**Parakeet live (2026-10-11 evening, Robin talking to it):** two runs.
+- **Face mic** (`config.yaml`): real speech word-perfect, "GLaDOS" spelled right
+  unprompted once; transcripts 0.08-0.24 s for short lines, ~0.12 s per second of
+  speech; the brain's first words 0.7-0.9 s later. Echo filter fine (80-100%
+  overlap drops). **"Stop" over the pet's voice never works with this mic:** its
+  own speech arrives as one utterance (no 500 ms gap) that ends only when it
+  stops talking, and Robin's "stop" under it came back empty or missing; so
+  barge-in needs echo cancellation, or an utterance cut when the pet stops.
+- **Jabra over Bluetooth** (`bluetooth_config.yaml`): 32 utterances, median 0.29 s,
+  name 4/4 ("GLaDOS", "Gladys", "Glados", "At Lados"), no echo at all, an answer
+  said over the pet came through clean. Short single words lost their first
+  consonant: "Stop" as "Oh." and "Top.", "The tilt" as "The ail." (fine inside
+  sentences); likely the Hands-Free link's narrow band, to compare with the
+  Jabra on USB. The voice "stop" reflex halted a search on the third try. Still
+  untested: "stop" while it talks.
+- To do: `stt.ignore_phrases` drops "okay" (meant for Whisper's inventions;
+  Parakeet invents none so far), and a pause mid-sentence ("Please move your
+  camera ... thirty degrees down") splits it into two turns (`--min-silence-ms`
+  500; an end-of-turn model would wait).
+
 **The head's directions, audited (2026-10-11 evening):** asked by voice, "30
 degrees to the right" turned the head 30° to its left, and "another 30 up"
 turned it down: `look_direction` let the brain send servo angles and it worked
