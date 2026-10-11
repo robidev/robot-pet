@@ -55,6 +55,9 @@ async def run_process(argv: list, timeout_s: float) -> tuple[int, str]:
         proc.kill()
         await proc.wait()
         return -1, f"no answer within {timeout_s:.0f} s"
+    except asyncio.CancelledError:
+        proc.kill()         # petd stopping mid-attempt: don't leave ssh behind for systemd to wait on
+        raise
     return proc.returncode, out.decode(errors="replace").strip()
 
 

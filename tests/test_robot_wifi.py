@@ -58,3 +58,27 @@ async def test_without_a_key_nothing_is_run(caplog):
     pauser = WlanmgrPause(VacuumConfig(), EventBus(), run)     # the default: no key, as in git
     assert await pauser.pause() is False
     assert "no vacuum.ssh_key" in caplog.text
+
+
+async def test_a_cancelled_attempt_leaves_no_process_behind(tmp_path):
+    import os
+
+    import pytest
+    from petd.io.robot_wifi import run_process
+    pid_file = tmp_path / "pid"
+    task = asyncio.create_task(run_process(["sh", "-c", f"echo $$ > {pid_file}; exec sleep 30"], 60))
+    for _ in range(100):
+        await asyncio.sleep(0.02)
+        if pid_file.exists() and pid_file.read_text().strip():
+            break
+    pid = int(pid_file.read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0.2)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return                                  # gone and reaped
+    state = open(f"/proc/{pid}/stat").read().split()[2]       # a zombie is fine: killed
+    assert state == "Z", "the process kept running after the cancel"

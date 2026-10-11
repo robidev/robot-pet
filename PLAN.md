@@ -408,6 +408,17 @@ against these).
   left running. The face and the robot had dropped out for 10-16 s a few
   minutes before; something still waiting on one of them (a thread on a
   slow HTTP call?) is the first guess. The 14:30 stop was clean.
+  **Looked at (18:10):** systemd's journal shows petd itself still alive at
+  the kill, with the brain's process group left over (`claude` and its
+  children, the MCP shim among them); at clean stops nothing is left. Not
+  reproduced: a stop with the face pointed at a silent address took 2.3 s and
+  was clean. Every non-async thread in petd is a daemon, and the default
+  executor had shut down before "petd stopped". **Now each exit says why if
+  it happens again:** non-daemon threads still running and (under systemd)
+  the processes left in petd's cgroup go to petd.log, and if the process is
+  still there 10 s after "petd stopped", every thread's stack goes to the
+  journal (`journalctl --user -u petd`). Fixed on the way: petd stopping
+  during the wlanmgr pause attempt left its ssh running.
 
 - ~~**"Stop" doesn't stop a go_to**~~ **Fixed (2026-10-11):** `stop_motion`
   sends pause for a go_to or a return to the dock (Findings: places). "Stop"
