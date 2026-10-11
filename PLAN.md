@@ -80,9 +80,15 @@ Finishes M2 and gives the first real latency numbers.
   (`recognition.recheck_every_s`) **Partly (2026-10-05):** Claudia talked
   ~2.5 min (19:25:18-19:27:55) and was named in every turn, rechecks scoring
   0.48-0.74; Noah held his for 1.7 min. Whether she turned away isn't known.
-- **Noah again with a step back:** he enrolled with the 5 close-up crops only.
-  "Remember my face, I'm Noah" once more, stepping back when asked; then all
-  three in view.
+- ~~**Noah again with a step back**~~ **Done (2026-10-11):** "remember my
+  face, I'm Noah" (typed on the dashboard) was first refused, as he had a
+  face; asked again, the brain retook it (`insist`): 5 close (172-179 px), 4 a
+  step back (107-140 px), all his; the retake replaced his 30 (a backup in
+  `runtime/db-backups/`). Then all three in view at ~2 m (faces 55-79 px):
+  all named within 8 s of the first face, every attempt the right person
+  (0.44-0.69); on 2026-10-05 faces that small took ~60 s. Short-lived small
+  boxes at the frame's edge count as a fourth face that's never named
+  ("gave up on 1 of 4"), harmless.
 - **Backlit:** someone in front of the window.
 - ~~**Latency (G4)**~~ **Done (2026-10-05, run `20261005-191541`, 41 turns):**
   median 2.06 s from the end of speech to the first word: transcript 0.88 s,
