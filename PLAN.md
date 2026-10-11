@@ -287,9 +287,18 @@ labels; map PNGs `step4-refix-*`), every target on free floor:
 Sitting is within the ~30 cm; standing misses by 6-14 cm, because 2 m reads
 1.6 m (as in the captures; 1.5 and 2.5 m were within 1-6%) and, on the right,
 the camera's roll costs 8°. Short is the safe side: the robot would stop ~1.4 m
-away instead of 1 m. **Not done yet:** a 1.5 m and a 2.5 m check, to see whether
-2 m is the odd one out; the roll fixed on the mount, or a bearing correction;
-sightings stored with the person's position.
+away instead of 1 m. Then 1.5 m standing: 1.46 m, 0.4° left, **~5 cm**. And
+2.5 m standing: 1.93 m, 1.0° left, **~57 cm, taken for sitting**: the face read
+small for 2.5 m (size 1.99 m), and at 2 m the elevation (25.7°) fits someone
+sitting, so the posture went that way; standing, the tilt says 2.60 m (+4%).
+Far off, face size is too noisy to choose the posture (K 0.13-0.21 in the
+captures). **Not done yet:** the posture at range (ideas: keep a person's
+posture until the size clearly disagrees for a while; past ~2 m, without a
+clear answer, take standing, the safer side for "come here", or ask; a
+person's own `face_z_m`, still empty for everyone, would fix it for standing
+but take a sitting Robin for standing, so it needs a posture too); the roll
+fixed on the mount, or a bearing correction; sightings stored with the
+person's position (`people.last_seen_x/y` are still the robot's).
 
 ### Step 5: it comes to you (build, then hands-on): M3
 
