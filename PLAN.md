@@ -26,7 +26,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
-| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance | C1: places kept in a reference map's frame, `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11) | `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | |
 | Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | |
@@ -232,6 +232,20 @@ against the map.
 **Done when** a named place is reached within `motion.arrive_cm` (20) after the
 robot has been elsewhere. **Then, if wanted:** our own zones (a kitchen area).
 
+**Done (2026-10-11, Robin; the Jabra over Bluetooth).** The robot's map had
+turned since the morning: from 13:45 every run found it 93.2-93.5° and
+(5258, 133) cm from the reference (score 0.69-0.77; before, -18.8° at 0.79).
+Taught "the kitchen" after parking it with Valetudo's remote (manual control
+off first), stored at (2496, 2927) in the reference frame, the only place.
+Driven elsewhere, "go to the kitchen": "arrived at the kitchen" after 38 s,
+~10 cm off (from the logged, rounded alignment, so ±3 cm). `go_home` from
+there docked on the first attempt in 79 s. **A goal outside the room** (1 m
+beyond the kitchen's wall, no floor behind it for 4 m): accepted, searched
+for 1:47, mostly away from the goal (up to 3.8 m off), then gave up; bumpers
+and cliff sensors kept it from falling or sticking (Robin). See the Findings
+of 2026-10-11 (places): a stop is ignored during a go_to. **Still open:** the
+map backup's restore (take a backup of today's map first).
+
 ### Step 4: a person on the map, live (hands-on, ~15 min)
 
 C5's check. Stand 2 m away at ~30°: the dashboard map shows the estimated person
@@ -370,6 +384,16 @@ against these).
   left running. The face and the robot had dropped out for 10-16 s a few
   minutes before; something still waiting on one of them (a thread on a
   slow HTTP call?) is the first guess. The 14:30 stop was clean.
+
+- **"Stop" doesn't stop a go_to** (2026-10-11, Findings: places): the V1
+  ignores BasicControl stop while it drives to a goal, which is all
+  `vacuum.stop_motion` sends. Find what interrupts one, one candidate per
+  run, a short go_to inside the room and the robot's `EVENTTASK_normal.log`
+  open: pause, arming manual control, a new go_to at its own position. Step 5's
+  "stop in the middle" needs it.
+- **The dashboard map's traceback** whenever the face doesn't answer
+  (`person_estimates` → `face.current_faces`, a `ConnectTimeout` each time):
+  a warning line would do.
 
 Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
 started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
@@ -636,6 +660,29 @@ ahead (the firmware's centre) and tilt 90 level (Robin): `pan_forward_deg` 75,
 `tilt_level_deg` 90. `calibrate_face.py` and `tracking_log.py` take all of it
 from the config now (its `aim`/`hfov` default tilt is 30° up: 120). The
 firmware's comment on its tilt limits still says 58 (up) to 105 (down).
+
+**Places and a goal outside the room (2026-10-11, Step 3):**
+
+- **C1 holds across a map turn.** The map came in ~93° turned between 13:32
+  and 13:45 (still not known why). The kitchen, stored through
+  that alignment and converted back for the go_to, was reached within ~10 cm.
+- **A goal outside the room isn't refused.** Valetudo said `moving`/`target`,
+  the robot searched for 107 s, mostly away from the goal, then gave up:
+  `RE_Nav_GotoTargetComplete` and `idle`, as for an arrival, so only the 20 cm
+  check tells them apart for petd. Harmless: the bumpers and cliff sensors
+  kept it safe (Robin). E4 has to check its targets against the map first
+  (`validate_target`, 4.2) rather than let the robot find out.
+- **The robot does know whether it got there:** its `EVENTTASK_normal.log`
+  has `goto_complete.wav` and "Report Incident to AppProxy: id=23" on arrival,
+  `goto_failed.wav` and id=24 on giving up. Valetudo's Roborock code has
+  cloud events for it (`event.goto_target_succ`, `event.target_not_reachable`)
+  but only acknowledges them (`RoborockValetudoRobot.js`) and doesn't log
+  them, so whether the V1 sends them is unknown.
+- **Stop is ignored during a go_to:** "Invalid Event (RE_App_Stop) for current
+  state [GotoTarget]", sent 90 s in. A pause and a stop 4 s after it gave up
+  were invalid too (in `[Standby]`), so they showed nothing. petd's
+  `stop_motion` sends only that stop: "stop" during `go_to_place` or `go_home`'s
+  leg to the front of the dock doesn't halt it (Step 6).
 
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 
