@@ -252,7 +252,8 @@ Valetudo answered it showed a stray map (the docked robot 18.6 m from its
 dock) that petd refused (best 0.26, a warning every ~0.5 s), then the
 restored one: 0.0°, (-1, -1) cm from the reference, score 1.00 (the reference
 is that backup's map). The dock moved from (2560, 2560) to (2558, 2532) with
-`ChargerPos.data`.
+`ChargerPos.data`. The kitchen showed in its right place on the dashboard
+map afterwards (Robin).
 
 ### Step 4: a person on the map, live (hands-on, ~15 min)
 
