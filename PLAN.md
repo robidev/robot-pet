@@ -89,7 +89,16 @@ Finishes M2 and gives the first real latency numbers.
   (0.44-0.69); on 2026-10-05 faces that small took ~60 s. Short-lived small
   boxes at the frame's edge count as a fourth face that's never named
   ("gave up on 1 of 4"), harmless.
-- **Backlit:** someone in front of the window.
+- ~~**Backlit**~~ **Done (2026-10-11, sunshine, Robin ~1-1.5 m in front of
+  the window):** with the camera in the shade and his face lit from behind,
+  the crops stayed bright: named in 4 s (0.53-0.61), two new looks kept. With
+  the sun and bright sky in the camera's view too, auto-exposure set itself
+  for the sky: his face went near-black, scores fell 0.54 to 0.36 (still him
+  every time, never someone else), detection flickered (boxes for ~1 s) and
+  lost him from 12:32:25 while he stood there. If that matters: the camera's
+  exposure (`ae_level` up, or metering on the centre) in the face firmware;
+  brightening dark crops on the PC would help recognition, not detection,
+  which runs on the board.
 - ~~**Latency (G4)**~~ **Done (2026-10-05, run `20261005-191541`, 41 turns):**
   median 2.06 s from the end of speech to the first word: transcript 0.88 s,
   the brain's first word 0.79 s, the first sentence 0.18 s, piper 0.14 s,
