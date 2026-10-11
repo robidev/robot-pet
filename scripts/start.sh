@@ -10,7 +10,8 @@
 #
 # In the background, systemd stops petd with SIGINT (a clean shutdown, as Ctrl-C)
 # and restarts it if it crashes. Without an installed unit, "start" runs a
-# transient one; with one, it starts that.
+# transient one; with one, it starts that. Either gets this shell's PATH (the
+# user unit's own lacks ~/.local/bin, where the Claude CLI is).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -36,6 +37,7 @@ After=network-online.target
 
 [Service]
 WorkingDirectory=$ROOT
+Environment=PATH=$PATH
 ExecStartPre=$PY $ROOT/scripts/preflight.py
 ExecStart=$PY -m petd
 KillSignal=SIGINT
@@ -65,7 +67,7 @@ case "$cmd" in
             [ $# -eq 0 ] || echo "the installed unit runs plain petd: ignoring $*"
             systemctl --user start "$UNIT"
         else
-            systemd-run --user --unit="$UNIT" --working-directory="$ROOT" \
+            systemd-run --user --unit="$UNIT" --working-directory="$ROOT" --setenv=PATH="$PATH" \
                 --property=KillSignal=SIGINT --property=TimeoutStopSec=30 \
                 --property=Restart=on-failure --property=RestartSec=10 \
                 "$PY" -m petd "$@" >/dev/null
