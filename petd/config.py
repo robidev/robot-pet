@@ -83,29 +83,33 @@ class FaceConfig:
     # to ride out detection dropouts (over 1.5 s with a face held still in
     # view; 3 s still lost a seated person several times a minute).
     faces_lost_debounce_s: float = 5.0
-    # The tilt mount's range: 67 (down) to 180 (up) since the servos were
+    # The tilt mount's range in servo angles (limits stay in servo terms):
+    # 67 (down) to 180 (up) since the servos were
     # remounted reversed (2026-10-05, the firmware's limits); before, 58 (up)
     # to 105 (down), measured by hand. Held against a stop, the servo browns
     # the board out. Firmware clamps too.
     tilt_min_deg: float = 67.0
     tilt_max_deg: float = 180.0
     # How far "left"/"right" and "up"/"down" turn the head from where it's
-    # looking, for a [look:...] glance and look_direction alike. Asked to
-    # look left, the brain sent pan 0, the servo's end (2026-10-05).
+    # looking, in degrees (not servo degrees), for a [look:...] glance and
+    # look_direction alike. Asked to look left, the brain sent pan 0, the
+    # servo's end (2026-10-05).
     look_turn_deg: float = 30.0
     look_tilt_deg: float = 15.0
     # A look asked for holds this long, then the head goes back to where it
     # was and tracking comes back on if it was on (it stared on, 2026-10-05).
     look_hold_s: float = 20.0
     # "Look for me" (search_for_person, behavior/search.py): the head pans
-    # slowly between these at search_tilt_deg and stops on a face (2026-10-05,
+    # slowly between these at search_up_deg and stops on a face (2026-10-05,
     # Robin's spec); it waits up to search_naming_wait_s for recognition to
     # name the face. Looking for someone by name, it pans on past anyone else,
     # and a face within search_skip_deg of one it checked is that one again.
     # Then the body turns search_turn_deg and the head
     # pans again, search_body_turns times; on the dock (no turning there) the
     # head pans to one end and back search_sweeps times instead.
-    search_tilt_deg: float = 110.0
+    # Degrees above level, not a servo angle: as tilt 110 it meant ~6 deg up
+    # one week and ~25 the next, each remount moving level (2026-10-11).
+    search_up_deg: float = 20.0
     search_pan_min_deg: float = 0.0
     search_pan_max_deg: float = 180.0
     search_speed_deg_s: float = 20.0
@@ -258,14 +262,18 @@ class CalibrationConfig:
     K_face: float = 0.245                     # horizontal distance (m) x face box height (fraction of the frame)
     hfov_deg: float = 60.0
     vfov_deg: Optional[float] = None          # None: from hfov_deg for a 4:3 frame
-    pan_forward_deg: float = 75.0             # pan 75 = straight ahead, the firmware's centre (2026-10-05)
-    # The signs as measured on 2026-10-05, after the servos were remounted
-    # reversed: pan grows to the robot's right, a still scene moves left in
-    # the image as pan grows, and higher tilt looks up (all three were +1).
+    # Servo angles and directions (spatial/head.py does every conversion).
+    # The defaults are round starting values: the measured ones are in the
+    # config files (2026-10-11: forward 76.4, level 82.3, -1.101). The signs
+    # as measured on 2026-10-05, after the servos were remounted reversed, and
+    # unchanged by the camera remounts since: pan grows to the robot's right,
+    # a still scene moves left in the image as pan grows, and higher tilt
+    # looks up (all three were +1 before).
+    pan_forward_deg: float = 75.0             # straight ahead (75 is the firmware's centre)
     pan_sign: float = -1.0                    # +1: pan grows to the robot's left
     cx_per_pan_deg_sign: float = -1.0         # +1: a face moves right in the image as pan grows
-    tilt_level_deg: float = 90.0              # tilt 90 is level, before and after the remount (2026-10-05)
-    tilt_deg_per_elevation_deg: float = -1.0  # +1: lower tilt looks up
+    tilt_level_deg: float = 90.0              # level
+    tilt_deg_per_elevation_deg: float = -1.0  # tilt servo degrees per degree up, negated: +1: lower tilt looks up
 
 
 @dataclass

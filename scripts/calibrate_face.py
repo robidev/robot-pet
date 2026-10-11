@@ -20,9 +20,11 @@ captures (face.jsonl, or another such file: a capture with "note": "sitting"
 is checked at the sitting eye height). `look` holds the head at each pan,tilt
 and says where the face sits in the frame, then turns tracking back on.
 
-Conventions from the config's `calibration:` (since the servos were
-remounted reversed, 2026-10-05: pan 75 straight ahead, tilt 90 level, HIGHER
-tilt looks UP). Nothing moves but the head.
+Arguments are servo angles (this script measures them). Which way they turn
+comes from the config's `calibration:` and petd/spatial/head.py: since the
+servos were remounted reversed (2026-10-05) pan grows to the robot's right and
+HIGHER tilt looks UP; straight ahead and level are whatever the last fit says.
+Nothing moves but the head.
 """
 
 from __future__ import annotations

@@ -64,7 +64,8 @@ Finishes M2 and gives the first real latency numbers.
   tracked; the reply's glance moved only the eye. Left, right and down are
   covered by tests since the sign fix, not seen live again.
 - **"Look for me"** (built 2026-10-05, not yet tried live): stand out of
-  view and ask. `search_for_faces` pans the head at tilt 110 between 0 and
+  view and ask. `search_for_faces` pans the head at tilt 110 (now
+  `face.search_up_deg`, 20° above level) between 0 and
   180, 20°/s in 10° steps, to the nearer end and back twice (~40 s), stops on
   the first face, goes back to the pose that frame was taken at and tracks;
   the brain is told what came of it. All in `face.search_*`. **Tried
@@ -151,9 +152,8 @@ head. `scripts/calibrate_face.py`:
    ahead, and at 2 m 30° left and right; then sitting at 1.5 and 2 m. Measure
    from the camera, on the floor.
 3. `fit --face-height <m>`: the `calibration:` values (`K_face`, `hfov_deg`,
-   pan sign and offset). Since the remount (2026-10-05) the script takes
-   straight ahead (pan 75), level (tilt 90) and which way tilt looks up from
-   the config.
+   pan sign and offset). The script takes straight ahead, level and which
+   way tilt looks up from the config (see "Head and eye conventions").
 4. **Microphone levels in the same positions** (backlog item, it fits here):
    one normal sentence at 0.5, 1, 2 and 3 m, and a minute of quiet, recorded
    from the UDP stream: speech and silence levels, silero's probabilities,
@@ -574,7 +574,7 @@ docks on low battery.
 | Photos | Stored on the PC **occasionally** (explore, `look()` on request, first sighting of a new person), never continuously | `store_photos: true` with a rate cap and a disk cap. |
 | Language | English only | `base.en` stays. |
 | Rooms | One room, part of it kitchen. **No Valetudo segments or no-go areas:** this V1's Valetudo has neither capability (2026-09-26) | `go_to_room` is low value. Add **named places** ("the couch", "the door") taught by voice (4.5). A kitchen area, if wanted, is our own zone (C1). |
-| Geometry | Pan 90° = straight ahead. **Camera height 0.20 m** | Tilt elevation becomes a primary distance cue (4.2). Standoff raised to 1.0 m so standing faces stay within tilt range. |
+| Geometry | ~~Pan 90° = straight ahead~~ (the calibration's `pan_forward_deg`; "Head and eye conventions"). **Camera height 0.20 m** | Tilt elevation becomes a primary distance cue (4.2). Standoff raised to 1.0 m so standing faces stay within tilt range. |
 | Household | ~~Adults only~~ **Corrected 2026-09-27: Robin's son Noah is 8** and around the robot. No animals | **Approaching Noah is fine** (he's happy to interact). Still open: speed caps and the standoff near him (Step 5). |
 | Camera height | **0.20 m for now; the head's design may change it** (2026-09-27) | Nothing hard-codes it: `calibration.camera_height_m`, read by `spatial/person.py` and `calibrate_face.py`. |
 
@@ -739,6 +739,24 @@ threads, utterance + 5 s; medians per utterance, two rounds each.
 - Piper says the name "Gee Laddas" itself, so the name results say little
   about a real voice. Parakeet reports no `no_speech_prob` (0); its mean token
   probability goes out as `token_p`, not used for filtering yet.
+
+**The head's directions, audited (2026-10-11 evening):** asked by voice, "30
+degrees to the right" turned the head 30° to its left, and "another 30 up"
+turned it down: `look_direction` let the brain send servo angles and it worked
+them out the wrong way round (the calibration was right). It now takes a
+direction and degrees, or `left_deg`/`up_deg`, refuses `pan`/`tilt`, and hears
+back "30° right, 15° up" (`88d03d7`). The audit after it found:
+- **The eye was mirrored on both axes.** On the display x +1 is the robot's
+  left and y +1 the bottom; petd sent `[look:left]` as x -0.8 and "up" as y
+  +0.7, so every glance and emote looked the opposite way ("thinking" down and
+  right instead of up and left, "sleepy" up). The firmware's own gaze was right.
+- **Three copies of the same conversions** (person.py, expressions.py,
+  tools.py), now one module, `spatial/head.py`, with the observations as tests.
+- **`face.search_tilt_deg` was a servo angle** whose meaning moved with every
+  remount (110 -> 126 -> 105 by hand); now `search_up_deg: 20`.
+- Stale numbers in comments and docs ("pan 75 straight ahead, tilt 90 level",
+  "pan 90 = ahead"), and the firmware's comment on its tracking-invert switches
+  said the opposite of the setting.
 
 **The brain's thinking (2026-09-28, `runtime/llm-bench/`):** Haiku 4.5 through
 the CLI began every reply with 1.4-2.8 s of extended thinking; the API itself
@@ -979,13 +997,52 @@ firmware's comment on its tilt limits still says 58 (up) to 105 (down).
   - Rotate in place and log both yaws. This gives the heading sign.
   - Look at a face straight ahead at 1, 2 and 3 m and log pan, box and tilt. This gives `pan_sign`, `pan_forward_deg`, `hfov_deg` and the distance constant `K`.
 
+### Head and eye conventions (`petd/spatial/head.py`; settled 2026-10-11)
+
+The head's signs went wrong four times: tilt (2026-09-23), the servo remount
+(2026-10-05), the brain's own servo arithmetic and the eye (both 2026-10-11).
+This is the one description; `tests/test_head.py` holds each observation as a
+test.
+
+- **The robot's terms, everywhere above the devices:** left is the robot's own
+  left and positive, up is above level and positive; body turns are
+  counter-clockwise (left) for positive degrees. The brain only ever uses these:
+  `look_direction` takes a direction and degrees, or `left_deg`/`up_deg`, and
+  refuses servo angles; what it hears back is "30° right, 15° up".
+- **Servo angles (pan, tilt, 0-180) only in `spatial/head.py`**, the device
+  adapters, the calibration script and the servo limits (`face.tilt_min_deg`,
+  `tilt_max_deg`, `search_pan_min/max_deg`). The conversion is the
+  calibration's: `pan_forward_deg`, `pan_sign` (-1: pan grows to the robot's
+  right), `tilt_level_deg` and `tilt_deg_per_elevation_deg` (-1.101: higher tilt
+  looks up, 1.1 servo degrees a degree). Settings that mean a direction are in
+  degrees, never servo angles (`face.search_up_deg`; it was tilt 110, which meant
+  ~6° up one week and ~25° the next).
+- **The camera image (cx, cy, 0..1) is upright and unmirrored**: cx grows to the
+  robot's right, cy downward. The firmware sets `hmirror` and `vflip` (the
+  sensor is mounted upside down); changing either flips `cx_per_pan_deg_sign` or
+  the vertical, and the firmware's tracking directions.
+- **The eye (x, y, -1..1 on the display): x grows to the robot's left, y
+  downward** (seen 2026-10-11: x +1 at the robot's left, y +1 at the bottom).
+  The firmware's face-following gaze had it right; petd's glances and emotes
+  had both axes reversed until 2026-10-11. `expressions.py` keeps its poses in
+  the robot's terms and `head.eye_xy` converts.
+- **The firmware's tracking** (`servo_pan_invert`, `servo_tilt_invert` in
+  `app_config.h`) turns each servo toward an off-centre face; it doesn't use
+  petd's calibration. Both are `true` since the remount.
+- **After a remount** (servo, camera or display): run `calibrate_face.py` (pan
+  sign, forward, level, tilt scale), check tracking still follows a face (else
+  flip that axis's invert in the firmware), and look at the eye at x +1 and
+  y +1. Then the calibration in all four configs; `tests/test_head.py` only
+  changes if a sign really changed.
+
 ### 4.2 Person localization (`petd/spatial/person.py`)
 
-Pure functions, unit-tested with synthetic numbers.
+Pure functions, unit-tested with synthetic numbers. Directions as in "Head and
+eye conventions" above.
 
 ```
-bearing_robot = (pan_deg − 90) * pan_sign + (box_cx − 0.5) * hfov_deg * cam_sign     # pan 90 = ahead (confirmed)
-elev          = (tilt_deg − tilt_level_deg) * tilt_sign + (0.5 − box_cy) * vfov_deg  # camera at cam_z = 0.20 m
+bearing_left  = head_direction(pan).left + image_left(box_cx) * hfov_deg           # robot's left positive
+elev          = head_direction(tilt).up + (0.5 − box_cy) * vfov_deg                 # camera at camera_height_m
 d_size        = K / box_h                                   # K calibrated
 d_tilt        = (face_z − 0.20) / tan(elev)                 # face_z: 1.55 standing / 1.15 sitting / per-person learned
 distance_m    = fuse(d_size, d_tilt)                         # weighted; if they disagree, pick the posture that fits d_size

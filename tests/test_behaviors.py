@@ -13,6 +13,7 @@ from petd.brain.expressions import Expressions
 from petd.config import Config
 from petd.io.face import Face
 from petd.io.vacuum import MapPose
+from petd.spatial.head import head_servo
 
 
 def face(cx=0.5, h=0.3, cy=0.45):
@@ -103,7 +104,7 @@ async def test_a_search_on_the_dock_stops_at_a_face_and_follows_it(pet):
         if pet.face.state.pan_deg > 100.0:
             break
         await asyncio.sleep(0.005)
-    assert pet.face.state.tilt_deg == pet.cfg.face.search_tilt_deg
+    assert pet.face.state.tilt_deg == pytest.approx(head_servo(0.0, pet.cfg.face.search_up_deg, pet.cfg.calibration)[1])
     pet.face._state = replace(pet.face.state, pan_deg=130.0)
     pet.face.show(face())                               # seen in a frame taken at pan 130
     pet.face._state = replace(pet.face.state, pan_deg=150.0)   # the head has moved on

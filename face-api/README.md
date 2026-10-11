@@ -35,13 +35,13 @@ face.list_enrolled_faces()          # [0, 1, 3]
 face.delete_enrolled_face(3)        # DELETES one enrolled ID, returns count remaining
 face.clear_enrolled_faces()         # DELETES all enrolled IDs
 face.set_servo(mode="track")
-face.set_servo(pan_deg=90, tilt_deg=90)
+face.set_servo(pan_deg=90, tilt_deg=90)   # raw servo angles: see "Directions" below
 face.set_servo(tracking_gain=55, tilt_tracking_gain=30)  # tilt_tracking_gain=0: derive from pan
 face.set_eye_mode("manual")         # pause idle/tracking so eye target sticks
-face.set_eye_target(x=0.3, y=-0.1, aperture=1.0)
+face.set_eye_target(x=0.3, y=-0.1, aperture=1.0)   # x+ robot's left, y+ down
 face.set_audio_gain(1.5)
 face.set_audio_destination("192.168.4.50", 5000)
-face.set_camera(brightness=1, vflip=1)
+face.set_camera(brightness=1)       # hmirror/vflip are set for the mount: changing them reverses directions
 face.set_ntp_server("pool.ntp.org")
 face.set_wifi_credentials("ssid", "password")   # REBOOTS THE DEVICE
 
@@ -53,6 +53,19 @@ events.start()
 ...
 events.stop()
 ```
+
+### Directions
+
+This client speaks the device's own units, whose directions depend on how
+things are mounted. On this robot (measured; petd/spatial/head.py and PLAN.md,
+"Head and eye conventions", have the details):
+
+- **Servo angles** (`pan_deg`, `tilt_deg`, 0-180): pan grows to the robot's
+  right, higher tilt looks up; straight ahead and level are petd's
+  `calibration:` (pan 76.4, tilt 82.3 on 2026-10-11), not 90/90.
+- **Face boxes** (`cx`, `cy`, 0..1): the image is upright and unmirrored, so cx
+  grows to the robot's right and cy downward.
+- **The eye** (`x`, `y`, -1..1): x grows to the robot's left, y downward.
 
 Run `python3 status.py [ip]` for a quick read-only status dump (defaults to
 `192.168.4.1`, the device's AP-mode address).

@@ -3,8 +3,8 @@ Where is a person, from what the head sees? (PLAN.md 4.2, C5.) Pure functions:
 a face box from the head (normalized 0..1), the head's pan and tilt, the robot's
 map pose and the map give
 
-    bearing   = pan_sign * (pan - pan_forward) + the face's offset from the image centre
-    elevation = (tilt_level - tilt) / tilt_deg_per_elevation + (0.5 - cy) * vfov
+    bearing   = where the head points (spatial/head.py) + the face's offset from the image centre
+    elevation = likewise, up from level
     distance  = from the face's size (K_face / box height) and from the elevation
                 ((eye height - camera height) / tan elevation), combined
     person    = robot + distance along heading + bearing (map cm)
@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from ..config import CalibrationConfig, PersonConfig
+from .head import head_direction, image_left, image_up
 
 
 @dataclass(frozen=True)
@@ -57,19 +58,13 @@ def vfov_deg(cal: CalibrationConfig) -> float:
 
 
 def bearing_left_deg(cx: float, pan_deg: float, cal: CalibrationConfig) -> float:
-    """
-    Degrees to the robot's left of its heading. The image term's sign follows
-    from how a face moves as the head pans: with the head panned left, a still
-    face slides to the image's right, so in an unmirrored image right is right.
-    """
-    axis = cal.pan_sign * (pan_deg - cal.pan_forward_deg)
-    image_right_is_left = -cal.pan_sign * cal.cx_per_pan_deg_sign
-    return axis + image_right_is_left * (cx - 0.5) * cal.hfov_deg
+    """Degrees to the robot's left of its heading: where the head points, plus where in the image."""
+    return head_direction(pan_deg, cal.tilt_level_deg, cal)[0] + image_left(cx, cal) * cal.hfov_deg
 
 
 def elevation_deg(cy: float, tilt_deg: float, cal: CalibrationConfig) -> float:
-    axis = (cal.tilt_level_deg - tilt_deg) / cal.tilt_deg_per_elevation_deg
-    return axis + (0.5 - cy) * vfov_deg(cal)
+    """Degrees above level: where the head points, plus where in the image."""
+    return head_direction(cal.pan_forward_deg, tilt_deg, cal)[1] + image_up(cy) * vfov_deg(cal)
 
 
 def size_distance_m(box_h: float, cal: CalibrationConfig) -> Optional[float]:

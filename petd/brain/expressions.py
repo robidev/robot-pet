@@ -4,7 +4,8 @@ Inline actions -> eye and head movement.
 A first pass with single poses; cluster E replaces this with keyframe
 sequences loaded from memory/emotions.yaml (blinks, nods, breathing).
 
-Eye coordinates: x/y are -1..1 (the eye's gaze offset), aperture 0..1.5
+Eye poses are in the robot's terms: left and up, -1..1 (the gaze's offset;
+spatial/head.py turns them into the device's x and y), and aperture 0..1.5
 (how wide open it is).
 
 The brain fires expressions and forgets them (fire()): speech never waits
@@ -20,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING, Optional, Set
 
 from ..config import CalibrationConfig
+from ..spatial.head import eye_xy, head_offset
 from .tags import Action
 
 if TYPE_CHECKING:
@@ -27,57 +29,37 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# emote -> (x, y, aperture)
+# emote -> the eye's gaze to the robot's (left, up), and aperture. Until
+# 2026-10-11 these went to the device as they were, whose axes run the other
+# way: "thinking" looked down and right instead of up and left, "sleepy" up.
 EMOTIONS: dict[str, tuple[float, float, float]] = {
     "neutral":   (0.0,  0.0,  1.0),
     "happy":     (0.0,  0.1,  1.2),
-    "curious":   (0.25, 0.15, 1.3),
+    "curious":   (-0.25, 0.15, 1.3),
     "surprised": (0.0,  0.2,  1.5),
     "sleepy":    (0.0, -0.3,  0.35),
     "sad":       (0.0, -0.4,  0.6),
-    "thinking":  (-0.4, 0.35, 0.8),
-    "annoyed":   (0.15, 0.0,  0.5),
+    "thinking":  (0.4,  0.35, 0.8),     # up and to the left
+    "annoyed":   (-0.15, 0.0, 0.5),
     "love":      (0.0,  0.0,  1.35),
     "listening": (0.0,  0.05, 1.25),
 }
 
-# look -> (x, y) gaze, and which way the head turns: to the robot's left (+1)
-# or right (-1), up (+1) or down (-1), by face.look_turn_deg / look_tilt_deg.
+# look -> the eye's gaze to the robot's (left, up), and which way the head
+# turns: to the robot's left (+1) or right (-1), up (+1) or down (-1), by
+# face.look_turn_deg / look_tilt_deg.
 GLANCES: dict[str, tuple[float, float, int, int]] = {
-    "left":  (-0.8, 0.0, 1, 0),
-    "right": (0.8, 0.0, -1, 0),
+    "left":  (0.8, 0.0, 1, 0),
+    "right": (-0.8, 0.0, -1, 0),
     "up":    (0.0, 0.7, 0, 1),
     "down":  (0.0, -0.7, 0, -1),
     "ahead": (0.0, 0.0, 0, 0),
-    "away":  (-0.7, 0.4, 0, 0),
+    "away":  (0.7, 0.4, 0, 0),
 }
 GLANCE_HOLD_S = 1.5         # a glance holds this long, then the head turns back
 # A look asked for (look_direction) holds face.look_hold_s, then turns back
 # the same way: without it, the head stared at the held pose until someone
 # turned tracking back on (2026-10-05).
-
-
-def head_offset(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
-    """
-    Degrees to the robot's left and up, as pan and tilt offsets. Which way
-    they go is the calibration's pan_sign and tilt_deg_per_elevation_deg:
-    the servos were remounted reversed on 2026-10-05, and the angles turned
-    round with them. The tilt servo turns 1.1 degrees per degree of
-    elevation since the 2026-10-11 remount, so "30 up" is 33 on the servo.
-    """
-    return cal.pan_sign * left_deg, -up_deg * cal.tilt_deg_per_elevation_deg
-
-
-def head_servo(left_deg: float, up_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
-    """Servo angles (pan, tilt) for degrees to the robot's left of straight ahead and up from level."""
-    pan_offset, tilt_offset = head_offset(left_deg, up_deg, cal)
-    return cal.pan_forward_deg + pan_offset, cal.tilt_level_deg + tilt_offset
-
-
-def head_direction(pan_deg: float, tilt_deg: float, cal: CalibrationConfig) -> tuple[float, float]:
-    """Where servo angles point: degrees to the robot's left of straight ahead, and up from level."""
-    return (cal.pan_sign * (pan_deg - cal.pan_forward_deg),
-            (cal.tilt_level_deg - tilt_deg) / cal.tilt_deg_per_elevation_deg)
 
 
 class Expressions:
@@ -145,16 +127,16 @@ class Expressions:
             log.exception("failed to apply %s", action)
 
     async def emote(self, name: str) -> None:
-        x, y, aperture = EMOTIONS.get(name, EMOTIONS["neutral"])
+        left, up, aperture = EMOTIONS.get(name, EMOTIONS["neutral"])
         # The device's idle/tracking behaviour would override a manual
         # target within a few ms, so switch the eye to manual first.
         await self.face.set_eye_mode("manual")
-        await self.face.set_eye(x, y, aperture)
+        await self.face.set_eye(*eye_xy(left, up), aperture)
 
     async def glance(self, direction: str) -> None:
-        x, y, left, up = GLANCES.get(direction, GLANCES["ahead"])
+        gaze_left, gaze_up, left, up = GLANCES.get(direction, GLANCES["ahead"])
         await self.face.set_eye_mode("manual")
-        await self.face.set_eye(x, y, 1.1)
+        await self.face.set_eye(*eye_xy(gaze_left, gaze_up), 1.1)
         if (left or up) and not self.head_busy:      # a held look or a behaviour keeps the head; the eye glances
             mode, pan, tilt = self._where_to_return()
             pan_offset, tilt_offset = head_offset(left * self.turn_deg, up * self.tilt_deg, self.cal)

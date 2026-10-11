@@ -4,7 +4,7 @@ Looking around for someone (PLAN.md 4.6 search behaviour, E4, Step 5).
 search() runs as the one motion (App.start_motion), so "stop" cancels it,
 and it steers the head meanwhile (Expressions.claim).
 
-The head pans slowly from one side to the other at face.search_tilt_deg, in
+The head pans slowly from one side to the other at face.search_up_deg, in
 steps (the firmware jumps to a manual pose; a head standing still between
 steps gives the detector sharper frames; jumpy is fine, Robin 2026-10-05).
 On a face it goes back to the pose of the frame that showed it (the head
@@ -32,6 +32,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 from ..events import FacesChanged
+from ..spatial.head import head_servo
 from ..spatial.person import bearing_left_deg
 from .approach import head_claim
 
@@ -116,7 +117,7 @@ class Search:
                 expressions.release("search")
             try:
                 if self.ahead:
-                    await pet.face.set_servo(pan_deg=self.cal.pan_forward_deg, tilt_deg=self.cfg.search_tilt_deg)
+                    await pet.face.set_servo(pan_deg=self.cal.pan_forward_deg, tilt_deg=self._search_tilt())
                 await pet.face.set_servo(mode="track")
             except Exception:  # noqa: BLE001 - the head may be gone
                 log.debug("search: couldn't turn tracking on", exc_info=True)
@@ -136,11 +137,16 @@ class Search:
             if self.checked else ""
         return f"My search didn't find {whom}{passed}: {how}. I'm looking ahead again."
 
+    def _search_tilt(self) -> float:
+        """The tilt servo angle for face.search_up_deg above level, within the mount's stops."""
+        tilt = head_servo(0.0, self.cfg.search_up_deg, self.cal)[1]
+        return max(self.cfg.tilt_min_deg, min(self.cfg.tilt_max_deg, tilt))
+
     async def _sweep(self, sub, passes: int) -> bool:
         """The head across the room `passes` times (to one end, then across); True on a find."""
         face, cfg = self.pet.face, self.cfg
         low, high = cfg.search_pan_min_deg, cfg.search_pan_max_deg
-        tilt = cfg.search_tilt_deg
+        tilt = self._search_tilt()
         pan = face.state.pan_deg if face.state.pan_deg is not None else self.cal.pan_forward_deg
         pan = max(low, min(high, pan))
         near, far = (low, high) if pan - low <= high - pan else (high, low)

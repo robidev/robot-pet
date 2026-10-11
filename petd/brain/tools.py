@@ -25,8 +25,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from ..config import CalibrationConfig
-from .expressions import head_direction, head_offset, head_servo
 from ..events import ToolRan
+from ..spatial.head import head_direction, head_offset, head_servo, image_left
 
 if TYPE_CHECKING:
     from ..app import App
@@ -261,7 +261,7 @@ def build_registry(pet: "App") -> ToolRegistry:
         expressions = pet.brain.expressions if pet.brain is not None else None
         pan = tilt = None
         if direction == "ahead":
-            pan, tilt = cal.pan_forward_deg, cal.tilt_level_deg
+            pan, tilt = head_servo(0.0, 0.0, cal)
         elif direction is not None:
             left, up = LOOK_DIRECTIONS[direction]
             pan_offset, tilt_offset = head_offset(
@@ -702,10 +702,9 @@ def _describe_position(cx: float, cal: CalibrationConfig) -> str:
     """
     Horizontal position in the camera frame, in words the model can use.
     Which side of the image is the robot's left follows the calibration
-    (spatial/person.py): on 2026-10-05, with the servos remounted, the
-    image's right was the robot's right.
+    (spatial/head.py): the image's right is the robot's right.
     """
-    toward_left = -cal.pan_sign * cal.cx_per_pan_deg_sign * (cx - 0.5)
+    toward_left = image_left(cx, cal)
     if toward_left > 0.15:
         return "to my left"
     if toward_left < -0.15:
