@@ -73,8 +73,20 @@ Finishes M2 and gives the first real latency numbers.
   (~2 s, 45° late): if it misses people, slower (`search_speed_deg_s`). The
   brain announced "I found one face" before the head had turned, and the
   found-event came 4 s before his name; the tool's reply now says nothing's
-  found yet, and the event waits up to 6 s for recognition. Still to see:
-  no claimed find, then a greeting by name.
+  found yet, and the event waits up to 6 s for recognition. ~~Still to see:
+  no claimed find, then a greeting by name.~~ **Done (2026-10-11, typed on
+  the dashboard):** found a face after 2-3 s three times, the brain said only
+  "Looking." until then, and the found-event came with names: "Found
+  Claudia.", "That's Claudia again.", "Found you both." (Noah was in view
+  too). Once, with the servos' power failing, it took 25 s, ended straight
+  ahead (pan 75.6) and named nobody ("There you are."). Every name was right.
+  **The gap:** "now find Noah" with Claudia in view: the search stops on the
+  first face, and won't start while one is in view ("I can already see a
+  face"); the brain turned tracking off and tried `look_direction` left and
+  right, and found him only when told "look farther left" (pan 20, 48 px).
+  Looking for a named person, past the others, belongs to
+  `search_for_person` (Step 5). The brain also refused a third "look for me"
+  in two minutes ("This is the third time... Where exactly are you?").
 - **A conversation of a few minutes** with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`) **Partly (2026-10-05):** Claudia talked
@@ -106,7 +118,11 @@ Finishes M2 and gives the first real latency numbers.
 - **Along the way:** the robot's voice with `wlanmgr` paused, now by petd
   itself (no dropouts expected; "robot WiFi: ... is paused" in petd.log); if
   the face board is on the PC's USB, reset it once and check petd switches
-  tracking back on.
+  tracking back on. **Seen (2026-10-11):** the servos' power failed and the
+  board rebooted twice ("reset reason: poweron", 12:40:34 and 12:42:31);
+  petd noticed within ~4 s, retried the setup until the board answered, and
+  set the head mode it had (by then manual: the brain had switched tracking
+  off to look for Noah, so it stayed off after; nothing turns it back on).
 
 **Done when** all of the above hold, and `show_memory.py faces` shows every
 stored fingerprint under the right person. **Then, from the step's data:**
