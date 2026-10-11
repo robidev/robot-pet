@@ -243,8 +243,16 @@ there docked on the first attempt in 79 s. **A goal outside the room** (1 m
 beyond the kitchen's wall, no floor behind it for 4 m): accepted, searched
 for 1:47, mostly away from the goal (up to 3.8 m off), then gave up; bumpers
 and cliff sensors kept it from falling or sticking (Robin). See the Findings
-of 2026-10-11 (places): a stop is ignored during a go_to. **Still open:** the
-map backup's restore (take a backup of today's map first).
+of 2026-10-11 (places): a stop is ignored during a go_to. **The map backup's
+restore works** (17:49): today's map backed up first
+(`runtime/map-backups/2026-10-11_1749/`, checksums verified), the 09-27 files
+copied to a folder beside `/mnt/data/rockrobo/`, checked, moved in, `sync`,
+`reboot`. The files kept their checksums through the reboot. For ~13 s after
+Valetudo answered it showed a stray map (the docked robot 18.6 m from its
+dock) that petd refused (best 0.26, a warning every ~0.5 s), then the
+restored one: 0.0°, (-1, -1) cm from the reference, score 1.00 (the reference
+is that backup's map). The dock moved from (2560, 2560) to (2558, 2532) with
+`ChargerPos.data`.
 
 ### Step 4: a person on the map, live (hands-on, ~15 min)
 
