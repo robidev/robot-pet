@@ -409,8 +409,8 @@ nothing in the boot path changes and nothing on the robot keeps state
 (Robin's call, over a long-lived `tail -F` over SSH). The heading and
 position come from it whenever it has them (`spatial/heading.py`; the measured turns stay the
 fallback); a first leg that stops short now looks again from there instead
-of giving up. **Open:** eye height for someone sitting on the floor (~0.8 m)
-isn't one of the postures.
+of giving up. Someone **on the floor** (eye height 0.8 m) is a third posture
+now (`person.postures`).
 
 **The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
 the direction of the last stretch of path, so a turn on the spot doesn't

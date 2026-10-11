@@ -62,6 +62,15 @@ def test_a_sitting_person_or_a_child_is_told_from_a_standing_one():
     assert math.dist(est.xy, (2700, 2450)) < 3
 
 
+def test_someone_on_the_floor_is_told_from_someone_sitting():
+    # Robin sitting on the floor read 4.6 m as "sitting or a child" (2026-10-11).
+    cal = CalibrationConfig()
+    box, pan, tilt = seen(cal, ROBOT, (2720, 2420), 0.8)
+    est = P.estimate(box, pan, tilt, cal, PCFG, ROBOT)
+    assert est.posture == "on the floor"
+    assert math.dist(est.xy, (2720, 2420)) < 3
+
+
 def test_a_known_eye_height_is_used_and_a_changed_camera_height_counts():
     cal = replace(CalibrationConfig(), camera_height_m=0.35)   # the head raised on a new mount
     box, pan, tilt = seen(cal, ROBOT, (2500, 2350), 1.40)

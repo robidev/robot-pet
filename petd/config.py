@@ -270,7 +270,9 @@ class PersonConfig:
     look_frames: int = 3                      # a look: the median of this many frames
     # Eye height by posture, when the person's own (people.face_z_m) isn't known:
     # the one whose tilt distance agrees best with the face-size distance wins.
-    postures: dict = field(default_factory=lambda: {"standing": 1.55, "sitting or a child": 1.2})
+    # "on the floor": Robin sitting on it read 4.6 m as "sitting or a child" (2026-10-11).
+    postures: dict = field(default_factory=lambda: {"standing": 1.55, "sitting or a child": 1.2,
+                                                    "on the floor": 0.8})
     min_elevation_deg: float = 5.0            # below: tilt says little about distance, size only
     tilt_weight: float = 0.5                  # tilt vs size distance, when both are usable
 

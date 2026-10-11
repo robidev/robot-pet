@@ -128,4 +128,4 @@ person:                        # where a person is (spatial/person.py, C5)
   look_again_m: 1.8            # coming over from further: stop this far short and look again
   look_settle_s: 1.5           # tracking centres the face before a look...
   look_frames: 3               # ...then the median of this many frames
-  postures: {standing: 1.55, sitting or a child: 1.2}   # eye heights (m) when a person's own isn't known
+  postures: {standing: 1.55, sitting or a child: 1.2, on the floor: 0.8}   # eye heights (m) when a person's own isn't known
