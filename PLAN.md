@@ -26,7 +26,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
-| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11); C5: a person's position and approach target (Step 4), sightings stored at the person's place | `is_free`/`march_back` | E4: approach and search |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11); C5: a person's position and approach target (Step 4), sightings stored at the person's place | `is_free`/`march_back`; E4: approach and search, the heading across turns (with the fakes, 2026-10-11) | |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | |
 | Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | |
@@ -345,8 +345,36 @@ may summon it, guests too (`only_known_people_can_summon: false`): after
 finding an unknown face it asks "Did you call me?".
 
 **Build E4** with the fakes: `approach_person` (stop-and-look, 4.2),
-`search_for_person` (the pan sweep, then body turns), the "come here" shortcut
-before the LLM, and the arbiter's ownership of motors, head and eye.
+`search_for_person` (the pan sweep, then body turns), and the arbiter's
+ownership of motors, head and eye. **No "come here" shortcut past the brain**
+(Robin, 2026-10-11): "come here" goes to the brain like everything else, which
+calls the tools. Few behaviours should follow rules the people around it can't
+know up front; with nearly everything routed through the brain, it stays
+coherent in different situations and what it says matches what it does.
+
+**E4 built with the fakes (2026-10-11 evening), not yet tried live:**
+- `behavior/approach.py` (`approach_person(name?)`): a look (tracking centres
+  the face, then the median of `person.look_frames` frames); from further
+  than `look_again_m` (1.8) + 0.5 m a `go_to` to 1.8 m short and a second
+  look; then a `go_to` to the free floor `standoff_m` in front of them
+  (`approach_target`, against the map). Which face: the only one, else the
+  recognizer's track for them (or the speaker), else the biggest. Without a
+  name: whoever is talking, or the only face.
+- `behavior/search.py` (`search_for_person(name?)`, replacing
+  `search_for_faces`): the head's slow pan as before; on a face, back to that
+  frame's pose, tracking, and up to `search_naming_wait_s` (6) for
+  recognition. By name it passes others by (their directions are kept, also
+  across turns). Off the dock, after a pass, the body turns 120° and the head
+  pans again, twice; on the dock, head only (it says so).
+- **The arbiter:** both run as the one motion task, so "stop" cancels them
+  and other motion tools wait; meanwhile the behaviour claims the head
+  (`Expressions.claim`): glances move only the eye, `look_direction` and
+  `track_faces` are refused. Both report back as events, found or arrived
+  too, so the brain can say so.
+- **The heading** (`spatial/heading.py`): after petd's own turns and moves,
+  the one before minus the measured turn, until Valetudo drives again (a
+  go_to or docking); used for every person estimate (`App.robot_pose`).
+- `only_known_people_can_summon` isn't built: anyone may summon it.
 
 **The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
 the direction of the last stretch of path, so a turn on the spot doesn't
@@ -1279,7 +1307,7 @@ definition of each step.
 | **B: foundations and I/O** | **Done and verified on hardware.** Since: a **log folder per run** (`runtime/logs/<run>/`: `petd.log` at DEBUG, `run.yaml` with the config, `events.jsonl` with every bus event); short network stalls no longer count as offline (`offline_after_s`); face-board reboots and WiFi drops are logged with their reason. |
 | **C: spatial** | **C4 done on hardware** (`spatial/motion.py`: `turn`/`move`, `remember_place`/`go_to_place`); a straight forward `move` leaves the dock. **Docking** (`spatial/dock.py`): `go_home` drives to a point 60 cm in front of the dock first, then docks, retrying once; verified live. **C1 built and wired in, not yet tried live** (2026-09-27): `spatial/mapgeo.py` (decode, `is_free`, `march_back`, `align`), `spatial/frame.py` (places kept in a reference map's frame); a `go_to` counts as arrived only within 20 cm of its goal. **Open:** C1's live check (Next up, item 1), **the face half of C3** (worth retrying now detection reaches 2.7 m), **C5**. C2 shrank to nothing (see 4.1). |
 | **D: brain** | **D1–D4 done and verified on hardware.** The claude process now starts before anyone speaks (`brain.prestart`). D5 (ollama) written, never run against a real ollama. |
-| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: M3), **E5** (drives, sleep, explore: M4). |
+| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: built with the fakes 2026-10-11; the live checks in Step 5 give M3), **E5** (drives, sleep, explore: M4). |
 | **F: personality** | **F1 done.** F2 (games) open. |
 | **G: polish and ops** | **G4 done** (turn timings on the bus, `scripts/latency.py`); real numbers still to take from a live run. G1–G3 open. Also `scripts/show_memory.py` (what the pet stored, places on the map). |
 
@@ -1338,7 +1366,7 @@ Concurrency, state machines, and where the "feel" lives.
 | E1 | `memory/db.py`: schema, migrations, and the people, sightings, conversations, utterances and facts APIs. Add journal writing and compaction. | Unit tests. |
 | E2 | `behavior/arbiter.py` + `reflex.py` + `emotions.py` + `converse.py`: priorities, resource ownership (motors, servos, eye, speech), attention gate (name fuzzy match, window, gaze), reflex keywords, listening and thinking eye feedback. **This gives M1.** | With the fakes, and then with hardware: say its name and a question, get a spoken answer with emotes. "Stop" works while it is speaking or driving. |
 | E3 | Enrollment flow and the people tools (`remember_face`, `who_do_i_know`, `recall_person`, `note_about_person`), plus the greeting-on-recognition behavior (once per person per N hours, via an `[event]` turn). **This gives M2.** | Introduce yourself. It enrolls you, then greets you by name after a restart. |
-| E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools, the "come here" local shortcut, and the `only_known_people_can_summon` option. **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 1 m (the standoff, raised from 0.7 m: see Decisions), facing you. Calling from out of view triggers the search and "Did you call me?". |
+| E4 | `approach.py` (stop-and-look, 4.2) and `search.py` (4.6), plus the `approach_person` and `search_for_person` tools. **Built with the fakes 2026-10-11** (no "come here" shortcut past the brain, and no `only_known_people_can_summon`: Robin's calls, Step 5). **This gives M3.** | From 3 m, "Come here, <name>" brings it to about 1 m (the standoff, raised from 0.7 m: see Decisions), facing you. Calling from out of view triggers the search and "Did you call me?". |
 | E5 | `drives.py`, `sleep.py`, `attention.py`, `explore.py`, `lowbattery`, and the schedule config. **This gives M4.** | A simulated day with the fakes (a fast clock) produces a sane behavior timeline. A live session: it explores within its window, greets you when you walk by, sleeps in quiet hours, and docks on low battery. |
 | E6a | Measure first (4.7), in a venv outside petd's: YuNet + SFace on head snapshots of Robin and Claudia at 0.6/1.5/2.5 m, day and lamp light. **Lamp light done 2026-09-23** (`runtime/e6a/`); daylight and backlight to go. | Same-person vs other-person similarities, face sizes, blur and timings; `unknown_sim` 0.35, `accept_sim` 0.45, `margin` 0.15, `min_face_px` 45 and SFace fp32 chosen from them. |
 | E6b | **Built 2026-09-23, with fakes and E6a's real snapshots; verified live with Robin** (enrollment, recognition on return and after a restart), **and on 2026-09-27 with Claudia, in daylight, and a child guest** (unknown throughout); rechecks added after a swap kept the old name. Two at once, a deliberate swap and backlight still to check. Face recognition on the PC (4.7): `onnxruntime` + `numpy`, the model setup script, `vision/faces.py` (detect, gate, align, embed), the per-episode vote, the `face_embeddings` table with trimmed-mean centres, `remember_face`/`forget_person` on top of it, growth from confident recognitions. The head stays detection-only. Brings back M2's "greets you by name". | Greets a known person by name after a restart, day and evening, out to the measured range. A guest is never greeted as someone known. |

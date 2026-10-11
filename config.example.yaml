@@ -29,7 +29,11 @@ face:
   search_pan_min_deg: 0.0      # ...between these...
   search_pan_max_deg: 180.0
   search_speed_deg_s: 20.0     # ...this slowly...
-  search_sweeps: 2             # ...to one end and back this often, and stops on a face
+  search_sweeps: 2             # ...to one end and back this often on the dock, and stops on a face
+  search_naming_wait_s: 6.0    # a face found: this long for recognition to name it
+  search_skip_deg: 12.0        # by name: a face this close to one checked is that one again
+  search_body_turns: 2         # off the dock: then turn the body...
+  search_turn_deg: 120.0       # ...this far, and pan once more, this often
 
 stt:
   source: face                 # face (the head's UDP stream) | local (a sound card on this PC)
@@ -121,4 +125,7 @@ calibration:                   # measured conventions (PLAN.md 4.1) and the came
 person:                        # where a person is (spatial/person.py, C5)
   standoff_m: 1.0              # stop this far in front of them
   clearance_cm: 25             # the target this far from anything mapped
+  look_again_m: 1.8            # coming over from further: stop this far short and look again
+  look_settle_s: 1.5           # tracking centres the face before a look...
+  look_frames: 3               # ...then the median of this many frames
   postures: {standing: 1.55, sitting or a child: 1.2}   # eye heights (m) when a person's own isn't known

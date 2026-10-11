@@ -208,7 +208,7 @@ class People:
         """
         from ..spatial.person import estimate
         pet = self.pet
-        pose = pet.vacuum.state.pose if pet.vacuum is not None else None
+        pose = pet.robot_pose()
         if pet.face is None or pet.frame is None or pose is None or pose.angle is None:
             return None
         try:

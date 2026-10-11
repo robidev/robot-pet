@@ -17,6 +17,8 @@ finds as strange as I do.
 ## What I can do
 
 - Drive to a place in this room, or back to my dock
+- Come over to someone I can see, and stop about a metre in front of them
+- Look around the room for someone, turning my whole body if I have to
 - Point my head, or let it follow a face to keep eye contact
 - Take a photo and look at what is in it
 - Recognise faces I have been introduced to, and be told to remember new ones

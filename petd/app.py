@@ -43,6 +43,7 @@ class App:
         self.motion = None
         self.dock = None
         self.frame = None
+        self.heading = None
         self.motion_task: Optional[asyncio.Task] = None
         self.tools = None
         self.brain = None
@@ -82,6 +83,11 @@ class App:
             if part is not None:
                 await part.start()
 
+        if self.vacuum is not None:
+            from .spatial.heading import Heading
+            self.heading = Heading(self.vacuum, self.bus)
+            self.heading.start()
+
         if self.vacuum is not None and cfg.motion.enabled:
             from .spatial.motion import Motion
             if fake:
@@ -90,6 +96,7 @@ class App:
                 from .spatial.odometry import PlayerOdometry
                 odometry = PlayerOdometry(cfg.vacuum.host, cfg.player.port)
             self.motion = Motion(self.vacuum, odometry, cfg.motion)
+            self.motion.heading = self.heading
             # Connected from the start (it only streams while armed), so the
             # first turn doesn't also wait for a Player handshake.
             start = getattr(odometry, "start", None)
@@ -144,8 +151,8 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.stt,
-                     self.speaker, self.face, self.vacuum, self.robot_wifi):
+        for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.heading,
+                     self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()
@@ -177,13 +184,15 @@ class App:
             except Exception:  # noqa: BLE001 - a stop must not fail loudly
                 log.exception("vacuum stop failed")
 
-    def start_motion(self, coro, describe: str, report: bool = True) -> asyncio.Task:
+    def start_motion(self, coro, describe: str, report: bool = True,
+                     success_is_event: bool = False) -> asyncio.Task:
         """
-        Runs a motion (a turn, a move, a trip to a place) as a task, one at
-        a time, so a stop can cancel it. With `report`, the brain hears how
-        it went: a success as a note with its next turn, a failure as an
-        event of its own. Without, the caller awaits the task's
-        (outcome, ok) itself.
+        Runs a motion (a turn, a move, a trip to a place, coming over, a
+        search) as a task, one at a time, so a stop can cancel it. With
+        `report`, the brain hears how it went: a failure as an event of its
+        own, a success as a note with its next turn, or with
+        `success_is_event` as an event too (something to say: "found you").
+        Without, the caller awaits the task's (outcome, ok) itself.
         """
         async def run() -> tuple[str, bool]:
             try:
@@ -195,7 +204,7 @@ class App:
                 outcome, ok = f"{describe} failed: {exc}", False
             log.info("motion: %s", outcome)
             if report and self.brain is not None:
-                if ok:
+                if ok and not success_is_event:
                     self.brain.note(outcome)
                 else:
                     self.brain.tell(outcome, kind="event")
@@ -236,6 +245,12 @@ class App:
         person = self.db.person(person_id) if self.db is not None else None
         name = person.name if person is not None else f"id{person_id}"
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
+
+    def robot_pose(self):
+        """Where the robot is and which way it faces, its heading kept across turns on the spot."""
+        if self.heading is not None:
+            return self.heading.pose()
+        return self.vacuum.state.pose if self.vacuum is not None else None
 
     @property
     def recognition_on(self) -> bool:

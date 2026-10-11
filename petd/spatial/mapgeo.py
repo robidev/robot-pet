@@ -231,3 +231,16 @@ def _decode(layer: dict) -> np.ndarray:
         ys = np.repeat(runs[:, 1], counts)
         return np.stack([xs, ys], axis=1)
     return np.asarray(layer.get("pixels") or [], int).reshape(-1, 2)
+
+
+_grid_cache: list = [None, None]            # [map json it was made from, Grid]
+
+
+def current_grid(vacuum) -> Optional[Grid]:
+    """The vacuum's latest map as a Grid, decoded once per map it polled. Slow: in a thread."""
+    raw = vacuum.last_map if vacuum is not None else None
+    if raw is None:
+        return None
+    if _grid_cache[0] is not raw:
+        _grid_cache[:] = [raw, Grid.from_valetudo(raw)]
+    return _grid_cache[1]

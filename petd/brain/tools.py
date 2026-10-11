@@ -122,7 +122,6 @@ def _as_json(value: Any) -> str:
 def build_registry(pet: "App") -> ToolRegistry:
     """The MVP tool set (PLAN.md 4.5). Later clusters add movement and memory."""
     registry = ToolRegistry(pet.bus)
-    background: set = set()           # tasks the tools leave running (a search's report)
 
     def _face_name(face) -> Optional[str]:
         if not face.recognized:
@@ -213,6 +212,7 @@ def build_registry(pet: "App") -> ToolRegistry:
          "required": []})
     async def look_direction(args: dict) -> str:
         face = require_face()
+        head_owner_check()
         fcfg, cal = pet.cfg.face, pet.cfg.calibration
         direction, pan, tilt = args.get("direction"), args.get("pan"), args.get("tilt")
         if direction is None and pan is None and tilt is None:
@@ -241,42 +241,54 @@ def build_registry(pet: "App") -> ToolRegistry:
         where = ", ".join(f"{name} {value:g}" for name, value in (("pan", pan), ("tilt", tilt)) if value is not None)
         return f"looking there ({where})"
 
+    def named_person(args: dict):
+        """The person a tool is asked about by name, or None for anyone."""
+        name = " ".join((args.get("name") or "").split())
+        if not name:
+            return None
+        if pet.people is None or pet.db is None:
+            raise ToolError("I have no memory of people right now")
+        person = pet.db.person_by_name(name)
+        if person is None:
+            raise ToolError(f"I don't know anyone called {name}")
+        if not pet.recognition_on:
+            raise ToolError("my face recognition is off: I can look for a face, but not for "
+                            "someone in particular")
+        return person
+
+    def head_owner_check() -> None:
+        expressions = pet.brain.expressions if pet.brain is not None else None
+        owner = getattr(expressions, "owner", None)
+        if owner is not None:
+            doing = {"approach": "coming over to someone", "search": "searching"}.get(owner, owner)
+            raise ToolError(f"my head is busy: I'm {doing}. Wait for that to end, or stop it first.")
+
     @registry.tool(
-        "search_for_faces",
+        "search_for_person",
         _search_help(pet.cfg.face),
-        {"type": "object", "properties": {}, "required": []})
-    async def search_for_faces(args: dict) -> str:
+        {"type": "object",
+         "properties": {"name": {"type": "string",
+                                 "description": "Who to look for; leave out to look for anyone"}},
+         "required": []})
+    async def search_for_person(args: dict) -> str:
+        from ..behavior.search import search
         face = require_face()
-        if pet.brain is None or pet.brain.expressions is None:
-            raise ToolError("I can't move my head on my own right now")
+        person = named_person(args)
+        if person is not None and person.id in pet.people.present:
+            await face.set_servo(mode="track")
+            return f"{person.name} is in view already: following them now, no search needed"
         frame = face.last_faces
-        if frame is not None and frame.faces:
-            pet.brain.expressions.end_hold()
+        if person is None and frame is not None and frame.faces:
             await face.set_servo(mode="track")
             return "I can already see a face: following it now, no search needed"
-        brain = pet.brain
-
-        async def tell_once_named(text: str, found: bool) -> None:
-            # The search stops on the first frame with a face; recognition
-            # names them a few seconds later. Told at once, the brain heard
-            # "sees someone I don't recognize" about Robin (2026-10-05).
-            if found and pet.people is not None and pet.recognition_on:
-                waited = 0.0
-                while waited < SEARCH_NAMING_WAIT_S and not pet.people.who_is_here()[0]:
-                    await asyncio.sleep(0.25)
-                    waited += 0.25
-            brain.tell(text, kind="event")
-
-        def report(text: str, found: bool) -> None:
-            task = asyncio.create_task(tell_once_named(text, found), name="search-report")
-            background.add(task)
-            task.add_done_callback(background.discard)
-
-        pet.brain.expressions.start_search(report)
+        if pet.moving:
+            raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
+        whom = person.name if person is not None else "a face"
+        pet.start_motion(search(pet, person), f"search for {whom}", success_is_event=True)
         # Told only "searching", Haiku announced "I found one face" before the
         # head had turned (2026-10-05).
-        return ("search started: my head is turning slowly around the room. Nothing found yet, "
-                "so don't say I found or recognised anyone. When the search ends I'm told what came of it.")
+        return (f"search for {whom} started. Nothing found yet, so don't say I found or recognised "
+                "anyone. When it ends I'm told what came of it.")
 
     @registry.tool(
         "track_faces",
@@ -285,6 +297,7 @@ def build_registry(pet: "App") -> ToolRegistry:
         "it does not learn or remember anyone's face.",
         {"type": "object", "properties": {"on": {"type": "boolean"}}, "required": ["on"]})
     async def track_faces(args: dict) -> str:
+        head_owner_check()
         if pet.brain is not None and pet.brain.expressions is not None:
             pet.brain.expressions.end_hold()
         await require_face().set_servo(mode="track" if args.get("on", True) else "manual")
@@ -450,6 +463,39 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
         pet.start_motion(run(), f"go to {name}")
         return f"on my way to {name}"
 
+    @registry.tool(
+        "approach_person",
+        "Come over to someone I can see, and stop about a metre in front of them: when someone "
+        "asks me to come to them, or to come here. With a name, that person (recognised and in "
+        "view); without, whoever is talking to me, or the only face I see. If I can't see them, "
+        "search_for_person first. I look, drive (from far off: part of the way, then look "
+        "again), and stop. Returns at once; I'm told when I'm there or why I couldn't get there.",
+        {"type": "object",
+         "properties": {"name": {"type": "string", "description": "Who to come to; leave out for "
+                                                                  "whoever is talking to me"}},
+         "required": []})
+    async def approach_person(args: dict) -> str:
+        from ..behavior.approach import approach
+        name = " ".join((args.get("name") or "").split())
+        if pet.face is None or not pet.face.state.reachable:
+            raise ToolError("my head is offline: I can't see where anyone is")
+        person = None
+        if name:
+            person = pet.db.person_by_name(name) if pet.db is not None else None
+            if person is None:
+                raise ToolError(f"I don't know anyone called {name}")
+            if pet.people is None or person.id not in pet.people.present:
+                raise ToolError(f"I can't see {person.name} right now; search_for_person first")
+        else:
+            frame = pet.face.last_faces
+            if frame is None or not frame.faces:
+                raise ToolError("I can't see anyone to come to; search_for_person first")
+        check_can_move(leaving_dock_ok=True)
+        whom = person.name if person is not None else "them"
+        pet.start_motion(approach(pet, person), f"come over to {whom}", success_is_event=True)
+        return (f"coming over to {whom}: a look first, then I drive. Not there yet; I'm told when I "
+                "am, or why I couldn't get there.")
+
 
 def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
     """The people and memory tools (PLAN.md 4.5, 4.7; cluster E3)."""
@@ -551,10 +597,6 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         return "noted"
 
 
-# A search that found a face waits this long for recognition to name them
-# before telling the brain.
-SEARCH_NAMING_WAIT_S = 6.0
-
 # look_direction's relative turns: to the robot's left (+1) or right, up (+1) or down.
 LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -1)}
 
@@ -577,12 +619,13 @@ def _look_direction_help(cal: CalibrationConfig, tilt_min: float, tilt_max: floa
 
 
 def _search_help(fcfg) -> str:
-    sweep_s = 2 * (fcfg.search_pan_max_deg - fcfg.search_pan_min_deg) / max(1.0, fcfg.search_speed_deg_s)
-    return ("Look around the room for a face: my head pans slowly from side to side, "
-            f"{fcfg.search_sweeps} times (up to ~{fcfg.search_sweeps * sweep_s:.0f} s), stops on the first "
-            "face it sees and follows it. Use it when someone asks me to look for them or find them "
-            "and I can't see anyone. It returns at once; when it's over I'm told whether I found a "
-            "face, and recognition names them if it can.")
+    sweep_s = (fcfg.search_pan_max_deg - fcfg.search_pan_min_deg) / max(1.0, fcfg.search_speed_deg_s)
+    return ("Look around for someone: my head pans slowly across the room (~{:.0f} s a pass); off my "
+            "dock I then turn my body {:g} degrees and look again, {} times, which covers the whole "
+            "room. Without a name it stops at the first face; with one it passes other people by "
+            "and stops at that person. Use it when someone wants me to find them, or calls me and "
+            "I can't see them. It returns at once; when it ends I'm told whom I found, and my head "
+            "follows them.").format(sweep_s, fcfg.search_turn_deg, fcfg.search_body_turns)
 
 
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:

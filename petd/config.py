@@ -90,14 +90,23 @@ class FaceConfig:
     # A look asked for holds this long, then the head goes back to where it
     # was and tracking comes back on if it was on (it stared on, 2026-10-05).
     look_hold_s: float = 20.0
-    # "Look for me" (search_for_faces): the head pans slowly between these,
-    # to one end and back search_sweeps times at search_tilt_deg, and stops
-    # on the first face (2026-10-05, Robin's spec).
+    # "Look for me" (search_for_person, behavior/search.py): the head pans
+    # slowly between these at search_tilt_deg and stops on a face (2026-10-05,
+    # Robin's spec); it waits up to search_naming_wait_s for recognition to
+    # name the face. Looking for someone by name, it pans on past anyone else,
+    # and a face within search_skip_deg of one it checked is that one again.
+    # Then the body turns search_turn_deg and the head
+    # pans again, search_body_turns times; on the dock (no turning there) the
+    # head pans to one end and back search_sweeps times instead.
     search_tilt_deg: float = 110.0
     search_pan_min_deg: float = 0.0
     search_pan_max_deg: float = 180.0
     search_speed_deg_s: float = 20.0
     search_sweeps: int = 2
+    search_naming_wait_s: float = 6.0
+    search_skip_deg: float = 12.0
+    search_body_turns: int = 2
+    search_turn_deg: float = 120.0
 
 
 @dataclass
@@ -247,6 +256,11 @@ class PersonConfig:
     """Where a person is, from what the head sees (spatial/person.py, C5; PLAN.md 4.2)."""
     standoff_m: float = 1.0                   # stop this far in front of them
     clearance_cm: float = 25.0                # the approach target this far from anything mapped
+    # Coming over (behavior/approach.py): from further than this plus 0.5 m, it
+    # stops this far short first and looks again (the estimate is rough far off).
+    look_again_m: float = 1.8
+    look_settle_s: float = 1.5                # tracking centres the face before a look
+    look_frames: int = 3                      # a look: the median of this many frames
     # Eye height by posture, when the person's own (people.face_z_m) isn't known:
     # the one whose tilt distance agrees best with the face-size distance wins.
     postures: dict = field(default_factory=lambda: {"standing": 1.55, "sitting or a child": 1.2})

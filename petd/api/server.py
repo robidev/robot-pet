@@ -182,18 +182,10 @@ PLACE_COLOUR = (255, 140, 0)
 PERSON_COLOUR = (140, 60, 200)
 ESTIMATE_COLOUR = (220, 0, 140)
 TARGET_COLOUR = (0, 170, 170)
-_grid_cache: list = [None, None]            # [map json it was made from, Grid]
-
-
 def current_grid(pet: "App"):
     """The map as a Grid (mapgeo), decoded once per map the vacuum adapter polled."""
-    raw = pet.vacuum.last_map if pet.vacuum else None
-    if raw is None:
-        return None
-    if _grid_cache[0] is not raw:
-        from ..spatial.mapgeo import Grid
-        _grid_cache[:] = [raw, Grid.from_valetudo(raw)]
-    return _grid_cache[1]
+    from ..spatial.mapgeo import current_grid as grid_of
+    return grid_of(pet.vacuum)
 
 
 async def person_estimates(pet: "App") -> list:
@@ -207,7 +199,7 @@ async def person_estimates(pet: "App") -> list:
     face_z = None
     if pet.people is not None and len(frame.faces) == 1 and len(pet.people.present) == 1:
         face_z = next(iter(pet.people.present.values())).face_z_m
-    pose = pet.vacuum.state.pose if pet.vacuum else None
+    pose = pet.robot_pose()
     grid = await asyncio.to_thread(current_grid, pet)
     return [estimate(f, frame.pan_deg, frame.tilt_deg, pet.cfg.calibration, pet.cfg.person, pose, grid, face_z)
             for f in frame.faces]

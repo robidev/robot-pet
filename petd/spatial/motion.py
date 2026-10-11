@@ -33,6 +33,7 @@ from ..config import MotionConfig
 
 if TYPE_CHECKING:
     from ..io.vacuum import VacuumAdapter
+    from .heading import Heading
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +69,8 @@ class Motion:
         self._driving = False
         self._keepalive: Optional[asyncio.Task] = None
         self.last_disarmed_at: Optional[float] = None
+        # Told of every turn: Valetudo's own heading doesn't see turns on the spot.
+        self.heading: Optional["Heading"] = None
 
     @property
     def armed(self) -> bool:
@@ -172,6 +175,7 @@ class Motion:
         async with self._lock:
             await self._ensure_armed()
             start = self._sample()
+            before = self.heading.angle() if self.heading is not None else None
             target = start.yaw + math.radians(degrees)
             reason = ""
             try:
@@ -186,6 +190,8 @@ class Motion:
                         break
             finally:
                 await self._halt()
+                if self.heading is not None:        # cut short too: it turned this far
+                    self.heading.turned(before, math.degrees(self.odometry.latest().yaw - start.yaw))
             done = math.degrees(self.odometry.latest().yaw - start.yaw)
             ok = not reason and abs(done - degrees) <= self.cfg.turn_tolerance_deg * 2
             return MotionResult("turn", degrees, done, ok, reason or ("" if ok else "overshot"))
@@ -217,6 +223,7 @@ class Motion:
         async with self._lock:
             await self._ensure_armed()
             start = self._sample()
+            before = self.heading.angle() if self.heading is not None else None
             heading = (math.cos(start.yaw), math.sin(start.yaw))
             direction = 1.0 if cm >= 0 else -1.0
 
@@ -251,6 +258,8 @@ class Motion:
                 await self._stop_and_settle()
             finally:
                 await self._halt()
+                if self.heading is not None:        # backing up flips Valetudo's heading; not ours
+                    self.heading.turned(before, 0.0)
             done = progress_cm()
             ok = not reason and abs(done - cm) <= max(c.move_tolerance_cm * 2, abs(cm) * 0.1)
             return MotionResult("move", cm, done, ok, reason or ("" if ok else "missed"))
