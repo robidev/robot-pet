@@ -45,15 +45,16 @@ roaming scans itself (`vacuum.ssh_key`).
 
 Finishes M2 and gives the first real latency numbers.
 
-- **Two at once:** Robin and Claudia side by side at ~1.5 m. Each named on the
-  dashboard's people panel, neither as the other, and speech credited to the
-  right one ("Robin says" / "Claudia says" in the events). **Half done
-  (2026-10-05):** Claudia and Noah were named together within ~11 s, never one
-  as the other; Robin and Noah far off (faces 46-110 px) took ~60 s. Speech
-  with two in view was always "someone says". **Since 2026-10-05** it goes to
-  the biggest face, the one the head tracks (Robin's call; firmware `5536a4c`,
-  flashed, tracks the biggest face): to check, two side by side, each
-  speaking, at different distances.
+- ~~**Two at once**~~ **Good enough (2026-10-11, Robin's call; run
+  `20261011-120630`):** Robin and Claudia at different distances, then
+  swapped: speech went to the nearer one ("Robin says" while he was nearer,
+  "Claudia says" once she was, 139 px against his 83), each named, never one
+  as the other. The gap left: in the ~2-3 s after each recheck (every 10 s,
+  and when a face drops out for a moment) no face has a name yet, so speech
+  is "someone says" and the brain guesses (it guessed the newcomer, Claudia,
+  at 12:12:31). A fix: keep each face's name through a recheck until the new
+  look disagrees. The Jabra over Bluetooth (`bluetooth_config.yaml`) as mic
+  and speaker; the TV on (below, Step 6).
 - ~~**A swap on purpose**~~ **Done (2026-10-05):** Noah and Robin out, Claudia
   in: named in 6 s; Claudia out, Noah in: named at once.
 - ~~**Leaving and coming back**~~ **Done (2026-10-05):** Noah twice, Claudia
@@ -192,6 +193,25 @@ against these).
   feeds Whisper's prompt and the name matcher; the personality and voice
   (`memory/*.md`, piper) would need rewording. Candidates can be tried first
   with piper-spoken lines through Whisper, as on 2026-09-22.
+- **A room mic and a TV** (2026-10-11, the Jabra over Bluetooth, the TV on
+  across the room): Whisper made stock lines of the TV's speech and music
+  ("We are going to be a little bit older / more / better", ~15 times in 8
+  min) and petd passed them to the brain as Robin's or Claudia's words; the
+  brain grew worried ("Are you hurt?"). Three openings let them in, all made
+  for the robot's own mic, which mostly heard whoever was near it:
+  1. **While the pet talks, everything heard counts as addressed**
+     (`over_voice` in `converse.on_heard`, with `stt.echo_cancelled`). Let
+     only "stop" and sentences with its name through then.
+  2. **Self-repeating transcripts** ("a little bit more a little bit more a
+     little bit more"), Whisper's habit on unclear audio: drop them in
+     `stt.drop_reason`. `no_speech_prob` doesn't help: 0.00 on every line.
+  3. **The 20 s window (`converse.window_s`) and `gaze_opens`**: each reply
+     to the TV opened another 20 s, and whoever faces the camera opens it
+     too. With a room mic: speech without the name only from the person the
+     pet is talking to, still in view; or at least a shorter window (~8 s).
+
+  To check: a few minutes' talk with the TV on, counting the TV lines that get
+  through.
 
 Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
 started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
