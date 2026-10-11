@@ -13,20 +13,20 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 
 ---
 
-## Where it stands (2026-09-27, updated 2026-10-05)
+## Where it stands (2026-09-27, updated 2026-10-11)
 
 | Milestone | State |
 |---|---|
 | **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
 | **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far; their speech goes to the biggest face since 2026-10-05, not yet tried (Step 1). |
-| **M3: It comes to you** | **Not built.** Driving, docking and places work; finding a person's distance and direction is the missing piece (Steps 2-5). |
+| **M3: It comes to you** | **Not built.** Driving, docking, places, "stop" during a trip, and a person's place on the map work (Steps 2-4); the approach and the search (E4) are the missing piece (Step 5). |
 | **M4: It feels alive** | **Not built** (Step 7). |
 
 | Area | Works (tried on the hardware) | Built, not yet tried live | Not built |
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
-| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11) | `is_free`/`march_back`; **C5's geometry** (a person's position and approach target, on the dashboard map; uncalibrated until Step 2) | E4: approach and search |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11); C5: a person's position and approach target (Step 4), sightings stored at the person's place | `is_free`/`march_back` | E4: approach and search |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | |
 | Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | |
@@ -214,7 +214,7 @@ marks read ~1.75 m by size and by tilt alike: the marks may be ~25 cm short of
 didn't move them (Robin). The microphone half (4.) is left: the Jabra was the
 mic that day.
 
-### Step 3: places on the map (hands-on, ~20 min)
+### Step 3: places on the map (hands-on, ~20 min): done 2026-10-11
 
 C1's live check; the approach in Step 5 drives with `go_to` and checks targets
 against the map.
@@ -255,7 +255,7 @@ is that backup's map). The dock moved from (2560, 2560) to (2558, 2532) with
 `ChargerPos.data`. The kitchen showed in its right place on the dashboard
 map afterwards (Robin).
 
-### Step 4: a person on the map, live (hands-on, ~15 min)
+### Step 4: a person on the map, live (hands-on, ~15 min): done 2026-10-11
 
 C5's check. Stand 2 m away at ~30°: the dashboard map shows the estimated person
 where you stand, and the target in front of you (standoff 1.0 m) is on free floor.
@@ -316,13 +316,23 @@ away instead of 1 m. Then 1.5 m standing: 1.46 m, 0.4° left, **~5 cm**. And
 small for 2.5 m (size 1.99 m), and at 2 m the elevation (25.7°) fits someone
 sitting, so the posture went that way; standing, the tilt says 2.60 m (+4%).
 Far off, face size is too noisy to choose the posture (K 0.13-0.21 in the
-captures). **Not done yet:** the posture at range (ideas: keep a person's
-posture until the size clearly disagrees for a while; past ~2 m, without a
-clear answer, take standing, the safer side for "come here", or ask; a
-person's own `face_z_m`, still empty for everyone, would fix it for standing
-but take a sitting Robin for standing, so it needs a posture too); the roll
-fixed on the mount, or a bearing correction; sightings stored with the
-person's position (`people.last_seen_x/y` are still the robot's).
+captures). **Left as it is (Robin, 2026-10-11):** the posture at range and
+the camera's roll; the deviation is accepted, and Step 5's approach looks
+again from closer anyway. (Ideas, if it ever matters: keep a person's
+posture until the size clearly disagrees; past ~2 m take standing, or ask;
+a person's own `face_z_m`; the roll fixed on the mount.)
+
+**Done (2026-10-11 evening): sightings store where the person was.** When a
+face is named (and on enrollment, and for an unnamed face every 30 s), petd
+takes the head's current frame, picks the face nearest the one named in the
+snapshot, projects it from the robot's pose (`people.where_is`, the same
+estimate as the dashboard's) and stores it in the reference frame, in the
+sighting and as `people.last_seen_x/y`; nothing when the head or the
+robot's heading is missing. A migration (version 3) tagged the 244 older
+sightings with a robot position `face, robot position` and cleared the
+last-seen places (`runtime/pet.db.before-sighting-places-2026-10-11`). The
+dashboard says "seen here". Live: Robin, named twice in front of the docked
+robot, stored ~1.5 m ahead both times, 5 cm apart.
 
 ### Step 5: it comes to you (build, then hands-on): M3
 

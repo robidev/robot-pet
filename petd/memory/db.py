@@ -99,6 +99,14 @@ MIGRATIONS = [
     );
     CREATE INDEX face_embeddings_person ON face_embeddings(person_id);
     """,
+    # 2026-10-11: a sighting's x, y and people.last_seen_x/y are where the
+    # person was (spatial/person.py), no longer where the robot was. The
+    # robot's positions stay in the old sightings, tagged; last seen places
+    # start over (they were a copy of the latest sighting's).
+    """
+    UPDATE sightings SET source = 'face, robot position' WHERE x IS NOT NULL;
+    UPDATE people SET last_seen_x = NULL, last_seen_y = NULL;
+    """,
 ]
 
 MAX_NOTES_CHARS = 1000
@@ -271,6 +279,10 @@ class MemoryDB:
             "UPDATE people SET last_seen_at = ?, "
             "last_seen_x = COALESCE(?, last_seen_x), last_seen_y = COALESCE(?, last_seen_y) "
             "WHERE id = ?", (t, x, y, person_id))
+
+    def set_last_seen_place(self, person_id: int, x: float, y: float) -> None:
+        self._db.execute("UPDATE people SET last_seen_x = ?, last_seen_y = ? WHERE id = ?",
+                         (x, y, person_id))
 
     def mark_greeted(self, person_id: int, t: float) -> None:
         self._db.execute("UPDATE people SET last_greeted_at = ? WHERE id = ?", (t, person_id))

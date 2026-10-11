@@ -455,6 +455,64 @@ async def test_greetings_before_the_brain_is_up_are_kept():
         await app.close()
 
 
+# --- where people were seen ----------------------------------------------------
+
+def sightings_of(pet, person_id):
+    return [tuple(r) for r in pet.db._db.execute("SELECT x, y, source FROM sightings WHERE person_id = ?",
+                                                 (person_id,))]
+
+
+async def test_a_sighting_stores_where_the_person_was_not_the_robot(pet):
+    import math
+    robin = pet.db.add_person("Robin")
+    pet.face.show(face(cx=0.2), face(cx=0.8))
+    await settle()
+    pet.people.recognized(robin.id, time.time(), 0.8, centre=(0.78, 0.45))
+    for _ in range(3):
+        await settle()
+    there = await pet.people.where_is((0.8, 0.45))
+    elsewhere = await pet.people.where_is((0.2, 0.45))
+    robot = pet.vacuum.state.pose
+    assert math.dist(there, elsewhere) > 30                     # the face matched, not the other one
+    assert math.dist(there, (robot.x, robot.y)) > 50            # in front of the robot, not on it
+    [(x, y, source)] = sightings_of(pet, robin.id)
+    assert (x, y) == pytest.approx(there) and source == "face"
+    seen = pet.db.person(robin.id)
+    assert (seen.last_seen_x, seen.last_seen_y) == pytest.approx(there)
+    assert robin.id in pet.people.present
+
+
+async def test_a_sighting_without_the_head_has_no_place(pet):
+    import requests
+    robin = pet.db.add_person("Robin")
+
+    async def unreachable():
+        raise requests.exceptions.ConnectTimeout("no answer")
+    pet.face.current_faces = unreachable
+    pet.people.recognized(robin.id, time.time(), 0.8, centre=(0.5, 0.45))
+    for _ in range(3):
+        await settle()
+    assert sightings_of(pet, robin.id) == [(None, None, "face")]
+    seen = pet.db.person(robin.id)
+    assert seen.last_seen_at is not None and seen.last_seen_x is None
+    assert robin.id in pet.people.present
+
+
+def test_robot_positions_from_before_are_tagged_and_last_seen_starts_over(tmp_path):
+    path = tmp_path / "pet.db"
+    db = MemoryDB(path)
+    robin = db.add_person("Robin")
+    db._db.execute("UPDATE people SET last_seen_x = 2556, last_seen_y = 2545 WHERE id = ?", (robin.id,))
+    db.add_sighting(robin.id, time.time(), 2556, 2545)
+    db.add_sighting(robin.id, time.time())
+    db._db.execute("PRAGMA user_version = 2")                  # as before the change
+    db.close()
+    db = MemoryDB(path)
+    rows = [tuple(r) for r in db._db.execute("SELECT x, source FROM sightings ORDER BY id")]
+    assert rows == [(2556, "face, robot position"), (None, "face")]
+    assert db.person(robin.id).last_seen_x is None
+
+
 # --- the prompt ----------------------------------------------------------------
 
 async def test_prompt_lists_people_journal_and_facts(pet):

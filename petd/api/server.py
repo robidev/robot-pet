@@ -219,7 +219,7 @@ async def map_markers(pet: "App") -> list:
     if db is None:
         return []
     stored = [(*db.place(name), name, PLACE_COLOUR) for name in db.places()]
-    stored += [(p.last_seen_x, p.last_seen_y, f"{p.name} seen from here", PERSON_COLOUR)
+    stored += [(p.last_seen_x, p.last_seen_y, f"{p.name} seen here", PERSON_COLOUR)
                for p in db.people() if p.last_seen_x is not None]
     markers = []
     for x, y, label, colour in stored:

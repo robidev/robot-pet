@@ -134,7 +134,7 @@ def draw_map(db: sqlite3.Connection, cfg, out: Path) -> None:
 
     from petd.spatial.mapgeo import Grid, align
     markers = [(p["x"], p["y"], p["name"]) for p in db.execute("SELECT * FROM places")]
-    markers += [(p["last_seen_x"], p["last_seen_y"], f"{p['name']} seen from here")
+    markers += [(p["last_seen_x"], p["last_seen_y"], f"{p['name']} seen here")
                 for p in db.execute("SELECT * FROM people WHERE last_seen_x IS NOT NULL")]
     client = ValetudoClient(cfg.vacuum.host, cfg.vacuum.port)
     reference = cfg.path(cfg.motion.reference_map)

@@ -239,7 +239,7 @@ class Recognizer:
                 log.info("recognized person %d (similarity %.2f over %d attempts)",
                          track.person_id, similarity, len(track.vote.attempts))
                 if self.pet.people is not None:
-                    self.pet.people.recognized(track.person_id, now, similarity)
+                    self.pet.people.recognized(track.person_id, now, similarity, track.centre)
             if track.person_id is not None:
                 self._grow(track)
             elif (len(track.samples) >= STRANGER_ATTEMPTS and self.pet.people is not None

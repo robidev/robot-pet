@@ -17,6 +17,9 @@ Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3, E6).
   times that the recognizer couldn't name.
 - With recognition off (no models, or recognition.enabled false) every face
   is unknown, so nobody counts as a stranger and no new faces can be learned.
+- A sighting stores where the person was (spatial/person.py's estimate from
+  the head's current frame and the robot's pose, in the reference map's
+  frame), not where the robot was; nothing when that can't be worked out.
 """
 
 from __future__ import annotations
@@ -61,14 +64,16 @@ class People:
         self._last_stranger_note = float("-inf")
         self._enrolling = asyncio.Lock()
         self._task: Optional[asyncio.Task] = None
+        self._locating: set[asyncio.Task] = set()
 
     async def start(self) -> None:
         sub = self.pet.bus.subscribe(FacesChanged, FacesPresence)
         self._task = asyncio.create_task(self._watch(sub), name="people")
 
     async def close(self) -> None:
-        if self._task:
-            self._task.cancel()
+        for task in [self._task, *self._locating]:
+            if task:
+                task.cancel()
 
     # --- who is here ------------------------------------------------------------
 
@@ -108,16 +113,20 @@ class People:
 
     def _on_faces(self, event: FacesChanged) -> None:
         self.faces_in_view = len(event.faces)
-        if event.faces and not self.present:
-            self._sighting(None, event.t, max(f.confidence for f in event.faces))
+        if event.faces and not self.present and self._sighting_due(None, event.t):
+            self._locate(None, event.t, max(f.confidence for f in event.faces), None, sighting=True)
 
-    def recognized(self, person_id: int, t: float, similarity: float) -> None:
-        """The recognizer named a face in view."""
+    def recognized(self, person_id: int, t: float, similarity: float,
+                   centre: Optional[tuple[float, float]] = None) -> None:
+        """The recognizer named a face in view; `centre` is where it was in the snapshot (0..1)."""
         person = self.db.person(person_id)
         if person is None:
             return                      # forgotten meanwhile
-        self._sighting(person.id, t, similarity)
-        if person.id not in self.present:
+        arriving = person.id not in self.present
+        due = self._sighting_due(person.id, t)
+        if due or arriving:
+            self._locate(person, t, similarity, centre, sighting=due)
+        if arriving:
             self._arrived(person, t)
 
     def _on_nobody(self) -> None:
@@ -135,8 +144,7 @@ class People:
 
     def _arrived(self, person: Person, now: float) -> None:
         away_s = None if person.last_seen_at is None else now - person.last_seen_at
-        x, y = self._where()
-        self.db.mark_seen(person.id, now, x, y)
+        self.db.mark_seen(person.id, now)       # where: _locate(), once it knows
         # A return after a proper absence is an interaction; flickering in and
         # out of view while sitting on the couch is not.
         if away_s is None or away_s > 3600:
@@ -163,20 +171,59 @@ class People:
         self._tell("Someone you don't recognize has been in front of you for a few seconds. "
                    "If you want to know who they are, ask; you can offer to remember their face.")
 
-    def _sighting(self, person_id: Optional[int], t: float, face_conf: float) -> None:
+    def _sighting_due(self, person_id: Optional[int], t: float) -> bool:
         if t - self._last_sighting.get(person_id, float("-inf")) < SIGHTING_EVERY_S:
-            return
+            return False
         self._last_sighting[person_id] = t
-        x, y = self._where()
-        # The robot's own position, until C5 projects the face onto the map.
-        self.db.add_sighting(person_id, t, x, y, pose_conf=None, face_conf=face_conf)
+        return True
 
-    def _where(self) -> tuple[Optional[float], Optional[float]]:
-        """The robot's position in the reference map's frame (spatial/frame.py), if known."""
-        vacuum, frame = self.pet.vacuum, self.pet.frame
-        pose = vacuum.state.pose if vacuum is not None else None
-        spot = frame.to_reference_now(pose.x, pose.y) if pose and frame else None
-        return spot if spot else (None, None)
+    def _locate(self, person: Optional[Person], t: float, face_conf: float,
+                centre: Optional[tuple[float, float]], sighting: bool) -> None:
+        """Works out where the person is (it asks the head), then stores the sighting and their place."""
+        task = asyncio.create_task(self._store_where(person, t, face_conf, centre, sighting),
+                                   name="people-locate")
+        self._locating.add(task)
+        task.add_done_callback(self._locating.discard)
+
+    async def _store_where(self, person: Optional[Person], t: float, face_conf: float,
+                           centre: Optional[tuple[float, float]], sighting: bool) -> None:
+        try:
+            spot = await self.where_is(centre, person.face_z_m if person else None)
+        except Exception:  # noqa: BLE001 - a sighting without a place is still a sighting
+            log.debug("people: couldn't place the face", exc_info=True)
+            spot = None
+        x, y = spot if spot else (None, None)
+        person_id = person.id if person else None
+        if sighting:
+            self.db.add_sighting(person_id, t, x, y, pose_conf=None, face_conf=face_conf)
+        if person_id is not None and spot and self.db.person(person_id) is not None:
+            self.db.set_last_seen_place(person_id, x, y)
+
+    async def where_is(self, centre: Optional[tuple[float, float]] = None,
+                       face_z_m: Optional[float] = None) -> Optional[tuple[float, float]]:
+        """
+        Where a face in view is, in the reference map's frame: the one nearest
+        `centre` (normalized, as in a snapshot), or the biggest. None without
+        the head, the robot's heading, or a match to the reference map.
+        """
+        from ..spatial.person import estimate
+        pet = self.pet
+        pose = pet.vacuum.state.pose if pet.vacuum is not None else None
+        if pet.face is None or pet.frame is None or pose is None or pose.angle is None:
+            return None
+        try:
+            frame = await pet.face.current_faces()
+        except OSError:                 # the head didn't answer
+            return None
+        if not frame.faces:
+            return None
+        if centre is not None:
+            face = min(frame.faces, key=lambda f: (f.cx - centre[0]) ** 2 + (f.cy - centre[1]) ** 2)
+        else:
+            face = max(frame.faces, key=lambda f: f.h)
+        e = estimate(face, frame.pan_deg, frame.tilt_deg, pet.cfg.calibration, pet.cfg.person,
+                     pose, None, face_z_m)
+        return pet.frame.to_reference_now(*e.xy) if e.xy is not None else None
 
     def _thresholds(self) -> list[tuple[int, int]]:
         return [tuple(t) for t in self.cfg.familiarity_thresholds]
@@ -276,7 +323,8 @@ class People:
         recognizer.mark_current(person.id)
 
         now = time.time()
-        self.db.mark_seen(person.id, now, *self._where())
+        self.db.mark_seen(person.id, now)
+        self._locate(self.db.person(person.id), now, 0.0, None, sighting=False)   # the one face in view
         # They're in front of me and we're mid-conversation: no greeting now.
         self.db.mark_greeted(person.id, now)
         self.present[person.id] = self.db.person(person.id)
