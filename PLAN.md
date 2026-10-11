@@ -387,6 +387,28 @@ on-board recognizer, `known_faces_stored: 1` (an old slot) and each face's
 `who` from those slots. **Fixed:** `who` comes from the PC's recognition
 (the nearest recognizer track), and the head's count is gone.
 
+**Called from out of view (20:02, the robot ~35 cm off the dock, Robin
+sitting on the floor):** the brain tried `approach_person`, was told to search
+first, and searched for Robin: one pass, a turn of 117°, a pass, 118°, a
+pass; it passed one face it couldn't name and didn't find him. Asked again,
+it found him after 57 s (two turns), said "There you are." and came over.
+**The approach went wrong:** the look read 4.6 m (sitting on the floor: lower
+than both postures) at a heading 22° off (the sum of four measured turns:
+SLAM said 129, petd 107), the first leg ran into the couch and stopped 108 cm
+short, and the approach gave up. Robin guided it out by voice (turn, move).
+**What the moves showed:** Valetudo's heading after that go_to was 0, the
+truth ~131 (the next straight moves went 178 and 220 on the map); go_to can
+end with a turn on the spot. **The robot's SLAM has the right heading:**
+`/run/shm/SLAM_fprintf.log` (`estimate x y theta`, Valetudo's frame with y
+flipped about 2560) said 135, 178, 220 at those moments. Player has no such
+interface (only `position2d@0`, wheel odometry, F1), and Valetudo ignores the
+file. **Fixed:** `io/slam.py` follows it over SSH (`tail -F`, the same key as
+the WiFi pause; `vacuum.slam_pose`), and the heading and position come from
+it whenever it has them (`spatial/heading.py`; the measured turns stay the
+fallback); a first leg that stops short now looks again from there instead
+of giving up. **Open:** eye height for someone sitting on the floor (~0.8 m)
+isn't one of the postures.
+
 **The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
 the direction of the last stretch of path, so a turn on the spot doesn't
 change it, and reversing flips it 180°; only driving forward sets it right.

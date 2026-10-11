@@ -252,3 +252,53 @@ async def test_senses_name_faces_by_the_pcs_recognition_not_the_heads_slots(pet)
     seen = json.loads((await pet.tools.call("get_senses", {})).text)
     assert [s["who"] for s in seen["sees"]] == ["Robin", "not recognised yet"]
     assert "known_faces_stored" not in seen["head"]
+
+
+# --- the SLAM pose -------------------------------------------------------------------
+
+def test_a_slam_estimate_is_valetudos_frame_and_angle():
+    from petd.io.slam import parse
+    docked = parse("8682.625 estimate 0.008 0.090 -1.581")      # on the dock, 2026-10-11
+    assert (round(docked.x), round(docked.y)) == (2561, 2551)    # Valetudo said (2561, 2550)
+    assert docked.angle == pytest.approx(180.6, abs=0.1)         # away from the dock
+    assert parse("8683.088 lock") is None and parse("1 estimate x y z") is None
+
+
+async def test_the_follower_keeps_the_newest_estimate():
+    from petd.config import VacuumConfig
+    from petd.io.slam import SlamFollower
+    follower = SlamFollower(VacuumConfig())
+    script = "printf '1.0 estimate 0 0 0\\n1.1 pause\\n1.2 estimate 1.0 -0.5 1.5708\\n'"
+    await follower._follow(["sh", "-c", script])
+    pose = follower.pose()
+    assert (round(pose.x), round(pose.y)) == (2660, 2610)
+    assert min(pose.angle, 360 - pose.angle) < 0.1         # facing up the map
+
+
+async def test_the_heading_is_the_slams_when_there_is_one(pet):
+    off_the_dock(pet, angle=220.0)
+    pet.heading.slam = SimpleNamespace(pose=lambda: MapPose(2600.0, 2650.0, 131.0))
+    await pet.motion.turn_by(30)                        # the measured turn is only the fallback
+    assert pet.robot_pose() == MapPose(2600.0, 2650.0, 131.0)
+    pet.heading.slam = SimpleNamespace(pose=lambda: None)   # gone: the turn, from the SLAM's 131
+    assert pet.robot_pose().angle == pytest.approx(131.0 - 30.0, abs=6)
+
+
+async def test_coming_over_looks_again_when_the_first_leg_stops_short(pet):
+    off_the_dock(pet, angle=180.0)
+    await show(pet, face(h=0.07))
+    real_go_to, legs = pet.vacuum.go_to, []
+
+    async def blocked_first(x, y):
+        legs.append((x, y))
+        if len(legs) == 1:                              # the couch: 60 cm short
+            here = pet.vacuum.state.pose
+            dx, dy = x - here.x, y - here.y
+            k = max(0.0, 1 - 60 / math.hypot(dx, dy))
+            return await real_go_to(here.x + dx * k, here.y + dy * k)
+        return await real_go_to(x, y)
+    pet.vacuum.go_to = blocked_first
+    await pet.tools.call("approach_person", {})
+    await finished(pet)
+    assert len(legs) == 2
+    assert "I came over" in pet.told[-1][1], pet.told

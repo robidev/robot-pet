@@ -38,6 +38,15 @@ PAUSE_SCRIPT = "/root/wlanmgr_pause.sh"
 Runner = Callable[[list, float], Awaitable[tuple[int, str]]]
 
 
+def ssh_argv(cfg: "VacuumConfig", command: str) -> list:
+    """`command` run on the robot as root, with the robot's old RSA key (vacuum.ssh_key)."""
+    key = os.path.expanduser(cfg.ssh_key)
+    return ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=2",
+            "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa", "-o", "HostKeyAlgorithms=+ssh-rsa",
+            f"root@{cfg.host}", command]
+
+
 def remote_command(settle_s: float) -> str:
     settle = int(settle_s)
     return (f'up=$(cut -d. -f1 /proc/uptime); '
@@ -91,10 +100,7 @@ class WlanmgrPause:
                 self._attempt = asyncio.create_task(self.pause(), name="wlanmgr-pause-attempt")
 
     def argv(self) -> list:
-        key = os.path.expanduser(self.cfg.ssh_key)
-        return ["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-                "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa", "-o", "HostKeyAlgorithms=+ssh-rsa",
-                f"root@{self.cfg.host}", remote_command(self.cfg.wlanmgr_settle_s)]
+        return ssh_argv(self.cfg, remote_command(self.cfg.wlanmgr_settle_s))
 
     async def pause(self) -> bool:
         if not self.cfg.ssh_key:

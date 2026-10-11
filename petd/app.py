@@ -44,6 +44,7 @@ class App:
         self.dock = None
         self.frame = None
         self.heading = None
+        self.slam = None
         self.motion_task: Optional[asyncio.Task] = None
         self.tools = None
         self.brain = None
@@ -85,7 +86,11 @@ class App:
 
         if self.vacuum is not None:
             from .spatial.heading import Heading
-            self.heading = Heading(self.vacuum, self.bus)
+            if not fake and cfg.vacuum.slam_pose and cfg.vacuum.ssh_key:
+                from .io.slam import SlamFollower
+                self.slam = SlamFollower(cfg.vacuum)
+                self.slam.start()
+            self.heading = Heading(self.vacuum, self.bus, self.slam)
             self.heading.start()
 
         if self.vacuum is not None and cfg.motion.enabled:
@@ -152,7 +157,7 @@ class App:
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
         for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.heading,
-                     self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
+                     self.slam, self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()

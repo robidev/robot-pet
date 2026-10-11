@@ -8,8 +8,9 @@ and it steers the head meanwhile (Expressions.claim).
    where the person is (spatial/person.py), from the robot's pose with its
    heading kept across turns on the spot (spatial/heading.py).
 2. From further than look_again_m + 0.5 m, a go_to to look_again_m short of
-   them first, and a second look from there: far off the estimate is rough
-   (Step 4: 2.5 m read 1.9 m, taken for sitting).
+   them first, and a second look from there, also when that go_to stopped
+   short: far off the estimate is rough (Step 4: 2.5 m read 1.9 m, taken for
+   sitting; Robin on the floor read 4.6 m).
 3. A go_to to the free floor standoff_m in front of them (approach_target:
    moved back toward the robot when that's in or near furniture). go_to
    ends facing the way it drove, so roughly toward them; the head tracks.
@@ -135,7 +136,10 @@ async def approach(pet: "App", person: Optional["Person"]) -> tuple[str, bool]:
             log.info("approach: %.1f m away; first to (%.0f, %.0f), %.1f m short",
                      away_m, *partway, pcfg.look_again_m)
             outcome, ok = await drive(pet, partway, f"the spot a little short of {who}", 2 * arrive_cm)
-            if not ok:
+            # Stopped short (furniture, or a first look that put them too far:
+            # Robin sitting on the floor read 4.6 m, 2026-10-11) is still
+            # closer: look again from there. An error or no start is not.
+            if not ok and not outcome.startswith("stopped"):
                 return f"I couldn't get close to {who}: {outcome}", False
             seen = await look(pet, person)
             robot = _robot_xy(pet)

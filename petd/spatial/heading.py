@@ -1,6 +1,9 @@
 """
 The robot's heading, kept right across turns on the spot (PLAN.md Step 5).
 
+The robot's own SLAM pose (io/slam.py) is the heading whenever there is one.
+Without it (no SSH key, or not yet read), the fallback below:
+
 Valetudo gives the V1 no real heading: it reports the direction of the last
 stretch of path. A turn on the spot doesn't change it, and backing up flips
 it 180°; only driving forward (a go_to) sets it right, and docked it's taken
@@ -32,9 +35,10 @@ VALETUDO_DRIVES = ("moving", "returning", "cleaning", "docked")
 
 
 class Heading:
-    def __init__(self, vacuum: "VacuumAdapter", bus: "EventBus"):
+    def __init__(self, vacuum: "VacuumAdapter", bus: "EventBus", slam=None):
         self.vacuum = vacuum
         self.bus = bus
+        self.slam = slam                        # io/slam.SlamFollower, if any
         self.override: Optional[float] = None
         self._task: Optional[asyncio.Task] = None
 
@@ -53,13 +57,19 @@ class Heading:
                 self.override = None
 
     def angle(self) -> Optional[float]:
+        slam = self.slam.pose() if self.slam is not None else None
+        if slam is not None:
+            return slam.angle
         if self.override is not None:
             return self.override
         pose = self.vacuum.state.pose
         return pose.angle if pose is not None else None
 
     def pose(self) -> Optional["MapPose"]:
-        """Valetudo's pose with this heading."""
+        """The SLAM pose; without it, Valetudo's with this heading."""
+        slam = self.slam.pose() if self.slam is not None else None
+        if slam is not None:
+            return slam
         pose = self.vacuum.state.pose
         if pose is None or self.override is None:
             return pose
