@@ -26,7 +26,7 @@ def seen(cal, robot, person_xy, face_z, pan=None):
     dx, dy = (person_xy[0] - rx) / 100, (person_xy[1] - ry) / 100
     d = math.hypot(dx, dy)
     fx, fy = P.heading_unit(robot.angle, cal)
-    lx, ly = P.heading_unit(robot.angle + 90, cal)            # the robot's left
+    lx, ly = P.heading_unit(robot.angle - 90, cal)            # the robot's left
     bearing = math.degrees(math.atan2(dx * lx + dy * ly, dx * fx + dy * fy))
     elev = math.degrees(math.atan2(face_z - cal.camera_height_m, d))
     if pan is None:                                           # tracking: the face centred
@@ -106,3 +106,12 @@ def test_the_target_is_short_of_them_and_off_the_furniture():
     target, note = P.approach_target(robot, walled, grid, PCFG)
     assert target is None or grid.is_free(*target, PCFG.clearance_cm)
     assert note in ("free", "no free floor") or note.startswith("moved back")
+
+
+def test_left_of_the_robot_is_left_on_the_map():
+    # 2026-10-11: docked facing right on the map (Valetudo 90: x right, y down), a
+    # person 30 deg to its left was drawn below it; left of facing right is up.
+    x, y = P.project((0, 0), 90, 30, 2.0, CalibrationConfig())
+    assert x > 0 and y < 0
+    x, y = P.project((0, 0), 0, 90, 2.0, CalibrationConfig())     # facing up: left is left
+    assert x < 0

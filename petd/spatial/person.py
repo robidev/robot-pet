@@ -117,10 +117,12 @@ def heading_unit(angle_deg: float, cal: CalibrationConfig) -> tuple[float, float
 
 def project(robot_xy: tuple[float, float], robot_angle: float, bearing_left: float, distance_m: float,
             cal: CalibrationConfig) -> tuple[float, float]:
-    """The person's map position (cm). Turning left grows the Valetudo angle (4.1)."""
+    """The person's map position (cm). Valetudo's angle grows clockwise on the map (0 up,
+    90 right), so the robot's left is a smaller angle: on 2026-10-11 a person 30 deg to
+    the left was drawn on the robot's right, Valetudo's map itself matching the room."""
     fx, fy = heading_unit(robot_angle, cal)
     cam = (robot_xy[0] + fx * cal.camera_forward_cm, robot_xy[1] + fy * cal.camera_forward_cm)
-    ux, uy = heading_unit(robot_angle + bearing_left, cal)
+    ux, uy = heading_unit(robot_angle - bearing_left, cal)
     return cam[0] + ux * distance_m * 100, cam[1] + uy * distance_m * 100
 
 

@@ -213,9 +213,11 @@ class CalibrationConfig:
     """
     Measured conventions (PLAN.md 4.1, C3). Map heading: Valetudo's robot
     angle a (degrees) points along (sin a, -cos a) in map cm, i.e.
-    theta = a + map_heading_offset_deg from +x towards +y, and it grows with
-    a counter-clockwise turn, as odometry does (2026-09-22: a +90 turn moved
-    it 45 -> 143, and 20 cm forward then moved the map pose +15/+15 cm).
+    theta = a + map_heading_offset_deg from +x towards +y (2026-09-22: 20 cm
+    forward at 143 moved the map pose +15/+15 cm). It grows clockwise on the
+    map, so a left turn shrinks it (2026-10-11, a person to the robot's left;
+    the 2026-09-22 reading that a left turn grew it came from the V1's
+    path-based heading, which a turn on the spot doesn't change).
     """
     map_heading_offset_deg: float = -90.0
     map_heading_sign: float = 1.0
