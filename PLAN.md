@@ -258,6 +258,19 @@ there: left and right against the room (the 30° left dot was drawn below the
 robot with the robot facing right on the image, so the dashboard's map may be
 mirrored), then right and sitting. To redo after the camera's fix.
 
+**The camera remounted, recalibrated (2026-10-11 afternoon):** at 2 m ahead the
+head tracked at tilt 121 instead of 140, so Step 2's captures again
+(`runtime/calibration/face.jsonl`; the morning's set aside beside it, sitting in
+`face-sitting-refix.jsonl`). The fit: forward pan 76.4 (was 84), level 82.3,
+-1.101 per degree, K_face 0.1708. The fit now takes the face's offset from the
+frame's centre out of the elevation, as petd adds it back (`calibrate_face.py`).
+Through petd's own code: 2.5 m +1%, 1.5 m -6%, 1.0 m +12%, but every 2 m capture
+(ahead, left, right) about -19%, size and tilt both short there; sitting 1.5 m
+-1%, 2 m -13%. Face size is noisier than this morning (K 0.13-0.21 one capture to
+the next, the late sun likely). Bearing: left +27°, right only -23°, and right
+tilts 5° higher than left: **the camera is likely rolled a little** on the
+mount, so the pan axis isn't vertical. Good enough to go on with Step 4.
+
 ### Step 5: it comes to you (build, then hands-on): M3
 
 **Decide first:** approaching Noah is fine (he's 8 and happy to interact;

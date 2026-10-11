@@ -38,6 +38,7 @@ from face_client import FaceApiClient  # noqa: E402
 LOG = ROOT / "runtime" / "calibration" / "face.jsonl"
 # From the config: the head's design may still change it (calibration.camera_height_m).
 from petd.config import load_config  # noqa: E402
+from petd.spatial import person  # noqa: E402
 CAL = load_config().calibration
 CAMERA_HEIGHT_M = CAL.camera_height_m
 PAN_AHEAD = CAL.pan_forward_deg
@@ -174,9 +175,12 @@ def cmd_fit(args) -> None:
     tracked = [e for e in ahead if e.get("fixed_tilt") is None]
     if args.face_height and len(tracked) >= 2:
         ahead = tracked
-        # tilt = level - elevation * scale (scale > 0: lower tilt looks up), with the face
-        # nearly centred by tracking; the residual cy offset is ignored here.
-        elev = [math.degrees(math.atan2(args.face_height - CAMERA_HEIGHT_M, e["distance_m"])) for e in ahead]
+        # tilt = level - elevation * scale (scale > 0: lower tilt looks up), where the
+        # elevation is the camera axis's: the face's, less its offset from the frame's
+        # centre (petd adds that back; ignoring it put 2 m at 1.75, 2026-10-11).
+        vfov = person.vfov_deg(CAL)
+        elev = [math.degrees(math.atan2(args.face_height - CAMERA_HEIGHT_M, e["distance_m"]))
+                - (0.5 - e["cy"]) * vfov for e in ahead]
         tilts = [e["tilt"] for e in ahead]
         n = len(elev)
         mx, my = sum(elev) / n, sum(tilts) / n
@@ -186,7 +190,7 @@ def cmd_fit(args) -> None:
         out["tilt_level_deg"] = round(level, 1)
         out["tilt_deg_per_elevation_deg"] = round(scale, 3)
         for x, y, e in zip(elev, tilts, ahead):
-            print(f"  {e['distance_m']} m: elevation {x:.1f} deg, tilt {y:.1f} (model {level - scale * x:.1f}),"
+            print(f"  {e['distance_m']} m: axis elevation {x:.1f} deg, tilt {y:.1f} (model {level - scale * x:.1f}),"
                   f" cy {e['cy']:.2f}")
     print("\ncalibration:")
     for k, v in out.items():
