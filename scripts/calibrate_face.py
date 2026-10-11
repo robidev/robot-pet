@@ -6,6 +6,8 @@ the head sees?
     .venv/bin/python scripts/calibrate_face.py capture 2.0 [--bearing 45]
     .venv/bin/python scripts/calibrate_face.py hfov                  # stand still at ~2 m
     .venv/bin/python scripts/calibrate_face.py fit --face-height 1.62
+    .venv/bin/python scripts/calibrate_face.py check [--config bluetooth_config.yaml] [FILE]
+    .venv/bin/python scripts/calibrate_face.py look 84,140 84,120       # head held still
 
 `capture` records ~4 s of GET /api/face/current with tracking on (one face,
 centred by the servos) at a measured distance in metres from the camera,
@@ -13,6 +15,10 @@ straight ahead unless --bearing says how many degrees to the robot's left
 (negative: right). `hfov` sweeps the pan servo by hand and watches the face
 move across the frame, which gives the camera's horizontal field of view.
 `fit` turns runtime/calibration/face.jsonl into the `calibration:` values.
+`check` runs petd's own distance and bearing code, with a config's values, on
+captures (face.jsonl, or another such file: a capture with "note": "sitting"
+is checked at the sitting eye height). `look` holds the head at each pan,tilt
+and says where the face sits in the frame, then turns tracking back on.
 
 Conventions from the config's `calibration:` (since the servos were
 remounted reversed, 2026-10-05: pan 75 straight ahead, tilt 90 level, HIGHER
@@ -197,6 +203,46 @@ def cmd_fit(args) -> None:
         print(f"  {k}: {v}")
 
 
+def cmd_check(args) -> None:
+    import dataclasses
+    cfg = load_config(args.config)
+    cal = cfg.calibration
+    pc = cfg.person if args.tilt_weight is None else dataclasses.replace(cfg.person, tilt_weight=args.tilt_weight)
+    print(f"{args.config or 'config.yaml'}: K_face {cal.K_face}, pan forward {cal.pan_forward_deg}, "
+          f"level {cal.tilt_level_deg}, {cal.tilt_deg_per_elevation_deg} per degree; "
+          f"tilt_weight {pc.tilt_weight}, vertical FOV {person.vfov_deg(cal):.1f}")
+    for line in open(args.file or LOG):
+        e = json.loads(line)
+        if e.get("kind") != "capture":
+            continue
+        sitting = e.get("note") == "sitting"
+        el = person.elevation_deg(e["cy"], e["tilt"], cal)
+        b = person.bearing_left_deg(e["cx"], e["pan"], cal)
+        for z in (None, args.sitting_eye if sitting else args.standing_eye):
+            d, by_size, by_tilt, used_z, posture = person.distance(e["h"], el, cal, pc, z)
+            tilt_d = "-" if by_tilt is None else f"{by_tilt:.2f}"
+            print(f"{e['distance_m']:.1f} m {e['bearing_deg']:+4.0f}{' sitting' if sitting else ''}: "
+                  f"bearing {b:+5.1f}  elevation {el:4.1f}  size {by_size:.2f} tilt {tilt_d} -> {d:.2f} m "
+                  f"({100 * (d / e['distance_m'] - 1):+.0f}%) [{posture}, eyes {used_z}]")
+
+
+def cmd_look(args) -> None:
+    c = client(args)
+    try:
+        for pan, tilt in (tuple(map(float, a.split(","))) for a in args.at):
+            c.set_servo(mode="manual", pan_deg=pan, tilt_deg=tilt)
+            time.sleep(2.0)
+            rows = sample(c, 3.0)
+            if not rows:
+                print(f"pan {pan:5.1f} tilt {tilt:5.1f}: no face")
+                continue
+            m = {k: statistics.median(r[k] for r in rows) for k in ("cx", "cy", "h")}
+            print(f"pan {pan:5.1f} tilt {tilt:5.1f}: cx {m['cx']:.3f} cy {m['cy']:.3f} h {m['h']:.3f}"
+                  f" ({len(rows)} frames)")
+    finally:
+        c.set_servo(mode="track")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="192.168.101.40")
@@ -208,6 +254,13 @@ def main() -> None:
     p.set_defaults(fn=cmd_capture)
     p = sub.add_parser("hfov"); p.add_argument("--tilt", type=float, default=TILT_UP_30); p.set_defaults(fn=cmd_hfov)
     p = sub.add_parser("fit"); p.add_argument("--face-height", type=float); p.set_defaults(fn=cmd_fit)
+    p = sub.add_parser("check"); p.add_argument("file", nargs="?")
+    p.add_argument("--config", help="petd's config (default: config.yaml)")
+    p.add_argument("--tilt-weight", type=float, help="instead of the config's person.tilt_weight")
+    p.add_argument("--standing-eye", type=float, default=1.70, help="the person's own eye height (m)")
+    p.add_argument("--sitting-eye", type=float, default=1.25)
+    p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("look"); p.add_argument("at", nargs="+", help="pan,tilt"); p.set_defaults(fn=cmd_look)
     args = parser.parse_args()
     args.fn(args)
 

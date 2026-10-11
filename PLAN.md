@@ -244,7 +244,8 @@ the robot's.
 2 m straight ahead read 1.58 m, 6.9° right, standing, drawn in front of the
 robot, but no target ("no free floor": the map was only the lidar's view from
 the dock, streaky that way); 2 m 30° left read 1.62 m, 26.3° left, target on
-free floor (`runtime/calibration/step4-2026-10-11.jsonl`, map PNGs beside it).
+free floor (`runtime/calibration/step4-2026-10-11.jsonl`, map PNGs beside it;
+recorded since with `scripts/person_log.py`, checked with `calibrate_face.py check`).
 The distances ran short because the head tracked 6-8° higher than in Step 2
 at the same marks: **the camera sags on its mount** (Robin), to be fixed
 before going on. **Then the dot went behind the robot:** Robin drove it
