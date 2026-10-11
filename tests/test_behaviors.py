@@ -1,6 +1,7 @@
 """E4: coming over to someone and looking around for them, with the fakes (PLAN.md Step 5)."""
 
 import asyncio
+import json
 import math
 from dataclasses import replace
 from types import SimpleNamespace
@@ -239,3 +240,15 @@ async def test_stop_while_coming_over(pet):
     await pet.stop_everything("voice")
     assert not pet.moving and pet.brain.expressions.owner is None
     assert ("stop",) in pet.vacuum.commands
+
+
+# --- what the brain is told ----------------------------------------------------------
+
+async def test_senses_name_faces_by_the_pcs_recognition_not_the_heads_slots(pet):
+    from petd.memory.recognition import Track
+    robin = pet.db.add_person("Robin")
+    await show(pet, Face(0, 0.9, 0.4, 0.3, 0.6, 0.6), face(cx=0.85))   # the head says "slot 0"
+    pet.recognizer.tracks = [Track(centre=(0.5, 0.45), first_seen=0.0, person_id=robin.id)]
+    seen = json.loads((await pet.tools.call("get_senses", {})).text)
+    assert [s["who"] for s in seen["sees"]] == ["Robin", "not recognised yet"]
+    assert "known_faces_stored" not in seen["head"]

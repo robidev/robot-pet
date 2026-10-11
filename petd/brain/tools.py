@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
@@ -124,10 +125,23 @@ def build_registry(pet: "App") -> ToolRegistry:
     registry = ToolRegistry(pet.bus)
 
     def _face_name(face) -> Optional[str]:
-        if not face.recognized:
+        """
+        Who the PC's recognition says this face is, by the nearest of its
+        tracks. Not the head's own ids: its on-board recognizer is retired but
+        still matches its old slots, and the brain took "a face I stored
+        without a name" and a count of 1 stored over "sees Robin" (2026-10-11).
+        """
+        recognizer = pet.recognizer
+        if recognizer is None or pet.db is None:
             return None
-        person = pet.db.person_by_slot(face.id) if pet.db is not None else None
-        return person.name if person else f"a face I stored without a name (#{face.id})"
+        track = min(recognizer.tracks, default=None,
+                    key=lambda t: (t.centre[0] - face.cx) ** 2 + (t.centre[1] - face.cy) ** 2)
+        if track is None or math.dist(track.centre, (face.cx, face.cy)) > FACE_TRACK_MATCH:
+            return "not recognised yet"
+        if track.person_id is None:
+            return "someone I don't recognise"
+        person = pet.db.person(track.person_id)
+        return person.name if person is not None else "someone I don't recognise"
 
     def require_face():
         if pet.face is None:
@@ -164,7 +178,7 @@ def build_registry(pet: "App") -> ToolRegistry:
         elif pet.face:
             f = pet.face.state
             out["head"] = {"reachable": f.reachable, "pan_deg": f.pan_deg, "tilt_deg": f.tilt_deg,
-                           "servo_mode": f.servo_mode, "known_faces_stored": f.enrolled}
+                           "servo_mode": f.servo_mode}
             out["sees"] = [
                 {"who": _face_name(face),
                  "where": _describe_position(face.cx, pet.cfg.calibration),
@@ -596,6 +610,9 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
         db.add_fact(text)
         return "noted"
 
+
+# A face in view and a recognition track this far apart (normalized frame) are one face.
+FACE_TRACK_MATCH = 0.2
 
 # look_direction's relative turns: to the robot's left (+1) or right, up (+1) or down.
 LOOK_DIRECTIONS = {"left": (1, 0), "right": (-1, 0), "up": (0, 1), "down": (0, -1)}

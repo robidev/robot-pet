@@ -376,6 +376,17 @@ coherent in different situations and what it says matches what it does.
   go_to or docking); used for every person estimate (`App.robot_pose`).
 - `only_known_people_can_summon` isn't built: anyone may summon it.
 
+**First live "come here" (2026-10-11 19:46, Robin, lamp light, robot docked):**
+the brain called `approach_person()`; one look read ~2.4 m ahead, standing,
+and the `go_to` to 1.0 m in front of Robin arrived ~15 s later ("I came
+over"). Robin wasn't named from the dock (the PC found no face in the
+snapshots at 2.4 m in lamp light, "0 of 0 faces"), but at 19:48:08 as it
+arrived, and every turn said "sees Robin" from then on. **The brain still
+insisted it didn't know his face**: `get_senses` reported the head's retired
+on-board recognizer, `known_faces_stored: 1` (an old slot) and each face's
+`who` from those slots. **Fixed:** `who` comes from the PC's recognition
+(the nearest recognizer track), and the head's count is gone.
+
 **The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
 the direction of the last stretch of path, so a turn on the spot doesn't
 change it, and reversing flips it 180°; only driving forward sets it right.
