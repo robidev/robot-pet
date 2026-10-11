@@ -458,8 +458,6 @@ latency numbers.
 
 ### Step 6: loose ends before M4
 
-- **The face board:** `internal_min_free` fell to 14.8 KB once, unexplained;
-  the ROM's "SHA-256 comparison failed" at every boot.
 - **Idle the servos when they hold still** (Robin, 2026-10-11): a servo can
   be heard trying to move a degree or so and not getting there, warming the
   motor and drawing power for nothing. Idea: after 5 s on the same pose, stop
@@ -653,7 +651,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **A stuck link, not a crash.** The station stayed "connected" while every UDP send failed with ENOMEM (12) and it answered neither ping nor HTTP, for minutes, until reset (10:49, then 11:05). No disconnect event, so the reconnect logic never ran. The ENOMEM means the WiFi driver's 32 dynamic TX buffers were full (Arduino's default, not the sdkconfig's 8 static ones): about 1 s of audio the radio couldn't get out. Internal RAM wasn't short (~139 KB free). **Fix:** 5 s of nothing but failed sends while connected forces a reconnect, 30 s more restarts the board (`wifi.stuck_resets` in `/api/status`); modem sleep is off. Not yet seen in action.
 - **The air got lossy at 10:31 and stayed so.** Audio packets lost at the PC: ~0% a minute before 10:30, then 5-90% most minutes, across petd restarts and flashes; the robot had 7-17 s stalls in the same windows. A scan from the robot (`iw dev wlan0 scan`): the router is on channel 1, 20 MHz, alone there; neighbours are on 10-11 at -71 to -83 dBm. So the cause is in the house (traffic on the same router, a microwave, Bluetooth): **open**, as is whether it's still happening.
 - **Snapshots have their own server now (port 81, port 80 redirects).** An httpd serves one request at a time: a snapshot crawling over the lossy link held up `/api/status` and `/ws`, which is most of what petd logged as "face didn't answer". Status now answers in 20-40 ms during back-to-back snapshots. Measured first: snapshots don't strain the network stack (29 KB JPEG in PSRAM, lwIP prefers PSRAM, at most 4 segments in flight, internal RAM's low point unchanged). **The MJPEG `/stream` is gone:** nothing used it, and it held whichever server it ran on for as long as anyone watched.
-- `internal_min_free` was ~20 KB after boot, and once 14.8 KB with no snapshot from petd: unexplained, worth watching. Each boot prints "SHA-256 comparison failed… Attempting to boot anyway" from the ROM; boots fine.
+- `internal_min_free` was ~20 KB after boot, and once 14.8 KB with no snapshot from petd: unexplained, worth watching. Each boot prints "SHA-256 comparison failed… Attempting to boot anyway" from the ROM; boots fine. (Taken off Step 6 on 2026-10-11, Robin: no trouble since; the first thing to check if the face reboots or freezes again.)
 - `runtime/face-serial/`: the serial captures (`capture.py`, PC timestamps, survives resets) and `netwatch.sh` (pings the face, robot and router every 0.5 s, logs misses).
 
 **The robot's WiFi: a scan every 30 s (2026-09-27).** A PC watcher and one on the robot (both pinging the face every 0.5 s for 30 min) found the robot deaf for ~1 s **every 30 s exactly**: 59 of its misses, 55 of them at the same moments the PC couldn't reach the robot, none to the router. `iw event` shows why: a 14-channel scan every 30.1 s, 1.45 s each (the 1.3-1.4 s stalls of 2026-09-22). `wpa_supplicant` has no `bgscan`; the scans are **`wlanmgr`'s** roaming (`wlanmgr_scan_router`: "Found candidate router", for a stronger AP with the same SSID; there is only one here).
