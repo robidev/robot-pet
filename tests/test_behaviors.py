@@ -228,6 +228,14 @@ async def test_coming_over_needs_someone_in_view(pet):
     assert result.is_error and "too low to leave" in result.text
 
 
+async def test_a_detection_flicker_doesnt_hide_the_person(pet):
+    off_the_dock(pet)
+    await show(pet, face(h=0.22))
+    await show(pet)                                     # one empty frame, within the debounce
+    result = await pet.tools.call("approach_person", {})
+    assert not result.is_error, result.text
+
+
 async def test_stop_while_coming_over(pet):
     off_the_dock(pet)
     pet.vacuum.go_to_s = 5.0                            # a long drive

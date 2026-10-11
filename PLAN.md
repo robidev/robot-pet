@@ -412,6 +412,16 @@ fallback); a first leg that stops short now looks again from there instead
 of giving up. Someone **on the floor** (eye height 0.8 m) is a third posture
 now (`person.postures`).
 
+**Called from out of view again (20:47, Robin on the floor, with the SLAM
+heading and the floor posture):** "please find me and come here": the search
+found a face after 37 s (a turn first), the look read ~1.9 m, 10° right
+("sitting or a child", not "on the floor": close enough at that range), and
+the `go_to` to free floor 1.0 m in front arrived 13 s later: "Here." Two rough
+edges, fixed: the 6 s wait for a name ran out (Robin was named 10 s after the
+find, so the brain heard "someone I don't recognise": now 10 s), and the
+brain's first `approach_person()` was refused, "can't see anyone", in a
+detection flicker (it now goes by the debounced presence).
+
 **The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
 the direction of the last stretch of path, so a turn on the spot doesn't
 change it, and reversing flips it 180°; only driving forward sets it right.

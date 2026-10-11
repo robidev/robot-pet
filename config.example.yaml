@@ -30,7 +30,7 @@ face:
   search_pan_max_deg: 180.0
   search_speed_deg_s: 20.0     # ...this slowly...
   search_sweeps: 2             # ...to one end and back this often on the dock, and stops on a face
-  search_naming_wait_s: 6.0    # a face found: this long for recognition to name it
+  search_naming_wait_s: 10.0   # a face found: this long for recognition to name it
   search_skip_deg: 12.0        # by name: a face this close to one checked is that one again
   search_body_turns: 2         # off the dock: then turn the body...
   search_turn_deg: 120.0       # ...this far, and pan once more, this often

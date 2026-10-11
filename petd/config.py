@@ -110,7 +110,7 @@ class FaceConfig:
     search_pan_max_deg: float = 180.0
     search_speed_deg_s: float = 20.0
     search_sweeps: int = 2
-    search_naming_wait_s: float = 6.0
+    search_naming_wait_s: float = 10.0       # Robin at 1.9 m: named 10 s after the find (2026-10-11)
     search_skip_deg: float = 12.0
     search_body_turns: int = 2
     search_turn_deg: float = 120.0

@@ -500,10 +500,10 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
                 raise ToolError(f"I don't know anyone called {name}")
             if pet.people is None or person.id not in pet.people.present:
                 raise ToolError(f"I can't see {person.name} right now; search_for_person first")
-        else:
-            frame = pet.face.last_faces
-            if frame is None or not frame.faces:
-                raise ToolError("I can't see anyone to come to; search_for_person first")
+        elif not pet.face.presence.present:
+            # Debounced: the last pushed frame alone was empty in a detection
+            # flicker, with Robin's face tracked (2026-10-11).
+            raise ToolError("I can't see anyone to come to; search_for_person first")
         check_can_move(leaving_dock_ok=True)
         whom = person.name if person is not None else "them"
         pet.start_motion(approach(pet, person), f"come over to {whom}", success_is_event=True)
