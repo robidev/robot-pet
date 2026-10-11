@@ -271,6 +271,26 @@ the next, the late sun likely). Bearing: left +27°, right only -23°, and right
 tilts 5° higher than left: **the camera is likely rolled a little** on the
 mount, so the pan axis isn't vertical. Good enough to go on with Step 4.
 
+**Step 4 again, after the remount (2026-10-11 afternoon, docked at heading 84):**
+the dashboard's map was mirrored left/right against the room (Robin): petd
+took a left turn to grow Valetudo's angle, but it grows clockwise on the map.
+**Fixed** (`person.project`). Then, at 2 m (`step4-2026-10-11.jsonl`, `refix`
+labels; map PNGs `step4-refix-*`), every target on free floor:
+
+| Where | Read | The dot from where they stood |
+|---|---|---|
+| ahead, standing | 1.64 m, 0.5° left | ~36 cm |
+| 30° left, standing | 1.56 m, 31.1° left | ~44 cm |
+| 30° right, standing | 1.66 m, 21.7° right | ~43 cm |
+| ahead, sitting | 1.73 m, 2.0° left, sitting | ~28 cm |
+
+Sitting is within the ~30 cm; standing misses by 6-14 cm, because 2 m reads
+1.6 m (as in the captures; 1.5 and 2.5 m were within 1-6%) and, on the right,
+the camera's roll costs 8°. Short is the safe side: the robot would stop ~1.4 m
+away instead of 1 m. **Not done yet:** a 1.5 m and a 2.5 m check, to see whether
+2 m is the odd one out; the roll fixed on the mount, or a bearing correction;
+sightings stored with the person's position.
+
 ### Step 5: it comes to you (build, then hands-on): M3
 
 **Decide first:** approaching Noah is fine (he's 8 and happy to interact;
