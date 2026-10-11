@@ -19,14 +19,14 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 |---|---|
 | **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
 | **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far; their speech goes to the biggest face since 2026-10-05, not yet tried (Step 1). |
-| **M3: It comes to you** | **Not built.** Driving, docking, places, "stop" during a trip, and a person's place on the map work (Steps 2-4); the approach and the search (E4) are the missing piece (Step 5). |
+| **M3: It comes to you** | **Works** (2026-10-11): "come here" in view, and called from out of view it searches (turning its body), finds you and comes over; "stop" halts it. Heading and position from the robot's SLAM. |
 | **M4: It feels alive** | **Not built** (Step 7). |
 
 | Area | Works (tried on the hardware) | Built, not yet tried live | Not built |
 |---|---|---|---|
 | Hearing, speaking, brain | STT with the name gate and echo gate, piper to the robot, Claude CLI with tools over MCP, tags, prompt, journal | the speaker's audio with `wlanmgr` paused | barge-in (phase 2); D5 against a real ollama |
 | Faces | head detection to 2.7 m and tracking; recognition on the PC, enrollment, growth, rechecks after a face leaves view and every 10 s; kept crops and `fix_faces.py`; swaps, leaving and coming back, two named at once (2026-10-05) | a glance turning the head back (2026-10-05); the 10 s recheck in a long conversation; petd re-applying tracking after a face reboot | unknown-face clustering (later) |
-| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11); C5: a person's position and approach target (Step 4), sightings stored at the person's place | `is_free`/`march_back`; E4: approach and search, the heading across turns (with the fakes, 2026-10-11) | |
+| Body and map | `turn`/`move`, docking via a point in front of the dock, `go_to` with arrival checked by distance; C1: places kept in a reference map's frame, across a 93° map turn (2026-10-11); C5: a person's position and approach target (Step 4), sightings stored at the person's place; E4: approach and search (2026-10-11); heading and position from the robot's SLAM | `is_free`/`march_back` | |
 | Behaviour | converse, reflexes, greetings, stranger notes | | E5: drives, sleep, explore, low battery; F2: games |
 | Ops | per-run logs within ~300 MB, `start.sh` with checks, the dashboard (people, map, events, tools), `show_memory.py`, the face board's serial and ping loggers | `start.sh start` against the real hardware | |
 | Network | face: snapshots on their own server, stuck-link recovery flashed; robot: `wlanmgr` paused by petd at its start and after every reboot (2026-10-05), which removes its 30 s dropouts | the face's stuck-link recovery (not triggered yet) | |
@@ -334,7 +334,7 @@ last-seen places (`runtime/pet.db.before-sighting-places-2026-10-11`). The
 dashboard says "seen here". Live: Robin, named twice in front of the docked
 robot, stored ~1.5 m ahead both times, 5 cm apart.
 
-### Step 5: it comes to you (build, then hands-on): M3
+### Step 5: it comes to you (build, then hands-on): M3, done 2026-10-11
 
 **Decided:** approaching Noah is fine (he's 8 and happy to interact;
 Robin, 2026-09-27). **Robin, 2026-10-11:** no speed cap: the approach is a
@@ -447,6 +447,14 @@ dot as if it were exact.
 
 **Done when** those work three times in a row. Latency again (Step 1's numbers
 against these).
+
+**Done (2026-10-11, Robin's call):** "come here" in view (19:47) and called
+from out of view (20:47, after the fixes above) both worked; "stop" halted a
+`move` 0.12 s after the word (20:55; a stop during a go_to pauses it, shown
+on the kitchen trip, Step 3 findings). Not done, by Robin's call: a person
+behind the couch (the goal outside the room and the couch run showed how an
+unreachable goal ends: stopped short, said so), the three in a row, and the
+latency numbers.
 
 ### Step 6: loose ends before M4
 
@@ -1353,7 +1361,7 @@ definition of each step.
 | **B: foundations and I/O** | **Done and verified on hardware.** Since: a **log folder per run** (`runtime/logs/<run>/`: `petd.log` at DEBUG, `run.yaml` with the config, `events.jsonl` with every bus event); short network stalls no longer count as offline (`offline_after_s`); face-board reboots and WiFi drops are logged with their reason. |
 | **C: spatial** | **C4 done on hardware** (`spatial/motion.py`: `turn`/`move`, `remember_place`/`go_to_place`); a straight forward `move` leaves the dock. **Docking** (`spatial/dock.py`): `go_home` drives to a point 60 cm in front of the dock first, then docks, retrying once; verified live. **C1 built and wired in, not yet tried live** (2026-09-27): `spatial/mapgeo.py` (decode, `is_free`, `march_back`, `align`), `spatial/frame.py` (places kept in a reference map's frame); a `go_to` counts as arrived only within 20 cm of its goal. **Open:** C1's live check (Next up, item 1), **the face half of C3** (worth retrying now detection reaches 2.7 m), **C5**. C2 shrank to nothing (see 4.1). |
 | **D: brain** | **D1–D4 done and verified on hardware.** The claude process now starts before anyone speaks (`brain.prestart`). D5 (ollama) written, never run against a real ollama. |
-| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: built with the fakes 2026-10-11; the live checks in Step 5 give M3), **E5** (drives, sleep, explore: M4). |
+| **E: behaviors and memory** | **E1–E3 done** (E3's faces now come from E6). **E6a** measured in lamp light (`runtime/e6a/`); **E6b** verified live with Robin and Claudia, in daylight, and a guest (2026-09-27); a swap within the presence debounce kept the old name, fixed with rechecks (after a face leaves view, and every 10 s). **E6c** done: crops kept, shown (`show_memory.py faces`) and correctable (`scripts/fix_faces.py`). **Open:** E6's remaining live checks (Next up, item 0), **E4** (approach, search, the arbiter: done 2026-10-11, M3), **E5** (drives, sleep, explore: M4). |
 | **F: personality** | **F1 done.** F2 (games) open. |
 | **G: polish and ops** | **G4 done** (turn timings on the bus, `scripts/latency.py`); real numbers still to take from a live run. G1–G3 open. Also `scripts/show_memory.py` (what the pet stored, places on the map). |
 
