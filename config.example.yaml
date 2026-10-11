@@ -25,7 +25,7 @@ face:
   look_turn_deg: 30.0          # "look left/right" turns the head this far from where it looks
   look_tilt_deg: 15.0          # "look up/down", likewise
   look_hold_s: 20.0            # a look asked for holds this long, then back to tracking
-  search_tilt_deg: 110.0       # "look for me": the head pans at this tilt...
+  search_tilt_deg: 126.0       # "look for me": the head pans at this tilt (~20 deg up since 2026-10-11)...
   search_pan_min_deg: 0.0      # ...between these...
   search_pan_max_deg: 180.0
   search_speed_deg_s: 20.0     # ...this slowly...
@@ -103,19 +103,19 @@ log:
 calibration:                   # measured conventions (PLAN.md 4.1) and the camera (C5)
   map_heading_offset_deg: -90.0
   map_heading_sign: 1.0
-  # The camera (C5; scripts/calibrate_face.py fit prints these). Starting values
-  # until Step 2 measures them; then set camera_calibrated: true.
-  camera_calibrated: false
-  camera_height_m: 0.20        # the lens above the floor: change it with the head's design
+  # The camera (C5; scripts/calibrate_face.py fit prints these), values
+  # measured in Step 2 (2026-10-11, runtime/calibration/face.jsonl).
+  camera_calibrated: true      # Step 2 measured them, 2026-10-11
+  camera_height_m: 0.30        # the lens above the floor, measured 2026-10-11: change it with the head's design
   camera_forward_cm: 0.0       # the lens ahead of the robot's map position
-  K_face: 0.245                # distance (m) x face box height (fraction of the frame)
-  hfov_deg: 60.0
-  pan_forward_deg: 75.0        # straight ahead, the firmware's centre (2026-10-05)
+  K_face: 0.1739               # distance (m) x face box height (fraction of the frame); fitted 2026-10-11
+  hfov_deg: 83.7               # measured 2026-10-11 (pan sweep at 2 m)
+  pan_forward_deg: 84.0        # straight ahead, measured 2026-10-11 (the firmware's centre is 75)
   # Signs measured 2026-10-05, after the servos were remounted reversed.
   pan_sign: -1.0               # +1: pan grows to the robot's left
   cx_per_pan_deg_sign: -1.0    # +1: a face moves right in the image as pan grows
-  tilt_level_deg: 90.0         # level (2026-10-05)
-  tilt_deg_per_elevation_deg: -1.0   # +1: lower tilt looks up
+  tilt_level_deg: 102.9        # level, fitted 2026-10-11 after the tilt screw was refastened (was 90)
+  tilt_deg_per_elevation_deg: -1.14   # fitted 2026-10-11; +1: lower tilt looks up
 
 person:                        # where a person is (spatial/person.py, C5)
   standoff_m: 1.0              # stop this far in front of them

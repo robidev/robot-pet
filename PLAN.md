@@ -179,6 +179,41 @@ the target stay).
 From the microphone data: a gain before truncation or a fixed gain with a
 limiter, if quiet speech is the weak point (Findings, the microphone, 2026-09-27).
 
+**Done (2026-10-11, the face part; Robin, eyes at 1.70 m standing, 1.25 m
+sitting; lens 0.30 m above the floor, measured):** a first run was spoiled
+twice, by the powerbank switching the servos' port off (the head didn't move:
+"hfov" 6667°; servos on a wall charger since) and by a loose tilt screw (the
+head tilted 18-28° more at the sides than straight ahead); both set aside in
+`runtime/calibration/`. Refastening the screw shifted tilt by ~18°: tilt 120
+now looks ~15° lower than before. The redo (`runtime/calibration/face.jsonl`,
+sitting in `face-sitting.jsonl`) gave `K_face` 0.1739, `hfov_deg` 83.7,
+`pan_forward_deg` 84 (not 75), `tilt_level_deg` 102.9 (not 90),
+`tilt_deg_per_elevation_deg` -1.14, signs as before; pasted into all four
+configs with `camera_calibrated: true`, and `face.search_tilt_deg` 110 -> 126
+(still ~20° up). petd's `person.distance` on the captures, eye height unknown
+(known):
+
+| where | bearing | distance |
+|---|---|---|
+| 1.0 m ahead, standing | -4.3° | 1.06 m +6% (1.11 +11%) |
+| 1.5 m ahead, standing | -2.9° | 1.41 m -6% (1.49 -1%) |
+| 2.0 m ahead, standing | -1.3° | 1.84 m -8% (1.95 -2%) |
+| 2.5 m ahead, standing | -1.7° | 2.13 m -15% (2.25 -10%) |
+| 2 m, 30° left, standing | +30.6° | 1.65 m -17% (1.75 -13%) |
+| 2 m, 30° right, standing | -32.5° | 1.68 m -16% (1.78 -11%) |
+| 1.5 m ahead, sitting | -1.1° | 1.42 m -5% (1.46 -2%), "sitting" |
+| 2.0 m ahead, sitting | -1.8° | 1.77 m -11% (1.82 -9%), "sitting" |
+
+Size alone fails close up (1 m reads 1.32: the face seen from below looks
+shorter); size and tilt together hold. Distance x box height / cos(elevation)
+was 0.222-0.227 straight ahead, so `K_face * cos(elevation) / h` would make
+size alone good to ~7% there, if the far end's -10-15% matters. Both side
+marks read ~1.75 m by size and by tilt alike: the marks may be ~25 cm short of
+2 m. The tilt didn't strain at 165 (1 m); **the mount's stops since the screw
+was refastened are unmeasured** (`face.tilt_min_deg` 67 was the down stop
+before: it may now hit). The microphone half (4.) is left: the Jabra was the
+mic that day.
+
 ### Step 3: places on the map (hands-on, ~20 min)
 
 C1's live check; the approach in Step 5 drives with `go_to` and checks targets
