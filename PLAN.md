@@ -336,9 +336,13 @@ robot, stored ~1.5 m ahead both times, 5 cm apart.
 
 ### Step 5: it comes to you (build, then hands-on): M3
 
-**Decide first:** approaching Noah is fine (he's 8 and happy to interact;
-Robin, 2026-09-27). Still to decide: speed caps and the standoff near him, and
-who may summon it (`only_known_people_can_summon`).
+**Decided:** approaching Noah is fine (he's 8 and happy to interact;
+Robin, 2026-09-27). **Robin, 2026-10-11:** no speed cap: the approach is a
+`go_to` all the way, at the robot's own navigation speed (a go_to can't be
+slowed on the V1; it still stops short and looks again, as below). The
+standoff is 1.0 m for everyone, Noah included (`person.standoff_m`). Anyone
+may summon it, guests too (`only_known_people_can_summon: false`): after
+finding an unknown face it asks "Did you call me?".
 
 **Build E4** with the fakes: `approach_person` (stop-and-look, 4.2),
 `search_for_person` (the pan sweep, then body turns), the "come here" shortcut
@@ -1381,7 +1385,7 @@ Concurrency, state machines, and where the "feel" lives.
 
 ## 9. Open questions
 
-- **Noah near the robot:** approaching him is fine; speed caps, the standoff near him and who may summon it are to decide before Step 5.
+- **Noah near the robot:** approaching him is fine; no speed cap (a `go_to` all the way), the standoff 1.0 m as for everyone, and anyone may summon it, guests too (Robin, 2026-10-11).
 - **Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.
 - **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
 - **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. Both changed with the remount of 2026-10-05: higher tilt looks up, 67 to 180; tilt 90 is still level and pan 75 is straight ahead (Findings). The first list's other answers are under "Decisions".
