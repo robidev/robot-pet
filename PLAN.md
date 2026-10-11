@@ -721,6 +721,25 @@ and prompt; on AC, the i7-1185G7 (4 cores, 8 threads).
   do differently. "GLaDOS" said by piper is mostly "Gee Laddas" / "G-Lados"
   either way.
 
+**Bigger models and Parakeet (2026-10-11, `runtime/whisper-bench/`,
+`run-2026-10-11-engines.log`):** the same eight lines and setup, on AC, 4
+threads, utterance + 5 s; medians per utterance, two rounds each.
+- **base.en 292 ms:** "GLaDOS" never right ("GilaDOS", "Gee Laddas"), "Stop"
+  right, "Who is in *a* room", "*The* only after everyone...".
+- **small.en 913 ms (3.1x):** "GLaDOS" right every time with the prompt,
+  "the room" right, but "Stop." heard as "SOP" every time.
+- **large-v3-turbo-q5_0: unusable on this CPU.** ~9.6 s on battery, and
+  broken on short lines ("A", "hello chi la da s"); the full window took 32 s.
+  Removed.
+- **Parakeet TDT 0.6B v3 (q8_0, 669 MB) 384 ms:** short commands 120-330 ms,
+  as fast as base.en; the 8.5 s line 1.07 s. Every line word-perfect except
+  the name ("Gladas", "Gila Das"), "Stop." included. It takes no prompt; the
+  name matcher catches "Gladas", not "Gila Das". `--engine parakeet` in
+  udp-stream, `stt.engine` in petd, each engine with its own model.
+- Piper says the name "Gee Laddas" itself, so the name results say little
+  about a real voice. Parakeet reports no `no_speech_prob` (0); its mean token
+  probability goes out as `token_p`, not used for filtering yet.
+
 **The brain's thinking (2026-09-28, `runtime/llm-bench/`):** Haiku 4.5 through
 the CLI began every reply with 1.4-2.8 s of extended thinking; the API itself
 answered in 0.5-1.1 s. With `MAX_THINKING_TOKENS=0` the first word came at

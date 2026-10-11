@@ -42,7 +42,9 @@ stt:
   echo_cancelled: false        # true: the mic doesn't hear the pet (a speakerphone): no echo filtering
   binary: stt/udp-stream/whisper-udp-stream
   cwd: stt/udp-stream
-  model: models/ggml-base.en.bin
+  engine: whisper              # whisper | parakeet: which of the two models below transcribes
+  model: models/ggml-base.en.bin   # whisper's; or models/ggml-small.en.bin: hears names better, ~0.65 s slower
+  parakeet_model: models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin   # NVIDIA Parakeet TDT; takes no prompt
   vad_model: models/ggml-silero-v6.2.0.bin
   threads: 4
   extra_args: []           # e.g. ["--vad-threshold", "0.4", "--min-silence-ms", "600"]

@@ -80,7 +80,7 @@ def checks(cfg: Config) -> list[tuple[str, str, str]]:
     if cfg.stt.enabled:
         binary = path(cfg.stt.binary)
         check("speech recognizer", binary.exists(), f"{binary} missing: build it (stt/README.md)")
-        for model in (cfg.stt.model, cfg.stt.vad_model):
+        for model in (cfg.stt.engine_model(), cfg.stt.vad_model):
             model_path = path(cfg.stt.cwd) / model
             check(f"model {Path(model).name}", model_path.exists(),
                   f"{model_path} missing: download it (stt/README.md)")

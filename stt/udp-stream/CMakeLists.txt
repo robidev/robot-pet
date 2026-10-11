@@ -2,6 +2,7 @@ add_executable(whisper-udp-stream udp-stream.cpp)
 
 target_link_libraries(whisper-udp-stream PRIVATE
     whisper
+    parakeet
     common
 )
 

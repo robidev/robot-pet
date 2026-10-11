@@ -129,7 +129,13 @@ class SttConfig:
     # whisper's UDP port for source: local. Not face.audio_port: the face
     # keeps streaming there and the two would interleave.
     local_port: int = 5002
-    model: str = "models/ggml-base.en.bin"
+    # The recognizer: whisper (primed with stt.prompt) or parakeet (NVIDIA's
+    # Parakeet TDT: as fast as base.en on short commands and more accurate,
+    # but takes no prompt; runtime/parakeet-bench, 2026-10-11). Each keeps
+    # its own model, so switching is this one line.
+    engine: str = "whisper"                   # whisper | parakeet
+    model: str = "models/ggml-base.en.bin"    # whisper's
+    parakeet_model: str = "models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin"
     vad_model: str = "models/ggml-silero-v6.2.0.bin"
     threads: int = 4                          # faster than 8 on this PC's 4 cores (PLAN.md)
     extra_args: list = field(default_factory=list)
@@ -152,6 +158,10 @@ class SttConfig:
     ignore_phrases: list = field(default_factory=lambda: [
         "you", "thank you", "thanks for watching", "thank you for watching", "bye", "okay",
     ])
+
+    def engine_model(self) -> str:
+        """The model of the engine in use."""
+        return self.parakeet_model if self.engine == "parakeet" else self.model
 
 
 @dataclass

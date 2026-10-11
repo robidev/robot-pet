@@ -1,7 +1,9 @@
 # stt: whisper-udp-stream
 
 Speech-to-text for the face's UDP microphone stream (16 kHz, 16-bit mono PCM,
-`LGA1` packets on port 5000), using whisper.cpp with Silero VAD.
+`LGA1` packets on port 5000), using whisper.cpp with Silero VAD. It
+transcribes with Whisper or with NVIDIA's Parakeet TDT (`--engine`, petd's
+`stt.engine`), both from the same whisper.cpp checkout.
 The source is `udp-stream/udp-stream.cpp`. It is built as an example inside a
 whisper.cpp checkout, which is **not** in this repository (`stt/whisper.cpp/`
 is git-ignored).
@@ -25,6 +27,11 @@ cp whisper.cpp/build/bin/whisper-udp-stream udp-stream/
 mkdir -p udp-stream/models
 sh whisper.cpp/models/download-ggml-model.sh base.en udp-stream/models
 sh whisper.cpp/models/download-vad-model.sh silero-v6.2.0 udp-stream/models
+# optional: whisper small.en (hears names better, ~3x slower than base.en)
+sh whisper.cpp/models/download-ggml-model.sh small.en udp-stream/models
+# optional: parakeet (669 MB; sha256 4d64e9e9...27fd600e)
+curl -fL -o udp-stream/models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin \
+  https://huggingface.co/ggml-org/parakeet-GGUF/resolve/main/ggml-parakeet-tdt-0.6b-v3-q8_0.bin
 ```
 
 The binary is linked against the shared libraries in `whisper.cpp/build`, so
@@ -41,8 +48,17 @@ petd starts and supervises it in `--json` mode (see `petd/io/stt.py`). To run it
 cd stt/udp-stream
 ./whisper-udp-stream --port 5000 --threads 4 \
   --model models/ggml-base.en.bin --vad-model models/ggml-silero-v6.2.0.bin [--json]
+
+# or with parakeet
+./whisper-udp-stream --port 5000 --threads 4 --engine parakeet \
+  --model models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin --vad-model models/ggml-silero-v6.2.0.bin [--json]
 ```
 
+Parakeet takes no `--prompt` (it is ignored) and has no `--audio-ctx-pad-ms`
+(its encoder takes the utterance as it is).
+
 `--json` writes one object per line to stdout: `ready`, `speech_start`,
-`speech_end`, `text` (with `t_start_utc`, `t_end_utc`, `no_speech_prob`) and
-`stopped`. Times are Unix epoch seconds.
+`speech_end`, `text` (with `t_start_utc`, `t_end_utc`, `no_speech_prob`,
+`token_p` and `transcribe_ms`) and `stopped`. `no_speech_prob` is whisper's
+(0 from parakeet); `token_p` is parakeet's mean token probability (-1 from
+whisper). Times are Unix epoch seconds.

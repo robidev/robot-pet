@@ -1,4 +1,5 @@
 #include "common.h"
+#include "parakeet.h"
 #include "whisper.h"
 #include <array>
 #include <arpa/inet.h>
@@ -211,7 +212,11 @@ struct Params {
     int port = 5000;
     int threads = 8;
 
-    std::string whisper_model = "models/ggml-base.en.bin";
+    // Which recognizer transcribes: whisper, or NVIDIA's Parakeet TDT
+    // (parakeet.h in the same whisper.cpp checkout). --model is that
+    // engine's model. The VAD is whisper.cpp's Silero either way.
+    std::string engine = "whisper";
+    std::string model = "models/ggml-base.en.bin";
     std::string vad_model = "models/ggml-silero-v6.2.0.bin";
 
     float vad_threshold = 0.3f;
@@ -302,9 +307,10 @@ Usage:
 
 Options:
   --port N                 UDP port [5000]
-  --threads N              Whisper/VAD threads [8]
+  --threads N              Recognizer/VAD threads [8]
 
-  --model FILE             Whisper model
+  --engine NAME            whisper or parakeet [whisper]
+  --model FILE             The engine's model
                            [models/ggml-base.en.bin]
 
   --vad-model FILE         Silero VAD model
@@ -319,7 +325,7 @@ Options:
   --max-speech-s N         Maximum utterance length [30]
   --audio-ctx-pad-ms N     Encode the utterance plus N ms instead of
                            whisper's whole 30 s window; -1 = the
-                           whole window [5000]
+                           whole window; whisper only [5000]
 
   --gpu                    Enable GPU
   --verbose                Show whisper.cpp/VAD internal logs
@@ -327,7 +333,8 @@ Options:
   --log-levels             Log RMS/peak/clipping stats for captured
                            audio, to help tune microphone gain [off]
   --prompt TEXT            Initial prompt, to bias whisper toward words it
-                           would otherwise mishear (e.g. a name) [none]
+                           would otherwise mishear (e.g. a name); parakeet
+                           has none and ignores it [none]
   --json                   Machine-readable output: one JSON object per
                            line on stdout (ready, speech_start,
                            speech_end, text, stopped); banners go to
@@ -367,8 +374,15 @@ static bool parse_args(int argc, char ** argv, Params & params) {
             params.port = std::stoi(require_value("--port"));
         } else if (arg == "--threads") {
             params.threads = std::stoi(require_value("--threads"));
+        } else if (arg == "--engine") {
+            params.engine = require_value("--engine");
+            if (params.engine != "whisper" && params.engine != "parakeet") {
+                std::fprintf(stderr, "--engine must be whisper or parakeet, not %s\n",
+                             params.engine.c_str());
+                return false;
+            }
         } else if (arg == "--model") {
-            params.whisper_model = require_value("--model");
+            params.model = require_value("--model");
         } else if (arg == "--vad-model") {
             params.vad_model = require_value("--vad-model");
         } else if (arg == "--vad-threshold") {
@@ -410,7 +424,7 @@ static bool parse_args(int argc, char ** argv, Params & params) {
 }
 
 // -----------------------------------------------------------------------------
-// Whisper transcription
+// Transcription: whisper or parakeet
 // -----------------------------------------------------------------------------
 
 // One finished utterance, with the wall-clock span of the speech it holds
@@ -425,6 +439,29 @@ struct Utterance {
 class Transcriber {
 public:
     bool init(const Params & params) {
+        params_ = &params;
+
+        if (params.engine == "parakeet") {
+            struct parakeet_context_params pparams =
+                parakeet_context_default_params();
+
+            pparams.use_gpu = params.use_gpu;
+
+            pctx_ = parakeet_init_from_file_with_params(
+                params.model.c_str(), pparams);
+
+            if (pctx_ == nullptr) {
+                std::fprintf(
+                    stderr,
+                    "Failed to initialize Parakeet model: %s\n",
+                    params.model.c_str());
+
+                return false;
+            }
+
+            return true;
+        }
+
         struct whisper_context_params cparams =
             whisper_context_default_params();
 
@@ -432,19 +469,17 @@ public:
         cparams.flash_attn = true;
 
         ctx_ = whisper_init_from_file_with_params(
-            params.whisper_model.c_str(),
+            params.model.c_str(),
             cparams);
 
         if (ctx_ == nullptr) {
             std::fprintf(
                 stderr,
                 "Failed to initialize Whisper model: %s\n",
-                params.whisper_model.c_str());
+                params.model.c_str());
 
             return false;
         }
-
-        params_ = &params;
 
         return true;
     }
@@ -452,6 +487,9 @@ public:
     ~Transcriber() {
         if (ctx_) {
             whisper_free(ctx_);
+        }
+        if (pctx_) {
+            parakeet_free(pctx_);
         }
     }
 
@@ -464,6 +502,117 @@ public:
 
         const auto started = std::chrono::steady_clock::now();
 
+        std::string text;
+
+        // Highest per-segment no-speech probability (whisper): a cheap
+        // signal for consumers to reject transcripts hallucinated from
+        // noise. Parakeet has no such thing and reports 0; its mean token
+        // probability goes out as token_p instead (-1 for whisper).
+        float no_speech_prob = 0.0f;
+        float token_p = -1.0f;
+
+        const bool ok = pctx_
+            ? run_parakeet(audio, text, token_p)
+            : run_whisper(audio, text, no_speech_prob);
+
+        if (!ok) {
+            return;
+        }
+
+        // Trim whitespace.
+        while (!text.empty() &&
+               std::isspace(static_cast<unsigned char>(text.front()))) {
+            text.erase(text.begin());
+        }
+
+        while (!text.empty() &&
+               std::isspace(static_cast<unsigned char>(text.back()))) {
+            text.pop_back();
+        }
+
+        if (g_json_output) {
+            // Emitted even when empty, so the consumer knows the utterance
+            // it saw start/end has been fully resolved.
+            const double transcribe_ms =
+                std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - started).count();
+
+            char fields[192];
+            std::snprintf(
+                fields, sizeof(fields),
+                "\"t_start_utc\":%.3f,\"t_end_utc\":%.3f,"
+                "\"no_speech_prob\":%.3f,\"token_p\":%.3f,"
+                "\"transcribe_ms\":%.0f",
+                utterance.t_start_utc, utterance.t_end_utc,
+                no_speech_prob, token_p, transcribe_ms);
+
+            emit_json_line(
+                std::string("{\"type\":\"text\",\"text\":\"") +
+                json_escape(text) + "\"," + fields + "}");
+        } else if (!text.empty()) {
+            std::lock_guard<std::mutex> lock(g_stdout_mutex);
+            std::printf("\n[YOU] %s\n", text.c_str());
+            std::fflush(stdout);
+        }
+    }
+
+private:
+    bool run_parakeet(const std::vector<float> & audio,
+                      std::string & text, float & token_p) {
+        std::fprintf(
+            stderr,
+            "\n[STT] Transcribing %.2f seconds (parakeet)...\n",
+            static_cast<double>(audio.size()) / SAMPLE_RATE);
+
+        // Its encoder takes the utterance as it is, no fixed window to pad
+        // or trim, and no_context (the default) starts each one afresh.
+        parakeet_full_params pparams =
+            parakeet_full_default_params(PARAKEET_SAMPLING_GREEDY);
+
+        pparams.n_threads = params_->threads;
+
+        const int result = parakeet_full(
+            pctx_,
+            pparams,
+            audio.data(),
+            static_cast<int>(audio.size()));
+
+        if (result != 0) {
+            std::fprintf(
+                stderr,
+                "[STT] parakeet_full() failed: %d\n",
+                result);
+
+            return false;
+        }
+
+        double p_sum = 0.0;
+        int n_tokens = 0;
+
+        const int n_segments = parakeet_full_n_segments(pctx_);
+
+        for (int i = 0; i < n_segments; ++i) {
+            const char * segment =
+                parakeet_full_get_segment_text(pctx_, i);
+
+            if (segment) {
+                text += segment;
+            }
+
+            const int n = parakeet_full_n_tokens(pctx_, i);
+            for (int j = 0; j < n; ++j) {
+                p_sum += parakeet_full_get_token_p(pctx_, i, j);
+            }
+            n_tokens += n;
+        }
+
+        token_p = n_tokens ? static_cast<float>(p_sum / n_tokens) : 0.0f;
+
+        return true;
+    }
+
+    bool run_whisper(const std::vector<float> & audio,
+                     std::string & text, float & no_speech_prob) {
         // The encoder runs over a 30 s window whatever the utterance's
         // length, and that was most of the time: ~950 ms for 0.8 s of speech
         // or 8.5 s (2026-09-28). Its audio context is that window
@@ -525,16 +674,10 @@ public:
                 "[STT] whisper_full() failed: %d\n",
                 result);
 
-            return;
+            return false;
         }
 
         const int n_segments = whisper_full_n_segments(ctx_);
-
-        std::string text;
-
-        // Highest per-segment no-speech probability: a cheap signal for
-        // consumers to reject transcripts hallucinated from noise.
-        float no_speech_prob = 0.0f;
 
         for (int i = 0; i < n_segments; ++i) {
             const char * segment =
@@ -549,51 +692,18 @@ public:
                 whisper_full_get_segment_no_speech_prob(ctx_, i));
         }
 
-        // Trim whitespace.
-        while (!text.empty() &&
-               std::isspace(static_cast<unsigned char>(text.front()))) {
-            text.erase(text.begin());
-        }
-
-        while (!text.empty() &&
-               std::isspace(static_cast<unsigned char>(text.back()))) {
-            text.pop_back();
-        }
-
-        if (g_json_output) {
-            // Emitted even when empty, so the consumer knows the utterance
-            // it saw start/end has been fully resolved.
-            const double transcribe_ms =
-                std::chrono::duration<double, std::milli>(
-                    std::chrono::steady_clock::now() - started).count();
-
-            char fields[160];
-            std::snprintf(
-                fields, sizeof(fields),
-                "\"t_start_utc\":%.3f,\"t_end_utc\":%.3f,"
-                "\"no_speech_prob\":%.3f,\"transcribe_ms\":%.0f",
-                utterance.t_start_utc, utterance.t_end_utc,
-                no_speech_prob, transcribe_ms);
-
-            emit_json_line(
-                std::string("{\"type\":\"text\",\"text\":\"") +
-                json_escape(text) + "\"," + fields + "}");
-        } else if (!text.empty()) {
-            std::lock_guard<std::mutex> lock(g_stdout_mutex);
-            std::printf("\n[YOU] %s\n", text.c_str());
-            std::fflush(stdout);
-        }
+        return true;
     }
 
-private:
     whisper_context * ctx_ = nullptr;
+    parakeet_context * pctx_ = nullptr;
     const Params * params_ = nullptr;
 };
 
 // -----------------------------------------------------------------------------
 // Background transcription worker
 //
-// whisper_full() is not guaranteed to run faster than real time, so it must
+// Transcription is not guaranteed to run faster than real time, so it must
 // not block the UDP receive loop. Finished utterances are handed off to a
 // dedicated worker thread that transcribes them one at a time while the
 // main thread keeps draining the socket.
@@ -1093,6 +1203,7 @@ int main(int argc, char ** argv) {
 
     if (!params.verbose) {
         whisper_log_set(cb_log_disable, nullptr);
+        parakeet_log_set(cb_log_disable, nullptr);
     }
 
     ggml_backend_load_all();
@@ -1164,10 +1275,18 @@ int main(int argc, char ** argv) {
     std::fprintf(
         banner,
         "Models:\n"
-        "  Whisper: %s\n"
+        "  %-8s %s\n"
         "  VAD:     %s\n\n",
-        params.whisper_model.c_str(),
+        params.engine == "parakeet" ? "Parakeet:" : "Whisper:",
+        params.model.c_str(),
         params.vad_model.c_str());
+
+    if (params.engine == "parakeet" && !params.prompt.empty()) {
+        std::fprintf(
+            banner,
+            "Prompt ignored: parakeet takes none (\"%s\")\n\n",
+            params.prompt.c_str());
+    }
 
     if (g_json_output) {
         char line[64];

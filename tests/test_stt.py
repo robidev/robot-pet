@@ -132,3 +132,24 @@ def test_whisper_listens_where_the_audio_comes_from():
     cfg.stt.source = "jabra"
     with pytest.raises(ConfigError, match="stt.source"):
         SttAdapter(cfg, EventBus())
+
+
+def arg(stt, name):
+    argv = stt.process.argv
+    return argv[argv.index(name) + 1] if name in argv else None
+
+
+def test_the_engine_switches_with_its_own_model():
+    cfg = Config()
+    whisper = SttAdapter(cfg, EventBus())
+    assert arg(whisper, "--engine") == "whisper"
+    assert arg(whisper, "--model") == cfg.stt.model
+    assert arg(whisper, "--prompt") == cfg.pet.name
+    cfg.stt.engine = "parakeet"
+    parakeet = SttAdapter(cfg, EventBus())
+    assert arg(parakeet, "--engine") == "parakeet"
+    assert arg(parakeet, "--model") == cfg.stt.parakeet_model
+    assert arg(parakeet, "--prompt") is None          # it takes none
+    cfg.stt.engine = "moonshine"
+    with pytest.raises(ConfigError, match="stt.engine"):
+        SttAdapter(cfg, EventBus())

@@ -1,6 +1,6 @@
 """
 Speech-to-text: supervises whisper-udp-stream in --json mode and turns its
-output into bus events.
+output into bus events. It transcribes with whisper or parakeet (stt.engine).
 
 Filtering happens here, before anything reaches the brain:
 - echo (unless stt.echo_cancelled: the mic doesn't hear the pet at all): most of the utterance overlaps the pet's own playback (the mic is on
@@ -112,14 +112,19 @@ class SttAdapter:
         c = cfg.stt
         if c.source not in ("face", "local"):
             raise ConfigError(f"stt.source must be face or local, not {c.source!r}")
+        if c.engine not in ("whisper", "parakeet"):
+            raise ConfigError(f"stt.engine must be whisper or parakeet, not {c.engine!r}")
         port = c.local_port if c.source == "local" else cfg.face.audio_port
         self.mic = LocalMic(c.local_device, port, bus) if c.source == "local" else None
         argv = [
             str(cfg.path(c.binary)), "--json",
             "--port", str(port),
             "--threads", str(c.threads),
-            "--model", c.model, "--vad-model", c.vad_model,
-            "--prompt", c.prompt if c.prompt is not None else cfg.pet.name,
+            "--engine", c.engine,
+            "--model", c.engine_model(), "--vad-model", c.vad_model,
+            # parakeet takes no prompt
+            *(["--prompt", c.prompt if c.prompt is not None else cfg.pet.name]
+              if c.engine == "whisper" else []),
             *[str(a) for a in c.extra_args],
         ]
         self.process = ManagedProcess(
