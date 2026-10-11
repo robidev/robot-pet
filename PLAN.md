@@ -364,6 +364,11 @@ against these).
 
   To check: a few minutes' talk with the TV on, counting the TV lines that get
   through.
+- **petd's stop hung** (2026-10-11 17:11): it logged "petd stopped", then the
+  process stayed 30 s until systemd killed it (`Result: timeout`); nothing was
+  left running. The face and the robot had dropped out for 10-16 s a few
+  minutes before; something still waiting on one of them (a thread on a
+  slow HTTP call?) is the first guess. The 14:30 stop was clean.
 
 Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
 started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
