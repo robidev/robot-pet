@@ -264,15 +264,36 @@ def test_a_slam_estimate_is_valetudos_frame_and_angle():
     assert parse("8683.088 lock") is None and parse("1 estimate x y z") is None
 
 
-async def test_the_follower_keeps_the_newest_estimate():
+async def test_the_poller_asks_the_robot_and_starts_its_responder_when_refused():
     from petd.config import VacuumConfig
-    from petd.io.slam import SlamFollower
-    follower = SlamFollower(VacuumConfig())
-    script = "printf '1.0 estimate 0 0 0\\n1.1 pause\\n1.2 estimate 1.0 -0.5 1.5708\\n'"
-    await follower._follow(["sh", "-c", script])
-    pose = follower.pose()
+    from petd.io.slam import SlamPoller
+    answers = ["8000.1 estimate 1.0 -0.5 1.5708\n"]
+
+    async def handle(reader, writer):
+        writer.write(answers[0].encode())
+        await writer.drain()
+        writer.close()
+    server = await asyncio.start_server(handle, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    started = []
+
+    async def run(argv, timeout_s):
+        started.append(argv[-1])
+        return 0, "running"
+    poller = SlamPoller(VacuumConfig(host="127.0.0.1", slam_port=port, ssh_key="~/key"), run)
+    await poller.poll()
+    pose = poller.pose()
     assert (round(pose.x), round(pose.y)) == (2660, 2610)
-    assert min(pose.angle, 360 - pose.angle) < 0.1         # facing up the map
+    assert min(pose.angle, 360 - pose.angle) < 0.1                   # facing up the map
+    answers[0] = ""                                                  # nothing new in the log
+    await poller.poll()
+    assert poller.pose() == pose and not started
+    server.close()
+    await server.wait_closed()
+    await poller.poll()                                              # refused: start it
+    await poller.poll()                                              # not again at once
+    assert len(started) == 1 and f"TCP-LISTEN:{port}" in started[0]
+    assert poller.pose() == pose                                     # the last pose kept
 
 
 async def test_the_heading_is_the_slams_when_there_is_one(pet):

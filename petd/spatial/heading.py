@@ -2,7 +2,7 @@
 The robot's heading, kept right across turns on the spot (PLAN.md Step 5).
 
 The robot's own SLAM pose (io/slam.py) is the heading whenever there is one.
-Without it (no SSH key, or not yet read), the fallback below:
+Without it (the robot's responder not up, or not yet asked), the fallback below:
 
 Valetudo gives the V1 no real heading: it reports the direction of the last
 stretch of path. A turn on the spot doesn't change it, and backing up flips
@@ -38,7 +38,7 @@ class Heading:
     def __init__(self, vacuum: "VacuumAdapter", bus: "EventBus", slam=None):
         self.vacuum = vacuum
         self.bus = bus
-        self.slam = slam                        # io/slam.SlamFollower, if any
+        self.slam = slam                        # io/slam.SlamPoller, if any
         self.override: Optional[float] = None
         self._task: Optional[asyncio.Task] = None
 

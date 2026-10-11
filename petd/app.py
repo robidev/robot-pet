@@ -86,9 +86,9 @@ class App:
 
         if self.vacuum is not None:
             from .spatial.heading import Heading
-            if not fake and cfg.vacuum.slam_pose and cfg.vacuum.ssh_key:
-                from .io.slam import SlamFollower
-                self.slam = SlamFollower(cfg.vacuum)
+            if not fake and cfg.vacuum.slam_pose:
+                from .io.slam import SlamPoller
+                self.slam = SlamPoller(cfg.vacuum)
                 self.slam.start()
             self.heading = Heading(self.vacuum, self.bus, self.slam)
             self.heading.start()

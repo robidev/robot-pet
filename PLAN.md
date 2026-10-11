@@ -402,9 +402,12 @@ end with a turn on the spot. **The robot's SLAM has the right heading:**
 `/run/shm/SLAM_fprintf.log` (`estimate x y theta`, Valetudo's frame with y
 flipped about 2560) said 135, 178, 220 at those moments. Player has no such
 interface (only `position2d@0`, wheel odometry, F1), and Valetudo ignores the
-file. **Fixed:** `io/slam.py` follows it over SSH (`tail -F`, the same key as
-the WiFi pause; `vacuum.slam_pose`), and the heading and position come from
-it whenever it has them (`spatial/heading.py`; the measured turns stay the
+file. **Fixed:** `io/slam.py` asks a socat on the robot (port 6002, like the
+speaker's) for the newest `estimate` line every 0.5 s (~40 ms an answer);
+petd starts the socat over SSH when the port refuses (after a reboot), so
+nothing in the boot path changes and nothing on the robot keeps state
+(Robin's call, over a long-lived `tail -F` over SSH). The heading and
+position come from it whenever it has them (`spatial/heading.py`; the measured turns stay the
 fallback); a first leg that stops short now looks again from there instead
 of giving up. **Open:** eye height for someone sitting on the floor (~0.8 m)
 isn't one of the postures.

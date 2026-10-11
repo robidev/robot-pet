@@ -56,9 +56,13 @@ class VacuumConfig:
     pause_wlanmgr: bool = True
     ssh_key: str = ""
     wlanmgr_settle_s: float = 120.0           # after a boot, the WiFi up this long before pausing
-    # The robot's own SLAM pose, heading included, read live from its log
-    # over SSH (io/slam.py); Valetudo's heading is only the last bit of path.
+    # The robot's own SLAM pose, heading included (io/slam.py): a socat on
+    # the robot answers slam_port with the newest line of its SLAM log, asked
+    # every slam_poll_s; petd starts it over SSH (ssh_key) when it isn't up.
+    # Valetudo's heading is only the direction of the last bit of path.
     slam_pose: bool = True
+    slam_port: int = 6002
+    slam_poll_s: float = 0.5
 
 
 @dataclass
