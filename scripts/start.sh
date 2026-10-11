@@ -3,7 +3,8 @@
 #
 #   scripts/start.sh [run] [petd args]   in this terminal; Ctrl-C stops it (the default)
 #   scripts/start.sh start [petd args]    in the background, as the systemd user unit "petd"
-#   scripts/start.sh stop | restart | status
+#   scripts/start.sh restart [petd args]  stop, then start with these (e.g. --config ...)
+#   scripts/start.sh stop | status
 #   scripts/start.sh log                  follow the current run's petd.log
 #   scripts/start.sh check                the checks only
 #   scripts/start.sh install | uninstall  start petd whenever WSL starts (README.md: Starting with WSL)
@@ -81,8 +82,9 @@ case "$cmd" in
         if running; then systemctl --user stop "$UNIT"; echo "petd stopped"; else echo "petd is not running"; fi
         ;;
     restart)
+        shift || true
         "$0" stop
-        "$0" start
+        "$0" start "$@"
         ;;
     status)
         need_systemd

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import math
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from ..events import VacuumStateChanged
 log = logging.getLogger(__name__)
 
 MOVING_STATUSES = ("moving", "manual_control", "cleaning", "returning")
+DOCKED_MIN_CM = 5.0     # docked, the robot's centre is ~20 cm from the dock's point
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,25 @@ def parse_state(map_json: Optional[dict], attributes: Optional[list]) -> dict:
                 out["pose"] = MapPose(points[0], points[1], (entity.get("metaData") or {}).get("angle"))
             elif entity.get("type") == "charger_location":
                 out["charger"] = MapPose(points[0], points[1])
+    pose, charger = out.get("pose"), out.get("charger")
+    if out.get("status") == "docked" and pose is not None and charger is not None:
+        away = angle_away_from(charger, pose)
+        if away is not None:
+            out["pose"] = MapPose(pose.x, pose.y, away)
     return out
+
+
+def angle_away_from(charger: MapPose, pose: MapPose) -> Optional[float]:
+    """
+    A docked robot's heading: straight away from its dock. The V1's map has no
+    heading, so Valetudo takes the direction of the last stretch of path, and
+    the robot backs onto the dock: docked, that points into the dock, 180°
+    off (2026-10-11). None when the two points are too close to tell.
+    """
+    dx, dy = pose.x - charger.x, pose.y - charger.y
+    if math.hypot(dx, dy) < DOCKED_MIN_CM:
+        return None
+    return math.degrees(math.atan2(dx, -dy)) % 360       # Valetudo: (sin a, -cos a)
 
 
 def log_changes(old: VacuumState, new: VacuumState, changed: tuple) -> None:

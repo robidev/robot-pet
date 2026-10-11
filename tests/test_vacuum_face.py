@@ -2,6 +2,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from petd.bus import EventBus
 from petd.config import FaceConfig
 from petd.events import FacesPresence, VacuumStateChanged
@@ -17,9 +19,27 @@ def test_parse_state_from_real_robot_fixture():
     state = VacuumState(reachable=True, **parse_state(map_json, attrs))
     assert state.status == "docked" and state.docked and not state.moving
     assert state.battery_level == 100
-    assert state.pose == MapPose(2560, 2549, 342)
+    # Valetudo said 342, into the dock (its heading is the last bit of path,
+    # and the robot backs on); docked, it faces straight away from the dock.
+    assert state.pose == MapPose(2560, 2549, 180)
     assert state.charger == MapPose(2560, 2530)
     assert state.pixel_size == 5
+
+
+def test_docked_heading_is_away_from_the_dock():
+    def parse(status, robot, angle, charger):
+        map_json = {"pixelSize": 5, "entities": [
+            {"type": "robot_position", "points": list(robot), "metaData": {"angle": angle}},
+            {"type": "charger_location", "points": list(charger)}]}
+        return parse_state(map_json, [{"__class": "StatusStateAttribute", "value": status}])["pose"]
+
+    # 2026-10-11: docked against the wall at -x, facing the room; Valetudo said 259.
+    assert parse("docked", (2561, 2559), 259, (2540, 2560)).angle == pytest.approx(87.3, abs=0.1)
+    assert parse("docked", (2540, 2580), 0, (2540, 2560)).angle == pytest.approx(180)
+    assert parse("docked", (2520, 2560), 90, (2540, 2560)).angle == pytest.approx(270)
+    # Off the dock, or too close to the dock's point to tell: Valetudo's own.
+    assert parse("idle", (2561, 2559), 259, (2540, 2560)).angle == 259
+    assert parse("docked", (2541, 2561), 259, (2540, 2560)).angle == 259
 
 
 def test_changed_fields_ignores_timestamp():

@@ -240,6 +240,24 @@ Sitting and standing, left and right. **Done when** the target lands within ~30 
 of where it should. Also: sightings stored with the person's position instead of
 the robot's.
 
+**Started (2026-10-11, Robin; robot on its dock, the floor marks of Step 2):**
+2 m straight ahead read 1.58 m, 6.9° right, standing, drawn in front of the
+robot, but no target ("no free floor": the map was only the lidar's view from
+the dock, streaky that way); 2 m 30° left read 1.62 m, 26.3° left, target on
+free floor (`runtime/calibration/step4-2026-10-11.jsonl`, map PNGs beside it).
+The distances ran short because the head tracked 6-8° higher than in Step 2
+at the same marks: **the camera sags on its mount** (Robin), to be fixed
+before going on. **Then the dot went behind the robot:** Robin drove it
+around and it redocked, and Valetudo's heading said 259, into the wall. The
+V1's map has no heading; Valetudo takes the direction of the last stretch of
+path (`RoborockMapParser.js`, the fallback for robots before gen3), and the
+robot backs onto its dock, so docked it points into the dock (the test
+fixture's 342 too). **Fixed:** docked, petd takes the heading as straight
+away from the dock (`vacuum.angle_away_from`): 87° there. Still to check
+there: left and right against the room (the 30° left dot was drawn below the
+robot with the robot facing right on the image, so the dashboard's map may be
+mirrored), then right and sitting. To redo after the camera's fix.
+
 ### Step 5: it comes to you (build, then hands-on): M3
 
 **Decide first:** approaching Noah is fine (he's 8 and happy to interact;
@@ -249,6 +267,14 @@ who may summon it (`only_known_people_can_summon`).
 **Build E4** with the fakes: `approach_person` (stop-and-look, 4.2),
 `search_for_person` (the pan sweep, then body turns), the "come here" shortcut
 before the LLM, and the arbiter's ownership of motors, head and eye.
+
+**The heading after a turn (2026-10-11):** Valetudo's heading for the V1 is
+the direction of the last stretch of path, so a turn on the spot doesn't
+change it, and reversing flips it 180°; only driving forward sets it right.
+"Come here" turns toward the person and then places them, so E4 needs its own
+heading: the last one known good (driving forward, or docked: away from the
+dock) carried on by the odometry's yaw (`spatial/odometry.py`, which streams
+while manual control is armed), not Valetudo's.
 
 **Hands-on:**
 - From 3 m, "Come here, GLaDOS": it drives to ~1 m in front of you and faces you.
