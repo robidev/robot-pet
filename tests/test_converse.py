@@ -27,6 +27,17 @@ def test_the_name_however_whisper_spells_it(text):
     assert [w for w in rest if w != "hey"] == ["what", "time", "is", "it"]
 
 
+@pytest.mark.parametrize("text,said", [
+    ("Hey, Gladys come here", "Hey, GLaDOS come here"),
+    ("hey glad os, what time is it", "hey GLaDOS, what time is it"),
+    ("Gladis? What time is it", "GLaDOS? What time is it"),
+    ("OkGLaDOS, what time is it", "GLaDOS, what time is it"),
+    ("I'd gladly do it, Gladys.", "I'd gladly do it, GLaDOS."),
+    ("the DOS prompt", "the DOS prompt")])
+def test_the_brain_reads_the_name_spelled_right(text, said):
+    assert NameMatcher("GLaDOS", Config().converse.wake_words).named(text, "GLaDOS") == said
+
+
 @pytest.mark.parametrize("text", [
     "I'd gladly do it", "a glass of water", "the gladiolus", "what time is it",
     "the DOS prompt", "those kudos"])
@@ -116,7 +127,7 @@ async def test_only_speech_meant_for_the_pet_reaches_the_brain(pet):
     assert (await asyncio.wait_for(pet.dropped.get(), 1)).reason == "not addressed"
 
     await hear(pet, "Gladys, did you feed the cat?")
-    assert pet.brain.told[-1][0] == "Gladys, did you feed the cat?"
+    assert pet.brain.told[-1][0] == "GLaDOS, did you feed the cat?"   # the name as written, not as whisper spelled it
 
     # Addressed once, the conversation stays open for a while...
     await hear(pet, "and the fish?")
@@ -217,7 +228,7 @@ async def test_driving_noise_is_ignored_unless_named(pet):
     await hear(pet, "brrrm rattle")
     assert pet.brain.told == []
     await hear(pet, "Gladys, where are you going?")
-    assert pet.brain.told[-1][0] == "Gladys, where are you going?"
+    assert pet.brain.told[-1][0] == "GLaDOS, where are you going?"
 
 
 async def test_a_late_echo_is_not_a_conversation(pet):

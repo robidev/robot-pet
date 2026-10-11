@@ -478,6 +478,14 @@ latency numbers.
   feeds Whisper's prompt and the name matcher; the personality and voice
   (`memory/*.md`, piper) would need rewording. Candidates can be tried first
   with piper-spoken lines through Whisper, as on 2026-09-22.
+  **2026-10-11 (Robin): keep the name; it's mostly mishearing, not
+  mispronouncing.** "Gladys" already passed the name gate (`wake_words`), but
+  the brain got it verbatim and corrected Robin ("it's GLaDOS. Three
+  syllables."). Now the brain reads every spelling the gate takes as the name
+  as "GLaDOS" (`NameMatcher.named`), and `memory/body.md` says how it's said
+  (like Gladys, ending in -dos as in DOS: two syllables) and that a garbled
+  word is its hearing, never to correct anyone's pronunciation. Still open:
+  misses the gate doesn't take at all ("Class").
 - **A room mic and a TV** (2026-10-11, the Jabra over Bluetooth, the TV on
   across the room): Whisper made stock lines of the TV's speech and music
   ("We are going to be a little bit older / more / better", ~15 times in 8

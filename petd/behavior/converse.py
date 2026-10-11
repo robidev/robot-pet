@@ -112,6 +112,32 @@ class NameMatcher:
                 i += 1
         return found, rest
 
+    def named(self, text: str, name: str) -> str:
+        """
+        The transcript with every spelling of the name written `name`, the
+        rest as it was. The brain read "Gladys" as the person's mistake and
+        corrected them ("it's GLaDOS. Three syllables."), when it was
+        whisper's spelling (2026-10-11).
+        """
+        tokens = text.split()
+        out: list[str] = []
+        i = 0
+        while i < len(tokens):
+            raw = tokens[i].strip(string.punctuation)
+            word = normalize(raw)
+            if i + 1 < len(tokens):
+                second = normalize(tokens[i + 1].strip(string.punctuation))
+                if word and second and (f"{word} {second}" in self.phrases or self._close(word + second)):
+                    out.append(_lead(tokens[i]) + name + _trail(tokens[i + 1]))
+                    i += 2
+                    continue
+            if word and (word in self.phrases or self._close(word) or self._marked(raw)):
+                out.append(_lead(tokens[i]) + name + _trail(tokens[i]))
+            else:
+                out.append(tokens[i])
+            i += 1
+        return " ".join(out)
+
     def _close(self, word: str) -> bool:
         # One edit only: two lets in "gladly" and "glass".
         return len(word) >= 5 and edit_distance(word, self.name) <= 1
@@ -121,6 +147,14 @@ class NameMatcher:
             return True
         return (self.tail is not None and len(raw) > len(self.tail)
                 and raw.endswith(self.tail))
+
+
+def _lead(token: str) -> str:
+    return token[:len(token) - len(token.lstrip(string.punctuation))]
+
+
+def _trail(token: str) -> str:
+    return token[len(token.rstrip(string.punctuation)):]
 
 
 def match_reflex(words: list[str]) -> Optional[str]:
@@ -208,9 +242,11 @@ class Listener:
             return   # HeardDropped("echo...") still gets its barge-in check
 
         addressed, words = self.names.split(event.text)
+        # What the brain reads: the name as it's written, however whisper spelled it.
+        said = self.names.named(event.text, self.pet.cfg.pet.name) if addressed else event.text
         reflex = match_reflex(words)
         if reflex in ALWAYS:
-            await self.reflex(reflex, event.text)
+            await self.reflex(reflex, said)
             return
         # Said over the pet's voice, which this mic doesn't hear: someone
         # answering it or cutting in.
@@ -221,7 +257,7 @@ class Listener:
             barged = barge_in(event.text, "")
             if barged:
                 log.warning("barge-in %r -> %s", event.text, barged)
-                await self.reflex(barged, event.text)
+                await self.reflex(barged, said)
                 return
 
         if self.cfg.ignore_while_driving and self._driving() and not addressed:
@@ -231,12 +267,12 @@ class Listener:
         self.window_until = event.t + self.cfg.window_s
 
         if reflex is not None:
-            await self.reflex(reflex, event.text)
+            await self.reflex(reflex, said)
             return
         brain = self.pet.brain
         if brain is not None:
             person = self.pet.people.speaker() if self.pet.people else None
-            brain.tell(event.text, kind="heard", speaker=person.name if person else None)
+            brain.tell(said, kind="heard", speaker=person.name if person else None)
 
     def _driving(self) -> bool:
         """
