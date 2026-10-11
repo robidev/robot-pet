@@ -87,11 +87,16 @@ Finishes M2 and gives the first real latency numbers.
   Looking for a named person, past the others, belongs to
   `search_for_person` (Step 5). The brain also refused a third "look for me"
   in two minutes ("This is the third time... Where exactly are you?").
-- **A conversation of a few minutes** with someone sitting and sometimes
+- ~~**A conversation of a few minutes**~~ with someone sitting and sometimes
   turned away: does the 10 s recheck take their name away too often?
   (`recognition.recheck_every_s`) **Partly (2026-10-05):** Claudia talked
   ~2.5 min (19:25:18-19:27:55) and was named in every turn, rechecks scoring
   0.48-0.74; Noah held his for 1.7 min. Whether she turned away isn't known.
+  **Skipped (2026-10-11, Robin's call):** robust enough; every 10 s recheck
+  that day named the right person again (0.50-0.74), and a face turned away
+  isn't detected, so its name drops and comes back as in "leaving and coming
+  back". The cost seen is the ~2-3 s "someone says" after a recheck with two
+  in view (Two at once).
 - ~~**Noah again with a step back**~~ **Done (2026-10-11):** "remember my
   face, I'm Noah" (typed on the dashboard) was first refused, as he had a
   face; asked again, the brain retook it (`insist`): 5 close (172-179 px), 4 a
@@ -125,7 +130,11 @@ Finishes M2 and gives the first real latency numbers.
   off to look for Noah, so it stayed off after; nothing turns it back on).
 
 **Done when** all of the above hold, and `show_memory.py faces` shows every
-stored fingerprint under the right person. **Then, from the step's data:**
+stored fingerprint under the right person. **Checked 2026-10-11:** Claudia
+30, Noah 25, Robin 30 (11 of his from before crops were kept, so not
+checkable by eye), none under the wrong person; a few poor ones (Claudia's
+255 green and blurred, Noah's 267-268 nearly black, 246/249 blocky).
+**Then, from the step's data:**
 `grow_sim` (0.55 kept a hand-over-the-chin look; ~0.65?) and
 `unknown_sim`/`accept_sim`/`margin` against the day's scores. (Rechecks keep
 only telling crops since 2026-09-27, so the kept attempts reach back further.)
