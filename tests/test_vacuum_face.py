@@ -113,3 +113,21 @@ async def test_a_missed_poll_or_two_is_not_offline():
     assert not (await vacuum.refresh()).reachable          # silent too long: offline
     vacuum._fetch = lambda: answer
     assert (await vacuum.refresh()).reachable
+
+
+@pytest.mark.parametrize("status, sent", [
+    ("moving", "pause"),          # a go_to: the V1 ignores stop there (2026-10-11)
+    ("returning", "pause"),       # docking: paused, a new go_to or dock still works
+    ("cleaning", "stop"),
+    ("idle", None),
+])
+async def test_stop_motion_pauses_a_go_to(status, sent):
+    from petd.config import VacuumConfig
+    from petd.io.vacuum import ValetudoVacuum
+    vacuum = ValetudoVacuum(VacuumConfig(), EventBus())
+    vacuum._fetch = lambda: (None, [{"__class": "StatusStateAttribute", "value": status, "flag": "none"}])
+    calls = []
+    vacuum._cmd_client.pause_cleaning = lambda: calls.append("pause")
+    vacuum._cmd_client.stop_cleaning = lambda: calls.append("stop")
+    await vacuum.stop_motion()
+    assert calls == ([sent] if sent else [])

@@ -394,12 +394,11 @@ against these).
   minutes before; something still waiting on one of them (a thread on a
   slow HTTP call?) is the first guess. The 14:30 stop was clean.
 
-- **"Stop" doesn't stop a go_to** (2026-10-11, Findings: places): the V1
-  ignores BasicControl stop while it drives to a goal, which is all
-  `vacuum.stop_motion` sends. Find what interrupts one, one candidate per
-  run, a short go_to inside the room and the robot's `EVENTTASK_normal.log`
-  open: pause, arming manual control, a new go_to at its own position. Step 5's
-  "stop in the middle" needs it.
+- ~~**"Stop" doesn't stop a go_to**~~ **Fixed (2026-10-11):** `stop_motion`
+  sends pause for a go_to or a return to the dock (Findings: places). "Stop"
+  by voice during "go to the kitchen" halted it ~1.2 s after the word. Not
+  tried: arming manual control from the paused state (a turn or move after
+  a stop while docking).
 - **The dashboard map's traceback** whenever the face doesn't answer
   (`person_estimates` → `face.current_faces`, a `ConnectTimeout` each time):
   a warning line would do.
@@ -692,6 +691,20 @@ firmware's comment on its tilt limits still says 58 (up) to 105 (down).
   were invalid too (in `[Standby]`), so they showed nothing. petd's
   `stop_motion` sends only that stop: "stop" during `go_to_place` or `go_home`'s
   leg to the front of the dock doesn't halt it (Step 6).
+- **Pause does** (the same evening, Robin watching, the dock-kitchen route):
+  - **During a go_to**, `RE_App_Pause` → "Sent STOP to Nav" → `[Standby]`
+    1.0 s later, `stop_goto.wav`; Valetudo `idle`. Nothing left to resume.
+  - **During a return to the dock** (`[BackToDock]`): → `[Pause]`,
+    `pause.wav`; Valetudo `paused`. Stop is invalid there too, but a new
+    go_to works from it (`[Pause]` → `[GotoTarget]`, arrived).
+  - Not tried: arming manual control, or a new go_to at its own position,
+    as the interrupt; stop during `[BackToDock]` (so `go_home`'s "stopped
+    searching so I don't wander off" after a dock timeout likely never
+    stopped it either; it pauses now).
+  - **petd now pauses** for `moving` and `returning`, stops otherwise
+    (`vacuum.stop_motion`). "Stop" by voice 16 s into "go to the kitchen":
+    heard 18:01:20.9, the pause at the robot ~0.2 s later, standby 1.0 s
+    after that.
 
 **Also open from the map (2026-09-26):** what makes a new map come in rotated (not a reboot, not a go_to; Robin has seen it before). C1 keeps places in a reference map's frame so it matters less, but it isn't understood.
 

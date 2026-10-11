@@ -258,12 +258,17 @@ class ValetudoVacuum(VacuumAdapter):
     async def stop_motion(self) -> None:
         """
         Best-effort halt of whatever is moving: cancels a running drive()
-        (which disables manual control on the way out), then sends
-        BasicControl stop if Valetudo still reports movement.
+        (which disables manual control on the way out), then, if Valetudo
+        still reports movement, BasicControl pause for a go_to or a return
+        to the dock, stop for anything else. The V1 ignores stop during a
+        go_to; pause ends it (standby), or pauses a return (a new go_to or
+        dock still works from there). PLAN.md, findings of 2026-10-11.
         """
         await self._cancel_drive()
         state = await self.refresh()
-        if state.moving:
+        if state.status in ("moving", "returning"):
+            await self._command(self._cmd_client.pause_cleaning)
+        elif state.moving:
             await self._command(self._cmd_client.stop_cleaning)
 
     async def drive(self, velocity: float, angle: float, duration_s: float) -> None:
