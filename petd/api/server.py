@@ -232,6 +232,8 @@ async def map_markers(pet: "App") -> list:
                 markers.append((*e.xy, "person " + e.describe(), ESTIMATE_COLOUR))
             if e.target is not None:
                 markers.append((*e.target, "approach target", TARGET_COLOUR))
+    except OSError as exc:      # the face not answering (requests' errors are OSErrors); io/face.py warns
+        log.debug("no person estimates for the map: %s", exc)
     except Exception:  # noqa: BLE001 - the map draws without them
         log.debug("no person estimates for the map", exc_info=True)
     return markers

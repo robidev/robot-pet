@@ -71,6 +71,22 @@ async def test_the_map_shows_places_and_sightings(pet):
     assert response.status_code == 200 and response.content[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+async def test_the_map_draws_without_the_face_and_logs_one_line(pet, caplog):
+    import logging
+    import requests
+
+    async def unreachable():
+        raise requests.exceptions.ConnectTimeout("face didn't answer")
+    pet.face.current_faces = unreachable
+    pet.vacuum._map = json.loads((FIXTURES / "valetudo_map_2026-09-26.json").read_text())
+    with caplog.at_level(logging.DEBUG, logger="petd.api.server"):
+        async with client(pet) as c:
+            response = await c.get("/map.png")
+    assert response.status_code == 200
+    lines = [r for r in caplog.records if "no person estimates" in r.getMessage()]
+    assert lines and all(r.exc_info is None for r in lines)
+
+
 async def test_only_attempt_files_are_served(pet, tmp_path):
     from petd.vision.kept import FaceKeeper
     pet.recognizer.keeper = FaceKeeper(tmp_path, 10, str)

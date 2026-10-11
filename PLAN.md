@@ -364,6 +364,21 @@ against these).
 
 - **The face board:** `internal_min_free` fell to 14.8 KB once, unexplained;
   the ROM's "SHA-256 comparison failed" at every boot.
+- **Idle the servos when they hold still** (Robin, 2026-10-11): a servo can
+  be heard trying to move a degree or so and not getting there, warming the
+  motor and drawing power for nothing. Idea: after 5 s on the same pose, stop
+  that servo's pulses; send them again on the next move. Firmware only
+  (`servo_service.cpp`): `writeServo` sets the LEDC duty every few ms, and
+  a duty of 0 means no pulses (as at boot, before the first write). Per
+  axis: when an axis's target and pose haven't changed for 5 s, set its
+  duty to 0, and on the next change send the remembered pose first, so it
+  doesn't jump. **Measure before relying on it:** a servo without pulses
+  usually goes limp, which is the point, but some digital ones hold the last
+  position instead (no saving), and the tilt may sag under the camera's
+  weight (then it moves back when the pulses return). Listen and feel at a
+  held pose, before and after; and check the face board's powerbank
+  doesn't cut it off for drawing too little (the servos are on a wall
+  charger since 2026-10-11).
 - Whisper's "GLaDOS" misses ("Gladys", "Class", "GluDOS" on 2026-10-05):
   maybe a new name Whisper hears reliably (Robin, 2026-10-05). `pet.name`
   feeds Whisper's prompt and the name matcher; the personality and voice
@@ -399,9 +414,8 @@ against these).
   by voice during "go to the kitchen" halted it ~1.2 s after the word. Not
   tried: arming manual control from the paused state (a turn or move after
   a stop while docking).
-- **The dashboard map's traceback** whenever the face doesn't answer
-  (`person_estimates` → `face.current_faces`, a `ConnectTimeout` each time):
-  a warning line would do.
+- ~~**The dashboard map's traceback**~~ **Fixed (2026-10-11):** the face not
+  answering is one DEBUG line now (`map_markers`); `io/face.py` already warns.
 
 Not pursued (Robin, 2026-10-05): starting petd after a Windows reboot (it's
 started by hand), and the WiFi's bad spells of 2026-09-27 unless they come
