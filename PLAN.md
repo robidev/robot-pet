@@ -209,9 +209,9 @@ shorter); size and tilt together hold. Distance x box height / cos(elevation)
 was 0.222-0.227 straight ahead, so `K_face * cos(elevation) / h` would make
 size alone good to ~7% there, if the far end's -10-15% matters. Both side
 marks read ~1.75 m by size and by tilt alike: the marks may be ~25 cm short of
-2 m. The tilt didn't strain at 165 (1 m); **the mount's stops since the screw
-was refastened are unmeasured** (`face.tilt_min_deg` 67 was the down stop
-before: it may now hit). The microphone half (4.) is left: the Jabra was the
+2 m. The tilt didn't strain at 165 (1 m). The stops (`face.tilt_min_deg` 67,
+`tilt_max_deg` 180) are the servo joint's, not the arm's, so refastening
+didn't move them (Robin). The microphone half (4.) is left: the Jabra was the
 mic that day.
 
 ### Step 3: places on the map (hands-on, ~20 min)
