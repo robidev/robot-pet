@@ -20,7 +20,9 @@ def words_after_name(text):
     "GLaDOS, what time is it?", "Gladys what time is it", "hey glad os, what time is it",
     "Gladis? What time is it", "what time is it, Glados", "Gladdos, what time is it",
     # what whisper makes of the name once primed with it
-    "GularDOS, what time is it?", "OkGLaDOS, what time is it", "JledDOS, what time is it"])
+    "GularDOS, what time is it?", "OkGLaDOS, what time is it", "JledDOS, what time is it",
+    # parakeet's, unprompted
+    "Gladas, what time is it?", "Gila Das, what time is it?"])
 def test_the_name_however_whisper_spells_it(text):
     found, rest = words_after_name(text)
     assert found
@@ -33,6 +35,7 @@ def test_the_name_however_whisper_spells_it(text):
     ("Gladis? What time is it", "GLaDOS? What time is it"),
     ("OkGLaDOS, what time is it", "GLaDOS, what time is it"),
     ("I'd gladly do it, Gladys.", "I'd gladly do it, GLaDOS."),
+    ("Gila Das, what do you see?", "GLaDOS, what do you see?"),
     ("the DOS prompt", "the DOS prompt")])
 def test_the_brain_reads_the_name_spelled_right(text, said):
     assert NameMatcher("GLaDOS", Config().converse.wake_words).named(text, "GLaDOS") == said

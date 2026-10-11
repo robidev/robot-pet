@@ -337,10 +337,11 @@ class MotionConfig:
 
 @dataclass
 class ConverseConfig:
-    # Whisper spellings of the pet's name that count as being addressed, on
-    # top of the name itself and anything one edit away from it.
+    # Whisper's and parakeet's spellings of the pet's name that count as
+    # being addressed, on top of the name itself and anything one edit away
+    # from it. Parakeet, unprompted: "Gladas", "Gila Das" (2026-10-11).
     wake_words: list = field(default_factory=lambda: [
-        "glados", "gladys", "gladis", "gladdis", "glad os", "glados's",
+        "glados", "gladys", "gladis", "gladdis", "glad os", "glados's", "gladas", "gila das",
     ])
     # After the pet speaks, or after being addressed, it keeps listening
     # without its name for this long.
