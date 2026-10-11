@@ -318,6 +318,15 @@ heading: the last one known good (driving forward, or docked: away from the
 dock) carried on by the odometry's yaw (`spatial/odometry.py`, which streams
 while manual control is armed), not Valetudo's.
 
+**Where a person is, roughly (Robin, 2026-10-11):** Step 4 left the estimate
+good enough: within ~5 cm at 1.5 m, but 30-60 cm off at 2-2.5 m (short, or
+sitting mistaken for standing). That's fine as long as the pet is flexible
+about it. The brain doesn't get the estimate yet; when E4 gives it one, it
+says it's rough ("about two metres, maybe more", the posture a guess past
+~2 m), and the approach doesn't trust one look: it stops short, looks again
+from closer, and goes on or asks ("close enough?") rather than driving to a
+dot as if it were exact.
+
 **Hands-on:**
 - From 3 m, "Come here, GLaDOS": it drives to ~1 m in front of you and faces you.
 - Called from out of view: it searches, finds you, "Did you call me?".
