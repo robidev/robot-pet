@@ -514,9 +514,7 @@ latency numbers.
   against sag, and any move powers it at once (moves are rate-limited from
   the held pose, so nothing jumps). Per servo; timings in `app_config.h`
   (`servo_relax_after_ms`, 0 = always powered). Flashed: the tilt holds the
-  head fine. Not checked: whether the servos are digital ones that hold
-  without pulses (then nothing is saved), and the powerbank with the lower
-  draw (the servos are on a wall charger).
+  head fine, and the straining noise is gone.
 - ~~**"Stop" doesn't stop a go_to**~~ **Fixed (2026-10-11):** `stop_motion`
   sends pause for a go_to or a return to the dock (Findings: places). "Stop"
   by voice during "go to the kitchen" halted it ~1.2 s after the word. Not
