@@ -458,21 +458,6 @@ latency numbers.
 
 ### Step 6: loose ends before M4
 
-- **Idle the servos when they hold still** (Robin, 2026-10-11): a servo can
-  be heard trying to move a degree or so and not getting there, warming the
-  motor and drawing power for nothing. Idea: after 5 s on the same pose, stop
-  that servo's pulses; send them again on the next move. Firmware only
-  (`servo_service.cpp`): `writeServo` sets the LEDC duty every few ms, and
-  a duty of 0 means no pulses (as at boot, before the first write). Per
-  axis: when an axis's target and pose haven't changed for 5 s, set its
-  duty to 0, and on the next change send the remembered pose first, so it
-  doesn't jump. **Measure before relying on it:** a servo without pulses
-  usually goes limp, which is the point, but some digital ones hold the last
-  position instead (no saving), and the tilt may sag under the camera's
-  weight (then it moves back when the pulses return). Listen and feel at a
-  held pose, before and after; and check the face board's powerbank
-  doesn't cut it off for drawing too little (the servos are on a wall
-  charger since 2026-10-11).
 - Whisper's "GLaDOS" misses ("Gladys", "Class", "GluDOS" on 2026-10-05):
   maybe a new name Whisper hears reliably (Robin, 2026-10-05). `pet.name`
   feeds Whisper's prompt and the name matcher; the personality and voice
@@ -522,6 +507,16 @@ latency numbers.
   journal (`journalctl --user -u petd`). Fixed on the way: petd stopping
   during the wlanmgr pause attempt left its ssh running.
 
+- ~~**Idle the servos when they hold still**~~ **Done (2026-10-12, firmware
+  `0f1ef3e`):** a servo had been straining a degree or so short of its pose,
+  warming the motor for nothing. Now a servo on the same pulse for 5 s gets
+  duty 0 (no pulses, it goes limp), the pulse again for 300 ms every 10 s
+  against sag, and any move powers it at once (moves are rate-limited from
+  the held pose, so nothing jumps). Per servo; timings in `app_config.h`
+  (`servo_relax_after_ms`, 0 = always powered). Flashed: the tilt holds the
+  head fine. Not checked: whether the servos are digital ones that hold
+  without pulses (then nothing is saved), and the powerbank with the lower
+  draw (the servos are on a wall charger).
 - ~~**"Stop" doesn't stop a go_to**~~ **Fixed (2026-10-11):** `stop_motion`
   sends pause for a go_to or a return to the dock (Findings: places). "Stop"
   by voice during "go to the kitchen" halted it ~1.2 s after the word. Not
