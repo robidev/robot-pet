@@ -458,23 +458,6 @@ latency numbers.
 
 ### Step 6: loose ends before M4
 
-- **The tilt buzzes after moving up** (Robin, 2026-10-12): at some tilts,
-  after a move up, the servo hunts with an oscillating noise; going a bit
-  further up and back down quiets it. Theory: a servo stops at the edge of
-  its deadband it arrives from. Coming from below, the head's weight sags it
-  back out of the band, it nudges up, sags again (gear backlash adds a small
-  overshoot each time); coming from above, the sag pulls it into the band.
-  Tracking's rate-limited steps (`tracking_rate`, 60°/s in 5 ms steps) make it
-  arrive with no momentum, right at the edge. **Confirmed by the finger
-  test (2026-10-12):** a gentle push up while it buzzed stopped it. The idle
-  servos (firmware `0f1ef3e`) already cut it off after 5 s, though a 300 ms
-  refresh after a sag also comes from below. Options: in firmware, take
-  every upward tilt move 1-2° past the target and settle back down, so each
-  stop comes from above (moves down unchanged); or balance the head (centre
-  of mass over the tilt axis, or a light spring) so gravity hardly loads it;
-  or leave it, now that it's at most 5 s. Not yet tried: the same target
-  from 10° below and from 10° above with `/api/servo`, and how much play the
-  tilt has unpowered (worth knowing for the overshoot size).
 - Whisper's "GLaDOS" misses ("Gladys", "Class", "GluDOS" on 2026-10-05):
   maybe a new name Whisper hears reliably (Robin, 2026-10-05). `pet.name`
   feeds Whisper's prompt and the name matcher; the personality and voice
@@ -524,6 +507,16 @@ latency numbers.
   journal (`journalctl --user -u petd`). Fixed on the way: petd stopping
   during the wlanmgr pause attempt left its ssh running.
 
+- ~~**The tilt buzzes after moving up**~~ **Fixed (2026-10-12, firmware
+  `1c4f93c`):** a servo stops at the edge of its deadband it arrives from,
+  and coming up the head's weight sagged it back out, so it kept nudging up
+  (a finger pushing up stopped it). Now tilt comes to every pose from above:
+  a move up goes `servo_tilt_overshoot_deg` (2) past the target, holds until
+  the servo has caught up (100 ms, plus 4 ms a degree for a manual jump, an
+  assumed speed that errs long), then settles down; the first half of each
+  relax refresh goes there too. Live: `/api/servo?tilt_overshoot=` (0 = off).
+  Flashed: quiet at 2 out of the box; the smallest value that does wasn't
+  looked for.
 - ~~**Idle the servos when they hold still**~~ **Done (2026-10-12, firmware
   `0f1ef3e`):** a servo had been straining a degree or so short of its pose,
   warming the motor for nothing. Now a servo on the same pulse for 5 s gets
