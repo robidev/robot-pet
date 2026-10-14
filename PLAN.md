@@ -456,7 +456,7 @@ behind the couch (the goal outside the room and the couch run showed how an
 unreachable goal ends: stopped short, said so), the three in a row, and the
 latency numbers.
 
-### Step 6: loose ends before M4
+### Step 6: loose ends before M4: done 2026-10-14
 
 - ~~Whisper's "GLaDOS" misses~~ **Closed (2026-10-14, not tried live)**
   ("Gladys", "Class", "GluDOS" on 2026-10-05):
@@ -507,7 +507,8 @@ latency numbers.
 
   To check (Step 8): a few minutes' talk with the TV on, counting the TV
   lines that get through.
-- **petd's stop hung** (2026-10-11 17:11): it logged "petd stopped", then the
+- **petd's stop hung**, parked (2026-10-14, Robin: no work for now; the
+  logging below says why if it happens again) (2026-10-11 17:11): it logged "petd stopped", then the
   process stayed 30 s until systemd killed it (`Result: timeout`); nothing was
   left running. The face and the robot had dropped out for 10-16 s a few
   minutes before; something still waiting on one of them (a thread on a
