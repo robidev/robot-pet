@@ -157,3 +157,15 @@ async def test_an_error_is_not_arriving():
     state = VacuumState(reachable=True, status="error", error="wheel stuck", pose=MapPose(2600, 2600))
     outcome, ok = await arrival(at("moving", 2560, 2570), state)
     assert not ok and "wheel stuck" in outcome
+
+
+async def test_a_refused_go_to_docks_from_where_it_stands(pet):
+    pet.dock.docked_pose, pet.dock.charger = MapPose(2560, 2550), MapPose(2560, 2530)
+    away(pet)
+
+    async def refused(x, y):
+        raise RuntimeError("Low battery")           # Valetudo's error 12, say
+    pet.vacuum.go_to = refused
+    outcome, ok = await (await pet.go_home())
+    assert ok and [c[0] for c in pet.vacuum.commands] == ["dock"]
+    assert not pet.dock.going_home

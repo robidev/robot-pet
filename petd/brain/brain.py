@@ -59,6 +59,9 @@ class Brain:
         self._notes: list[str] = []
         self._hushed = False
         self.busy = False
+        # The kind of the turn being run: "initiative" when the pet started it
+        # itself, which the motion tools hold to the house rules.
+        self.turn_kind: Optional[str] = None
 
     async def start(self) -> None:
         subs = [self.pet.bus.subscribe(StopRequested),
@@ -94,7 +97,8 @@ class Brain:
         self._notes.append(text)
 
     def tell(self, text: str, kind: str = "heard", speaker: Optional[str] = None) -> None:
-        """Queues a turn. Behaviors use kind='event' to report what happened."""
+        """Queues a turn. Behaviors use kind='event' to report what happened, and
+        kind='initiative' for a nudge the pet acts on by itself (behavior/initiative.py)."""
         try:
             self._queue.put_nowait((text, kind, speaker, time.time()))
         except asyncio.QueueFull:
@@ -226,6 +230,7 @@ class Brain:
         said: list[str] = []
         self._hushed = False
         self.busy = True
+        self.turn_kind = kind
         started = time.monotonic()
         first_text = ended = False
         tool_calls = 0
@@ -260,6 +265,7 @@ class Brain:
                 bus.publish(TurnEnded(duration_s=time.monotonic() - started, sentences=len(said),
                                       tool_calls=tool_calls))
             self.busy = False
+            self.turn_kind = None
             self._last_turn_at = time.time()
             if said:
                 self._record("pet", " ".join(said))

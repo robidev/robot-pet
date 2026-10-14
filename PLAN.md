@@ -622,7 +622,15 @@ battery handling, which is safety, not initiative.
   everything that would act on its own (the nudges, `People`'s greetings,
   the outing watchdog). A test per behaviour checks it stays silent when off.
 
-**E5a: the switch, the rules, the battery.**
+**E5a: the switch, the rules, the battery.** **Done 2026-10-14, with the
+fakes** (`behavior/initiative.py`, `behavior/battery.py`,
+`tests/test_initiative.py`; 304 tests pass); the switch tried on `--fake`
+over HTTP, not on the robot. Different from the plan below: the battery
+levels sit in `motion` beside `min_battery_to_leave`, not in `initiative`;
+the greetings, stranger notes and "be quiet" muting (planned for E5c) went
+in now, since the switch is off from the start; no speaking up in quiet
+hours either; the dashboard's toggle sits next to STOP, with each rule's
+answer under Status. Its script wasn't run in a browser.
 - `InitiativeConfig`: `enabled` (false), `quiet_hours` ("20:00", "09:00"),
   `someone_seen_min` (30), `max_outings_per_hour` (2), `spots_per_outing`
   (3), `remark_every_min` (15), `quiet_mutes_min` (60),
@@ -686,10 +694,10 @@ battery handling, which is safety, not initiative.
     talking to you. Say something if you like, or leave them be."
   - **sleep and wake:** quiet hours beginning (out on its own: home first;
     the sleepy eye on the dock) and ending, one event each.
-- Greetings and stranger notes go through `pet.initiative` too: off, they're
-  skipped (and not marked as given, so turning it on still greets).
-- "Be quiet" (the reflex) also mutes unprompted remarks for
-  `quiet_mutes_min`.
+- ~~Greetings and stranger notes go through `pet.initiative` too: off, they're
+  skipped (and not marked as given, so turning it on still greets).~~ Done in E5a.
+- ~~"Be quiet" (the reflex) also mutes unprompted remarks for
+  `quiet_mutes_min`.~~ Done in E5a.
 - Local, no brain turn (like face tracking): a glance toward PIR motion
   (`MotionDetected`, the head only) when nobody is in view, and a small idle
   head movement every few minutes; both behind the switch.

@@ -322,6 +322,8 @@ class Listener:
             if brain is not None:
                 brain.note(f'Someone said "{text}", so you stopped moving and talking at once.')
         elif reflex == "quiet":
+            if pet.initiative is not None:
+                pet.initiative.mute()       # and no unprompted remarks for a while
             if brain is not None:
                 brain.hush()
             if pet.speaker is not None:

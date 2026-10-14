@@ -113,6 +113,9 @@ class Dock:
         # Pace of the status polling while going home (tests shorten these).
         self.poll_s = 1.0
         self.start_grace_s = 8.0
+        # A trip home of petd's own is under way: a "returning" now is ours,
+        # not the robot's own low-battery return (behavior/battery.py).
+        self.going_home = False
         self._task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
@@ -168,6 +171,13 @@ class Dock:
 
     async def go_home(self) -> tuple[str, bool]:
         """The whole trip: approach point, dock sequence, retries. For App.start_motion."""
+        self.going_home = True
+        try:
+            return await self._go_home()
+        finally:
+            self.going_home = False
+
+    async def _go_home(self) -> tuple[str, bool]:
         vacuum = self.pet.vacuum
         if self.pet.motion is not None:
             await self.pet.motion.disarm()
@@ -183,12 +193,16 @@ class Dock:
             else:
                 log.info("going home (attempt %d): to (%.0f, %.0f) in front of the dock first",
                          attempt, point.x, point.y)
-                await vacuum.go_to(point.x, point.y)
-                outcome, ok = await await_arrival(vacuum, "the spot in front of my dock", point,
-                                                  self.cfg.arrive_cm, start_grace_s=self.start_grace_s,
-                                                  poll_s=self.poll_s)
-                if not ok:
-                    log.warning("going home: %s; docking from here", outcome)
+                try:
+                    await vacuum.go_to(point.x, point.y)
+                except Exception as exc:  # noqa: BLE001 - e.g. refused on a low battery: dock from here
+                    log.warning("going home: the go_to was refused (%s); docking from here", exc)
+                else:
+                    outcome, ok = await await_arrival(vacuum, "the spot in front of my dock", point,
+                                                      self.cfg.arrive_cm, start_grace_s=self.start_grace_s,
+                                                      poll_s=self.poll_s)
+                    if not ok:
+                        log.warning("going home: %s; docking from here", outcome)
             await vacuum.dock()
             state, docked = await self._await_docked(self.cfg.dock_timeout_s)
             if docked:

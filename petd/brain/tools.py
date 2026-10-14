@@ -304,6 +304,19 @@ def build_registry(pet: "App") -> ToolRegistry:
                             "someone in particular")
         return person
 
+    def initiative_check() -> None:
+        """A turn the pet started itself moves it only within the house rules (behavior/initiative.py)."""
+        if getattr(pet.brain, "turn_kind", None) != "initiative" or pet.initiative is None:
+            return
+        why = pet.initiative.why_not_roam()
+        if why:
+            raise ToolError(f"not now: {why}")
+
+    def own_return_check() -> None:
+        if pet.battery is not None and pet.battery.own_return:
+            raise ToolError("my base is taking me back to my dock by itself (its own low-battery "
+                            "return): I can't drive until I'm docked")
+
     def head_owner_check() -> None:
         expressions = pet.brain.expressions if pet.brain is not None else None
         owner = getattr(expressions, "owner", None)
@@ -331,6 +344,8 @@ def build_registry(pet: "App") -> ToolRegistry:
             return "I can already see a face: following it now, no search needed"
         if pet.moving:
             raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
+        own_return_check()
+        initiative_check()
         whom = person.name if person is not None else "a face"
         pet.start_motion(search(pet, person), f"search for {whom}", success_is_event=True)
         # Told only "searching", Haiku announced "I found one face" before the
@@ -360,6 +375,8 @@ def build_registry(pet: "App") -> ToolRegistry:
             raise ToolError("my wheels aren't connected")
         if pet.vacuum.state.docked:
             return "I'm already on my dock"
+        if pet.battery is not None and pet.battery.own_return:
+            return "my base is already taking me back to my dock by itself"
         await pet.go_home()
         return "heading to the dock; I'm told when I'm on it, or if I couldn't find it"
 
@@ -373,11 +390,11 @@ def build_registry(pet: "App") -> ToolRegistry:
     if pet.people is not None:
         _add_memory_tools(registry, pet)
     if pet.motion is not None:
-        _add_motion_tools(registry, pet)
+        _add_motion_tools(registry, pet, initiative_check, own_return_check)
     return registry
 
 
-def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
+def _add_motion_tools(registry: ToolRegistry, pet: "App", initiative_check, own_return_check) -> None:
     """Turning, moving and named places (PLAN.md 4.5; cluster C4)."""
     import asyncio
 
@@ -391,6 +408,8 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App") -> None:
             raise ToolError("my wheels aren't answering")
         if pet.moving:
             raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
+        own_return_check()
+        initiative_check()
         if state.docked:
             if not leaving_dock_ok:
                 raise ToolError("I'm on my dock: turning or backing up here would scrape my "

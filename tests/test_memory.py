@@ -54,6 +54,7 @@ async def pet():
     cfg.recognition.recheck_every_s = 0     # tests that want it turn it on
     cfg.recognition.enroll_timeout_s = 0.3
     cfg.recognition.enroll_step_back_s = 0.0
+    cfg.initiative.enabled = True           # greetings and stranger notes need it
     app = App(cfg, fake=True)
     await app.start()
     app.recognizer.collect_every_s = 0.0
@@ -260,6 +261,29 @@ async def test_a_known_face_is_named_greeted_once_and_sticks(pet):
     assert len(pet.told) == 1
 
 
+async def test_with_initiative_off_nobody_is_greeted_until_it_is_on(pet):
+    robin_face = someone()
+    robin = store_face(pet, "Robin", robin_face)
+    arrived = pet.bus.subscribe(PersonArrived)
+    left = pet.bus.subscribe(PersonLeft)
+    pet.recognizer.engine.default = [sample(view(robin_face))]
+    pet.initiative.set(False)
+
+    pet.face.show(face())
+    assert (await asyncio.wait_for(arrived.get(), 2)).name == "Robin"
+    await settle()
+    assert pet.told == []
+    assert pet.db.person(robin.id).last_greeted_at is None      # not counted as greeted
+
+    pet.face.show()
+    await asyncio.wait_for(left.get(), 1)
+    pet.initiative.set(True)
+    pet.face.show(face())
+    await asyncio.wait_for(arrived.get(), 2)
+    await settle()
+    assert len(pet.told) == 1 and pet.told[0].startswith("Robin just came into view")
+
+
 async def test_with_two_in_view_the_biggest_face_speaks(pet):
     robin_face, claudia_face = someone(), someone()
     store_face(pet, "Robin", robin_face)
@@ -372,6 +396,16 @@ async def test_a_stranger_is_mentioned_after_a_few_clear_looks(pet):
     assert pet.people.who_is_here() == ([], 1)
 
 
+async def test_with_initiative_off_a_stranger_goes_unmentioned(pet):
+    pet.cfg.memory.stranger_after_s = 0
+    pet.initiative.set(False)
+    store_face(pet, "Robin", someone())
+    pet.recognizer.engine.default = [sample(view(someone()))]
+    pet.face.show(face())
+    await asyncio.sleep(0.3)
+    assert pet.told == [] and pet.people.who_is_here() == ([], 1)
+
+
 async def test_between_two_lookalikes_nobody_is_named(pet):
     robin_face = someone()
     twin = normalized(robin_face + 0.25 * someone())       # ~0.97 alike
@@ -443,6 +477,7 @@ async def test_without_recognition_nobody_is_a_stranger(pet):
 async def test_greetings_before_the_brain_is_up_are_kept():
     cfg = Config()
     cfg.api.enabled = cfg.brain.enabled = cfg.stt.enabled = cfg.speaker.enabled = False
+    cfg.initiative.enabled = True
     app = App(cfg, fake=True)
     await app.start()
     try:

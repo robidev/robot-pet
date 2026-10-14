@@ -78,6 +78,14 @@ memory:
   familiarity_thresholds: [[1, 1], [10, 3], [40, 10]]   # [interactions, days seen] per tier
   journal_in_prompt: 5         # recent conversation summaries in each new episode
 
+initiative:                    # what it starts by itself (PLAN.md Step 7); the dashboard toggles it
+  enabled: false               # off: it only answers (no greetings, outings or speaking up)
+  quiet_hours: ["20:00", "09:00"]   # every day; no wandering or speaking up, still answers
+  someone_seen_min: 30         # out on its own only with someone seen this recently
+  max_outings_per_hour: 2
+  remark_every_min: 15         # speaking up unprompted at most this often
+  quiet_mutes_min: 60          # "be quiet" mutes speaking up this long
+
 recognition:                   # face recognition on the PC (PLAN.md 4.7); models: scripts/fetch_face_models.py
   enabled: true
   min_face_px: 45              # ~2.5 m at VGA

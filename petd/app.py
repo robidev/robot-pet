@@ -49,6 +49,8 @@ class App:
         self.tools = None
         self.brain = None
         self.listener = None
+        self.initiative = None
+        self.battery = None
         self.robot_wifi = None
         self._piper: Optional[ManagedProcess] = None
         self._tasks: list[asyncio.Task] = []
@@ -108,6 +110,10 @@ class App:
             if start:
                 start()
 
+        from .behavior.initiative import Initiative
+        self.initiative = Initiative(self)
+        await self.initiative.start()
+
         if cfg.memory.enabled:
             from .memory.db import MemoryDB
             from .memory.people import People
@@ -125,6 +131,9 @@ class App:
             self.frame = MapFrame(self.vacuum, cfg.motion, cfg.path(cfg.motion.reference_map), fixed=fake)
             self.dock = Dock(self)
             await self.dock.start()
+            from .behavior.battery import BatteryWatch
+            self.battery = BatteryWatch(self)
+            await self.battery.start()
 
         from .brain.tools import build_registry
         self.tools = build_registry(self)
@@ -156,8 +165,9 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.recognizer, self.people, self.dock, self.motion, self.heading,
-                     self.slam, self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
+        for part in (self.listener, self.brain, self.battery, self.initiative, self.recognizer,
+                     self.people, self.dock, self.motion, self.heading, self.slam, self.stt,
+                     self.speaker, self.face, self.vacuum, self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()
@@ -179,6 +189,11 @@ class App:
     async def stop_everything(self, source: str) -> None:
         """The big red button: silence and halt. Never raises."""
         log.warning("STOP requested by %s", source)
+        if self.battery is not None:
+            try:
+                self.battery.stopping()     # before the trip home it may resume is cancelled
+            except Exception:  # noqa: BLE001 - a stop must not fail loudly
+                log.exception("battery stop check failed")
         self.bus.publish(StopRequested(source=source))
         if self.speaker:
             self.speaker.interrupt()
@@ -264,6 +279,10 @@ class App:
     @property
     def moving(self) -> bool:
         return self.motion_task is not None and not self.motion_task.done()
+
+    async def cancel_motion(self) -> None:
+        """Ends petd's own motion without telling Valetudo to stop or pause."""
+        await self._cancel_motion()
 
     async def _cancel_motion(self) -> None:
         task, self.motion_task = self.motion_task, None

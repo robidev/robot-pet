@@ -1,6 +1,7 @@
 """
 Local HTTP API on 127.0.0.1:8765: status, recent events, say, hear
-(inject text), stop, snapshot, the tools, and a debug dashboard at / (G3):
+(inject text), stop, the initiative switch, snapshot, the tools, and a debug
+dashboard at / (G3):
 the live map with places and people, who is in view and what recognition
 is doing (with the latest face crops), the event log, and a tool console.
 
@@ -31,6 +32,10 @@ class TextBody(BaseModel):
     text: str
 
 
+class SwitchBody(BaseModel):
+    on: bool
+
+
 def create_app(pet: "App") -> FastAPI:
     api = FastAPI(title="petd", docs_url="/docs")
 
@@ -48,7 +53,20 @@ def create_app(pet: "App") -> FastAPI:
             "faces_present": pet.face.presence.present if pet.face else None,
             "speaking": pet.speaker.speaking if pet.speaker else None,
             "stt_running": getattr(getattr(pet.stt, "process", None), "running", None),
+            "initiative": pet.initiative.status() if pet.initiative else None,
+            "battery": None if pet.battery is None else {
+                "told": pet.battery.told, "own_return": pet.battery.own_return,
+                "tell_pct": pet.cfg.motion.low_battery_tell_pct,
+                "dock_pct": pet.cfg.motion.low_battery_dock_pct},
         }
+
+    @api.post("/initiative")
+    def initiative(body: SwitchBody) -> dict:
+        """The initiative switch (behavior/initiative.py): on, the pet acts by itself too."""
+        if pet.initiative is None:
+            raise HTTPException(503, "no initiative")
+        pet.initiative.set(body.on, source="api")
+        return pet.initiative.status()
 
     @api.get("/events")
     def events(n: int = 50) -> list:
@@ -258,6 +276,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute
 pre{margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px}
 button{font:inherit;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
 #stop{background:var(--accent);color:#fff;border:0;font-weight:600;padding:10px 20px}
+#initiative{padding:10px 16px;font-weight:600}#initiative.on{background:var(--ok);color:#fff;border-color:var(--ok)}
 input,select,textarea{font:inherit;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);min-width:0}
 input[type=text],textarea{flex:1}textarea{width:100%;font-family:ui-monospace,monospace;font-size:12px}
 .row{display:flex;gap:6px;margin-bottom:8px;align-items:center;flex-wrap:wrap}img{max-width:100%;border-radius:6px}
@@ -267,7 +286,9 @@ table{border-collapse:collapse;width:100%;font-size:12px}td,th{text-align:left;p
 .thumbs img{width:84px;height:84px;display:block}
 dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0}dt{color:var(--muted)}dd{margin:0}
 </style></head><body>
-<div class="row" style="justify-content:space-between"><h1>{{NAME}}</h1><button id="stop">STOP</button></div>
+<div class="row" style="justify-content:space-between"><h1>{{NAME}}</h1>
+<div class="row" style="margin:0"><button id="initiative" title="On: it goes exploring and speaks up by itself. Off: it only answers.">initiative …</button>
+<button id="stop">STOP</button></div></div>
 <div class="grid">
 <div class="card"><h2>Status</h2><dl id="summary"></dl>
 <details><summary class="muted">raw</summary><pre id="status">…</pre></details></div>
@@ -294,6 +315,11 @@ const $=id=>document.getElementById(id);
 async function post(url,id){const el=$(id);if(!el.value)return;
 await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:el.value})});el.value='';}
 $('stop').onclick=()=>fetch('/stop',{method:'POST'});
+let initiativeOn=null;
+$('initiative').onclick=async()=>{if(initiativeOn===null)return;
+await fetch('/initiative',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({on:!initiativeOn})});};
+function showInitiative(i){initiativeOn=i?i.on:null;const b=$('initiative');
+b.textContent='initiative '+(i?(i.on?'ON':'off'):'–');b.className=i&&i.on?'on':'';}
 function snap(){$('img').src='/snapshot?'+Date.now();}
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]);}
 function dl(el,pairs){el.innerHTML=pairs.map(([k,v])=>'<dt>'+esc(k)+'</dt><dd>'+v+'</dd>').join('');}
@@ -302,7 +328,18 @@ function summarize(s){const v=s.vacuum||{},f=s.face||{},p=v.pose||{};
 dl($('summary'),[['robot',v.reachable===false?'<span class="warn">unreachable</span>':esc((v.status||'?')+(v.battery_level!=null?' · '+v.battery_level+'%':''))],
 ['pose',p.x!=null?esc(Math.round(p.x)+', '+Math.round(p.y)+', '+Math.round(p.angle||0)+'°'):'–'],
 ['face',f.reachable===false?'<span class="warn">unreachable</span>':esc('head '+(f.servo_mode||'?')+' · eye '+(f.eye_mode||'?'))],
-['hearing',flag(s.stt_running,'listening','not running')],['speaking',s.speaking?'yes':'no'],['mode',s.fake?'fake hardware':'real hardware']]);}
+['hearing',flag(s.stt_running,'listening','not running')],['speaking',s.speaking?'yes':'no'],['mode',s.fake?'fake hardware':'real hardware'],
+...initiativeRows(s.initiative,s.battery)]);showInitiative(s.initiative);}
+function initiativeRows(i,b){if(!i)return [];const seen=i.someone_seen_ago_s;
+const rows=[['initiative',i.on?'<span class="ok">on</span>':'off'],
+['quiet hours',esc(i.quiet_hours.join('-'))+(i.in_quiet_hours?' · <span class="warn">now</span>':'')],
+['someone seen',seen==null?'not yet':seen===0?'in view':esc(Math.round(seen/60)+' min ago')],
+['outings',esc(i.outings_last_hour+' this hour')],
+['may roam',i.roam?'<span class="muted">no: '+esc(i.roam)+'</span>':'<span class="ok">yes</span>'],
+['may speak up',i.remark?'<span class="muted">no: '+esc(i.remark)+'</span>':'<span class="ok">yes</span>']];
+if(b)rows.push(['low battery',b.own_return?'<span class="warn">its own return</span>':
+esc('tell '+b.tell_pct+'% · dock '+b.dock_pct+'%')+(b.told?' · <span class="warn">told</span>':'')]);
+return rows;}
 function people(p){dl($('presence'),[['in view',p.presence?(p.faces_in_view+' face(s)'):'nobody'],
 ['known here',p.present.length?esc(p.present.join(', ')):'–'],
 ['recognition',!p.recognition?'off':(p.recognition.visiting?'<span class="ok">looking</span>':'idle')+' · '+p.recognition.people_with_a_face+' people stored']]);

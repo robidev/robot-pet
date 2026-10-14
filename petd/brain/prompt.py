@@ -163,6 +163,7 @@ def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str
     kind="heard"  -> someone spoke to me
     kind="event"  -> something happened (arrival, a behavior finished, a timer);
                      the pet may answer with nothing at all.
+    kind="initiative" -> a nudge to act by itself; reads like an event.
     """
     who = speaker or "someone"
     if kind == "heard":

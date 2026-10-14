@@ -181,3 +181,17 @@ class ProcessStateChanged(Event):
 @dataclass(frozen=True, kw_only=True)
 class StopRequested(Event):
     source: str
+
+
+# --- initiative and the battery (PLAN.md Step 7) ------------------------------
+
+@dataclass(frozen=True, kw_only=True)
+class InitiativeChanged(Event):
+    on: bool
+    source: str                 # config | api
+
+
+@dataclass(frozen=True, kw_only=True)
+class LowBattery(Event):
+    level: int
+    action: str                 # told | docking | own_return | resume

@@ -323,6 +323,16 @@ class MotionConfig:
     turn_timeout_s: float = 15.0
     # Leaving the dock on a low battery would only mean coming back.
     min_battery_to_leave: int = 40
+    # Low battery off the dock (behavior/battery.py), whatever the initiative
+    # switch says: at low_battery_tell_pct the brain is told to go home, once
+    # a discharge; at low_battery_dock_pct petd sends it home itself. Both
+    # above the robot's own return at 20% (Valetudo: event.low_power_back),
+    # so petd's way home, via the front of the dock, normally comes first.
+    # A "stop" on the way home below low_battery_tell_pct is undone after
+    # low_battery_resume_s unless it has docked.
+    low_battery_tell_pct: int = 30
+    low_battery_dock_pct: int = 22
+    low_battery_resume_s: float = 60.0
     # Going home (spatial/dock.py): drive to a point this far straight out in
     # front of the dock first, unless already within dock_near_cm of it, then
     # dock from there. Not docked after dock_timeout_s: stop, go round again.
@@ -364,6 +374,27 @@ class ConverseConfig:
     # Motor noise makes junk transcripts; while driving, only reflexes and
     # speech that names the pet get through.
     ignore_while_driving: bool = True
+
+
+@dataclass
+class InitiativeConfig:
+    """
+    What the pet starts by itself (behavior/initiative.py; PLAN.md Step 7):
+    outings, unprompted remarks, greetings, glances. With `enabled` off it
+    only answers. The dashboard's switch changes it until petd stops.
+    """
+    enabled: bool = False
+    # Local "HH:MM" on the PC's clock, every day alike; it may run past
+    # midnight. No moving about on its own then, and no unprompted remarks;
+    # it still answers, and goes where it's asked.
+    quiet_hours: list = field(default_factory=lambda: ["20:00", "09:00"])
+    # Out on its own only with someone (any face) seen this recently.
+    someone_seen_min: float = 30.0
+    max_outings_per_hour: int = 2
+    # Unprompted remarks: at most one this often, and none for
+    # quiet_mutes_min after a "be quiet".
+    remark_every_min: float = 15.0
+    quiet_mutes_min: float = 60.0
 
 
 @dataclass
@@ -474,6 +505,7 @@ class Config:
     calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
     person: PersonConfig = field(default_factory=PersonConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
+    initiative: InitiativeConfig = field(default_factory=InitiativeConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
     api: ApiConfig = field(default_factory=ApiConfig)
     log: LogConfig = field(default_factory=LogConfig)

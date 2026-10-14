@@ -14,7 +14,8 @@ Who the pet knows, and who is in front of it right now (PLAN.md 4.7, E3, E6).
   takes ~5 more: a face's fingerprint drifts with its size (E6a).
 - Arrivals turn into `[event]` turns for the brain (a greeting at most once
   per `greet_every_h`), and so does a stranger: a face seen clearly several
-  times that the recognizer couldn't name.
+  times that the recognizer couldn't name. Both are the pet speaking first,
+  so only with the initiative switch on (behavior/initiative.py).
 - With recognition off (no models, or recognition.enabled false) every face
   is unknown, so nobody counts as a stranger and no new faces can be learned.
 - A sighting stores where the person was (spatial/person.py's estimate from
@@ -155,6 +156,9 @@ class People:
 
         greeted_ago = None if person.last_greeted_at is None else now - person.last_greeted_at
         if greeted_ago is None or greeted_ago > self.cfg.greet_every_h * 3600:
+            if not self._may_speak_first():
+                log.info("not greeting %s: initiative is off", person.name)
+                return          # not marked: switched on, the next arrival still greets
             self.db.mark_greeted(person.id, now)
             self._tell(f"{person.name} just came into view. {describe(person, now, away_s)}")
 
@@ -164,6 +168,8 @@ class People:
         if not self.pet.recognition_on:
             return
         if self.present or not self.pet.face or not self.pet.face.presence.present:
+            return
+        if not self._may_speak_first():
             return
         if now - self._last_stranger_note < self.cfg.stranger_every_min * 60:
             return
@@ -234,6 +240,11 @@ class People:
         pending, self._pending = self._pending, []
         for text in pending:
             notify(text)
+
+    def _may_speak_first(self) -> bool:
+        """Greetings and stranger notes need the initiative switch on (behavior/initiative.py)."""
+        initiative = self.pet.initiative
+        return initiative is None or initiative.greets
 
     def _tell(self, text: str) -> None:
         if self._notify is not None:
