@@ -603,13 +603,117 @@ shows as status `returning` that petd didn't ask for. So:
 6. **Low battery:** the brain's event at 30%, petd docking itself at 22%
    (both above the robot's 20%), configurable.
 
-**Build E5** with the fakes: drives (social, curiosity, energy), `sleep`,
-`attention` (turn toward motion, greet), `explore` (a free spot, `look()`, a
-caption), low battery, the schedule, and `emotions.yaml` keyframes, as decided
-above. **Acceptance:** a
-simulated day with the fakes and a fast clock gives a sane timeline; then a live
-day: it explores in its window, notices you walking by, sleeps in quiet hours,
-docks on low battery.
+**Build E5** (planned 2026-10-14), with the fakes first, in four parts.
+
+**The initiative switch** (Robin: easy to test, and his choice when it's on).
+Everything the pet starts by itself sits behind one switch; with it off the pet
+only answers. Off: no outings, no unprompted remarks, no greetings or stranger
+notes (Robin: the switch covers those too), no glances at motion, no idle head
+movements. Still there when off: everything said to it, every tool on request
+("go explore" from a person is a request, not initiative), "stop", and the low
+battery handling, which is safety, not initiative.
+- `initiative.enabled` in the config sets it at each start, **off by default**
+  (Robin); the dashboard's toggle and `POST /initiative {"on": true|false}`
+  change it until petd stops. `GET /status` and the dashboard show it.
+- Turning it off mid-outing ends the outing: back to the dock, as when the
+  someone-seen timer runs out. A turn in progress finishes; nothing new
+  starts.
+- One place decides: `pet.initiative` (`behavior/initiative.py`), asked by
+  everything that would act on its own (the nudges, `People`'s greetings,
+  the outing watchdog). A test per behaviour checks it stays silent when off.
+
+**E5a: the switch, the rules, the battery.**
+- `InitiativeConfig`: `enabled` (false), `quiet_hours` ("20:00", "09:00"),
+  `someone_seen_min` (30), `max_outings_per_hour` (2), `spots_per_outing`
+  (3), `remark_every_min` (15), `quiet_mutes_min` (60),
+  `low_battery_tell_pct` (30), `low_battery_dock_pct` (22). Times on the
+  PC's clock, every day alike.
+- The rules as pure functions of (now, state), testable with a fake clock:
+  `in_quiet_hours`, `someone_seen_recently` (the last face, known or not, from
+  `People`), `may_roam` (switch on, not quiet hours, someone seen, outings
+  this hour, battery above `min_battery_to_leave` to leave the dock),
+  `may_remark` (switch on, someone in view, the last unprompted remark or
+  mute long enough ago, not mid-conversation).
+- Which turns are initiative: the brain marks a turn it gets from a nudge
+  (`tell(kind="initiative")`, rendered as an `[event]`); motion tools called
+  during such a turn check `may_roam` and refuse saying why. Turns from
+  speech or a person's request are never held back by the rules; quiet hours
+  stop only moving about on its own (decision 1).
+- Low battery, always on: at 30% (not docked, not already heading home) the
+  brain is told once per discharge that it should go home; at 22% petd sends
+  it home itself (`pet.go_home()`) and tells the brain.
+- The robot's own return: status `returning` that petd didn't start (Dock
+  knows when it started one) means the robot is heading home by itself: petd
+  cancels its own motion without a pause or stop to Valetudo, motion tools
+  refuse ("my base is taking me home by itself"), the brain is told, and
+  everything waits for `docked`.
+- "Stop" during a low-battery trip home pauses it, as now; below 30% petd
+  sends it home again after `low_battery_resume_s` (60) unless it docked,
+  and tells the brain so it can say so.
+- A go_to or dock refused on a low battery (Valetudo error 12) falls back to
+  a plain `vacuum.dock()` from where it stands.
+- **Acceptance:** tests with the fake vacuum: the switch, the rules at
+  their edges (19:59/20:00, 08:59/09:00, 29/31 min), both battery levels, a
+  `returning` petd didn't start (no stop sent to Valetudo, tools refuse),
+  "stop" then the resend.
+
+**E5b: outings.**
+- An `explore` tool: drives to a random free spot on the map (anywhere,
+  decision 3: `is_free` with clearance, at least ~1 m from where it is and
+  from the last spots), then reports arriving as an event; the brain can
+  `look()` and say something, or not, and call `explore` again or
+  `go_home`. An outing is up to `spots_per_outing` spots; it counts against
+  `max_outings_per_hour` from its first spot.
+- The outing watchdog, while away from the dock on its own initiative:
+  the someone-seen timer running out, quiet hours beginning, the switch
+  going off, or the battery reaching 30% end the outing: petd sends it home
+  and tells the brain why. Not for trips a person asked for.
+- `observations`: the caption of what it saw, if the brain gives one (photos
+  stored only as decided: occasionally, capped).
+- **Acceptance:** with the fakes, an outing visits free spots only, never
+  more than allowed, and goes home on each of the four endings.
+
+**E5c: nudges, sleep and attention.**
+- `behavior/initiative.py` ticks every ~30 s and, if the switch is on and
+  the brain is idle (no turn, no open conversation window), sends at most one
+  `initiative` turn:
+  - **restless:** `may_roam`, on the dock or standing still for a while, the
+    last outing long enough ago: "Nobody has needed you for 40 minutes and
+    Robin was around 5 minutes ago. You could go exploring (explore), or stay
+    put."
+  - **social:** `may_remark`, someone in view (by name if known) and no talk
+    for `remark_every_min`: "Claudia has been in view for a while without
+    talking to you. Say something if you like, or leave her be."
+  - **sleep and wake:** quiet hours beginning (out on its own: home first;
+    the sleepy eye on the dock) and ending, one event each.
+- Greetings and stranger notes go through `pet.initiative` too: off, they're
+  skipped (and not marked as given, so turning it on still greets).
+- "Be quiet" (the reflex) also mutes unprompted remarks for
+  `quiet_mutes_min`.
+- Local, no brain turn (like face tracking): a glance toward PIR motion
+  (`MotionDetected`, the head only) when nobody is in view, and a small idle
+  head movement every few minutes; both behind the switch.
+- `memory/body.md` and `style.md`: what an initiative event is, that doing
+  nothing is a fine answer, that outings end when it's told so.
+- The dashboard: the switch, then each rule's state (quiet hours, last seen,
+  outings this hour, next remark allowed, battery levels, why it isn't
+  roaming right now).
+- **Acceptance:** with the fakes, each nudge fires only within its rules and
+  rate limits; none when off.
+
+**E5d: a simulated day, then a live one.**
+- A test that runs a scripted day on a fake clock (people seen in the
+  morning and evening, out in the afternoon, the battery draining while out,
+  a "be quiet" at noon, the switch off for an hour): the timeline of nudges,
+  outings and trips home is checked against the rules: nothing in quiet
+  hours, never more than 2 outings an hour, none without someone seen in 30
+  min, home when the timer runs out, silence while off.
+- The live day, with the switch on: it explores while someone's about, comes
+  home when they've been gone 30 min and at 20:00, makes a remark now and
+  then, glances at someone walking by, docks on a low battery (and what the
+  robot's own return does, if it comes).
+- `emotions.yaml` keyframes (sleepy breathing, a nod) only if the day shows
+  they're missed.
 
 ### Step 8: later
 
