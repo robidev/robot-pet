@@ -683,7 +683,7 @@ battery handling, which is safety, not initiative.
     put."
   - **social:** `may_remark`, someone in view (by name if known) and no talk
     for `remark_every_min`: "Claudia has been in view for a while without
-    talking to you. Say something if you like, or leave her be."
+    talking to you. Say something if you like, or leave them be."
   - **sleep and wake:** quiet hours beginning (out on its own: home first;
     the sleepy eye on the dock) and ending, one event each.
 - Greetings and stranger notes go through `pet.initiative` too: off, they're
