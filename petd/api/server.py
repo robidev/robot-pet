@@ -55,6 +55,7 @@ def create_app(pet: "App") -> FastAPI:
             "stt_running": getattr(getattr(pet.stt, "process", None), "running", None),
             "initiative": pet.initiative.status() if pet.initiative else None,
             "outing": pet.outings.status() if pet.outings else None,
+            "nudges": pet.nudges.status() if pet.nudges else None,
             "battery": None if pet.battery is None else {
                 "told": pet.battery.told, "own_return": pet.battery.own_return,
                 "tell_pct": pet.cfg.motion.low_battery_tell_pct,
@@ -330,14 +331,15 @@ dl($('summary'),[['robot',v.reachable===false?'<span class="warn">unreachable</s
 ['pose',p.x!=null?esc(Math.round(p.x)+', '+Math.round(p.y)+', '+Math.round(p.angle||0)+'°'):'–'],
 ['face',f.reachable===false?'<span class="warn">unreachable</span>':esc('head '+(f.servo_mode||'?')+' · eye '+(f.eye_mode||'?'))],
 ['hearing',flag(s.stt_running,'listening','not running')],['speaking',s.speaking?'yes':'no'],['mode',s.fake?'fake hardware':'real hardware'],
-...initiativeRows(s.initiative,s.battery,s.outing)]);showInitiative(s.initiative);}
-function initiativeRows(i,b,o){if(!i)return [];const seen=i.someone_seen_ago_s;
+...initiativeRows(s.initiative,s.battery,s.outing,s.nudges)]);showInitiative(s.initiative);}
+function initiativeRows(i,b,o,n){if(!i)return [];const seen=i.someone_seen_ago_s;
 const rows=[['initiative',i.on?'<span class="ok">on</span>':'off'],
 ['quiet hours',esc(i.quiet_hours.join('-'))+(i.in_quiet_hours?' · <span class="warn">now</span>':'')],
 ['someone seen',seen==null?'not yet':seen===0?'in view':esc(Math.round(seen/60)+' min ago')],
 ['outings',esc(i.outings_last_hour+' this hour')+(o?' · <span class="ok">out now: spot '+o.spots+' of '+o.of+', '+Math.round(o.for_s/60)+' min</span>':'')],
 ['may roam',i.roam?'<span class="muted">no: '+esc(i.roam)+'</span>':'<span class="ok">yes</span>'],
 ['may speak up',i.remark?'<span class="muted">no: '+esc(i.remark)+'</span>':'<span class="ok">yes</span>']];
+if(n)rows.push(['nudges','idle '+esc(Math.round(n.idle_s/60)+' min')+(n.last?' · last: '+esc(n.last.kind+', '+Math.round(n.last.ago_s/60)+' min ago'):'')]);
 if(b)rows.push(['low battery',b.own_return?'<span class="warn">its own return</span>':
 esc('tell '+b.tell_pct+'% · dock '+b.dock_pct+'%')+(b.told?' · <span class="warn">told</span>':'')]);
 return rows;}

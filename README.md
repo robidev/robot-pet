@@ -207,7 +207,7 @@ it survive a Windows reboot, both outside this repository:
 | `speaker` | `sink` (the robot, a `local` sound card, or `null`), piper's URL, the robot's ports, `volume`, `lead_s` (buffer against WiFi stalls) and the echo gate |
 | `brain` | `backend` (`claude_cli`, or `ollama`), the model, the persona files in `memory/` |
 | `memory` | the database, how often it greets someone, familiarity tiers |
-| `initiative` | whether it starts things by itself at all (`enabled`, off by default), `quiet_hours`, how recently someone must have been seen, outings an hour and spots per outing, how often it speaks up |
+| `initiative` | whether it starts things by itself at all (`enabled`, off by default), `quiet_hours`, how recently someone must have been seen, outings an hour and spots per outing, how often it speaks up, how long idle before it's invited out (`restless_after_min`), idle glances |
 | `motion` | limits, docking, and the battery: `min_battery_to_leave`, `low_battery_tell_pct` (the brain told to go home), `low_battery_dock_pct` (sent home) |
 | `recognition` | face recognition thresholds (from measurements: see PLAN.md 4.7), growth of the stored faces, the 10 s recheck |
 | `log` | log folder, run count and size limits |

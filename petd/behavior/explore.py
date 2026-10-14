@@ -76,6 +76,7 @@ class Outings:
     def __init__(self, pet: "App"):
         self.pet = pet
         self.current: Optional[Outing] = None
+        self.last_end: Optional[tuple[float, str]] = None   # (when, why) the watchdog last ended one
         self.recent_spots: list[tuple[float, float]] = []
         self.check_every_s = CHECK_EVERY_S
         self._task: Optional[asyncio.Task] = None
@@ -144,6 +145,7 @@ class Outings:
             return
         log.warning("outing over: %s", why)
         self.current = None
+        self.last_end = (self.pet.initiative.clock(), why)
         if self.pet.dock is not None and self.pet.dock.going_home:
             return
         await self.pet.go_home()

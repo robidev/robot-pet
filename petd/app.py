@@ -52,6 +52,7 @@ class App:
         self.initiative = None
         self.battery = None
         self.outings = None
+        self.nudges = None
         self.last_photo: Optional[tuple[float, bytes]] = None   # (when, jpeg) of the last look
         self.robot_wifi = None
         self._piper: Optional[ManagedProcess] = None
@@ -154,6 +155,10 @@ class App:
                 await self.listener.start()
                 if self.people is not None:
                     self.people.set_notify(lambda text: self.brain.tell(text, kind="event"))
+        if self.brain is not None and self.face is not None:
+            from .behavior.nudges import Nudges
+            self.nudges = Nudges(self)
+            await self.nudges.start()
 
         if cfg.api.enabled:
             from .api.server import serve
@@ -170,9 +175,10 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.outings, self.battery, self.initiative,
-                     self.recognizer, self.people, self.dock, self.motion, self.heading, self.slam,
-                     self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
+        for part in (self.nudges, self.listener, self.brain, self.outings, self.battery,
+                     self.initiative, self.recognizer, self.people, self.dock, self.motion,
+                     self.heading, self.slam, self.stt, self.speaker, self.face, self.vacuum,
+                     self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()

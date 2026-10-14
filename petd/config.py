@@ -402,6 +402,11 @@ class InitiativeConfig:
     # quiet_mutes_min after a "be quiet".
     remark_every_min: float = 15.0
     quiet_mutes_min: float = 60.0
+    # Nudges (behavior/nudges.py): with nothing to do for this long it's
+    # invited to go exploring; with nobody in view the head glances about
+    # this often.
+    restless_after_min: float = 40.0
+    idle_glance_every_min: float = 3.0
 
 
 @dataclass

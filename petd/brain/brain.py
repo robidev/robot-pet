@@ -92,6 +92,11 @@ class Brain:
         if self.busy:
             self._hushed = True
 
+    @property
+    def idle(self) -> bool:
+        """No turn running and none waiting."""
+        return not self.busy and self._queue.empty()
+
     def note(self, text: str) -> None:
         """Something the model should know at its next turn, without a turn of its own."""
         self._notes.append(text)

@@ -691,7 +691,18 @@ comes up.
 - **Acceptance:** with the fakes, an outing visits free spots only, never
   more than allowed, and goes home on each of the four endings.
 
-**E5c: nudges, sleep and attention.**
+**E5c: nudges, sleep and attention.** **Done 2026-10-14, with the fakes**
+(`behavior/nudges.py`, `tests/test_nudges.py`, 328 tests pass; "When I'm left
+to myself" in `memory/body.md`); not on the robot, and no live brain has had
+a nudge yet. Different from the plan below: the nudges live in their own
+module, not `initiative.py`; **the PIR can't give a direction** (it's on the
+camera board, so it sees what the head already faces), so with nobody in view
+motion makes it perk up instead (a curious eye and a glance up, where a
+standing adult's face would be; at most once a minute); social waits until
+someone has been in view 2 min and hasn't talked to it for 15; restless after
+40 min with nothing to do (`initiative.restless_after_min`); no goodnight
+when the outing watchdog has just sent it home for quiet hours; no sleepy
+eye held through the night (the brain can emote it in its goodnight).
 - `behavior/initiative.py` ticks every ~30 s and, if the switch is on and
   the brain is idle (no turn, no open conversation window), sends at most one
   `initiative` turn:
