@@ -665,7 +665,17 @@ answer under Status. Its script wasn't run in a browser.
   `returning` petd didn't start (no stop sent to Valetudo, tools refuse),
   "stop" then the resend.
 
-**E5b: outings.**
+**E5b: outings.** **Done 2026-10-14, with the fakes and the room's real map**
+(`behavior/explore.py`, the `explore` and `note_observation` tools,
+`tests/test_explore.py`); not on the robot. Beyond the plan below: a person
+asking for any motion mid-outing ends the outing where it stands (it's
+theirs then, not the pet wandering); the outings-an-hour limit applies to
+starting one, not to its later spots; on an outing the 30% battery is the
+watchdog's to tell, once; observations (caption, place, the last look's
+photo if under 2 min old, newest 100 photos kept in `runtime/observations/`)
+come back in the prompt as "Things I noticed lately". After its last spot the
+pet is told to go home; if it doesn't, it stays out until a watchdog reason
+comes up.
 - An `explore` tool: drives to a random free spot on the map (anywhere,
   decision 3: `is_free` with clearance, at least ~1 m from where it is and
   from the last spots), then reports arriving as an event; the brain can

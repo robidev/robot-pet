@@ -391,6 +391,13 @@ class InitiativeConfig:
     # Out on its own only with someone (any face) seen this recently.
     someone_seen_min: float = 30.0
     max_outings_per_hour: int = 2
+    # An outing (behavior/explore.py): up to this many spots, each a random
+    # spot of open floor at least explore_clearance_cm from anything the
+    # lidar has seen, and at least explore_min_hop_m from where it is and
+    # from this outing's earlier spots.
+    spots_per_outing: int = 3
+    explore_clearance_cm: float = 40.0
+    explore_min_hop_m: float = 1.0
     # Unprompted remarks: at most one this often, and none for
     # quiet_mutes_min after a "be quiet".
     remark_every_min: float = 15.0
@@ -412,6 +419,11 @@ class MemoryConfig:
     familiarity_thresholds: list = field(default_factory=lambda: [[1, 1], [10, 3], [40, 10]])
     journal_in_prompt: int = 5
     facts_in_prompt: int = 15
+    # What it noted seeing (note_observation): the newest few go in the
+    # prompt; the photo behind each is kept, the newest observations_keep_photos.
+    observations_in_prompt: int = 5
+    observations_dir: str = "runtime/observations"
+    observations_keep_photos: int = 100
 
 
 @dataclass

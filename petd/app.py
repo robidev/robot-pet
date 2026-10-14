@@ -51,6 +51,8 @@ class App:
         self.listener = None
         self.initiative = None
         self.battery = None
+        self.outings = None
+        self.last_photo: Optional[tuple[float, bytes]] = None   # (when, jpeg) of the last look
         self.robot_wifi = None
         self._piper: Optional[ManagedProcess] = None
         self._tasks: list[asyncio.Task] = []
@@ -134,6 +136,9 @@ class App:
             from .behavior.battery import BatteryWatch
             self.battery = BatteryWatch(self)
             await self.battery.start()
+            from .behavior.explore import Outings
+            self.outings = Outings(self)
+            await self.outings.start()
 
         from .brain.tools import build_registry
         self.tools = build_registry(self)
@@ -165,9 +170,9 @@ class App:
             task.cancel()
         # Reverse of start: stop listening/speaking before letting go of hardware.
         await self._cancel_motion()
-        for part in (self.listener, self.brain, self.battery, self.initiative, self.recognizer,
-                     self.people, self.dock, self.motion, self.heading, self.slam, self.stt,
-                     self.speaker, self.face, self.vacuum, self.robot_wifi):
+        for part in (self.listener, self.brain, self.outings, self.battery, self.initiative,
+                     self.recognizer, self.people, self.dock, self.motion, self.heading, self.slam,
+                     self.stt, self.speaker, self.face, self.vacuum, self.robot_wifi):
             if part is not None:
                 try:
                     await part.close()
@@ -205,13 +210,14 @@ class App:
                 log.exception("vacuum stop failed")
 
     def start_motion(self, coro, describe: str, report: bool = True,
-                     success_is_event: bool = False) -> asyncio.Task:
+                     success_is_event: bool = False, kind: str = "event") -> asyncio.Task:
         """
         Runs a motion (a turn, a move, a trip to a place, coming over, a
         search) as a task, one at a time, so a stop can cancel it. With
         `report`, the brain hears how it went: a failure as an event of its
         own, a success as a note with its next turn, or with
         `success_is_event` as an event too (something to say: "found you").
+        Those turns are `kind` ("initiative" on an outing of its own).
         Without, the caller awaits the task's (outcome, ok) itself.
         """
         async def run() -> tuple[str, bool]:
@@ -227,7 +233,7 @@ class App:
                 if ok and not success_is_event:
                     self.brain.note(outcome)
                 else:
-                    self.brain.tell(outcome, kind="event")
+                    self.brain.tell(outcome, kind=kind)
             return outcome, ok
         self.motion_task = asyncio.create_task(run(), name="motion")
         return self.motion_task

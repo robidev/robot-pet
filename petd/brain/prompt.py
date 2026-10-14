@@ -84,6 +84,13 @@ def memory_sections(pet: "App") -> str:
         lines = ["# Things I have learned", ""]
         lines += [f"- {f.text}" for f in reversed(facts)]
         parts.append("\n".join(lines))
+
+    seen = db.observations(limit=cfg.observations_in_prompt)
+    if seen:
+        lines = ["# Things I noticed lately", ""]
+        lines += [f"- {time.strftime('%a %d %b %H:%M', time.localtime(o.t_utc))}: {o.caption}"
+                  for o in reversed(seen)]
+        parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
 

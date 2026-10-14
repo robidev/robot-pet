@@ -118,8 +118,9 @@ class Initiative:
         now = self.clock() if now is None else now
         return sum(1 for t in self.outings if now - t < 3600)
 
-    def why_not_roam(self, now: Optional[float] = None) -> Optional[str]:
-        """Why the pet may not go out on its own now; None when it may."""
+    def why_not_roam(self, now: Optional[float] = None, outing_on: bool = False) -> Optional[str]:
+        """Why the pet may not go out on its own now; None when it may. `outing_on`:
+        one is under way, so the outings-an-hour limit (on starting one) doesn't apply."""
         now = self.clock() if now is None else now
         cfg = self.cfg
         if not self.enabled:
@@ -129,7 +130,7 @@ class Initiative:
         seen = self.seen_ago_s(now)
         if seen is None or seen > cfg.someone_seen_min * 60:
             return f"nobody has been around for {cfg.someone_seen_min:.0f} minutes"
-        if self.outings_last_hour(now) >= cfg.max_outings_per_hour:
+        if not outing_on and self.outings_last_hour(now) >= cfg.max_outings_per_hour:
             return f"I've been out {cfg.max_outings_per_hour} times this hour already"
         vacuum, mcfg = self.pet.vacuum, self.pet.cfg.motion
         if vacuum is not None:

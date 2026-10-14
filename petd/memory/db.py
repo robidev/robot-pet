@@ -139,6 +139,17 @@ class Fact:
 
 
 @dataclass(frozen=True)
+class Observation:
+    id: int
+    t_utc: float
+    room: Optional[str]
+    x: Optional[float]               # in the reference map's frame (spatial/frame.py)
+    y: Optional[float]
+    caption: Optional[str]
+    jpeg_path: Optional[str]
+
+
+@dataclass(frozen=True)
 class Conversation:
     id: int
     started_at: float
@@ -337,6 +348,23 @@ class MemoryDB:
             rows = self._db.execute(
                 "SELECT * FROM facts WHERE about = ? ORDER BY t_utc DESC LIMIT ?", (about, limit))
         return [Fact(**row) for row in rows.fetchall()]
+
+    # --- observations (what it noted seeing, E5b) -------------------------------
+
+    def add_observation(self, caption: str, x: Optional[float] = None, y: Optional[float] = None,
+                        jpeg_path: Optional[str] = None, t: Optional[float] = None) -> int:
+        cur = self._db.execute(
+            "INSERT INTO observations (t_utc, x, y, caption, jpeg_path) VALUES (?, ?, ?, ?, ?)",
+            (t or time.time(), x, y, caption.strip()[:MAX_FACT_CHARS], jpeg_path))
+        return cur.lastrowid
+
+    def set_observation_photo(self, observation_id: int, jpeg_path: Optional[str]) -> None:
+        self._db.execute("UPDATE observations SET jpeg_path = ? WHERE id = ?", (jpeg_path, observation_id))
+
+    def observations(self, limit: int = 20) -> list[Observation]:
+        """Newest first."""
+        rows = self._db.execute("SELECT * FROM observations ORDER BY t_utc DESC LIMIT ?", (limit,))
+        return [Observation(**row) for row in rows.fetchall()]
 
     # --- conversations --------------------------------------------------------
 

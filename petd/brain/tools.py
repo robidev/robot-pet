@@ -212,6 +212,7 @@ def build_registry(pet: "App") -> ToolRegistry:
             pet.brain.expressions.extend_hold()     # looking at the held view: keep holding
         if snap is None:
             raise ToolError("my camera is not working right now: no photo came back, so I saw nothing at all")
+        pet.last_photo = (time.time(), snap.jpeg)      # for note_observation
         return {"image": snap.jpeg, "mime": "image/jpeg",
                 "text": "photo taken looking "
                         + _describe_look(snap.servo_pan_deg, snap.servo_tilt_deg, pet.cfg.calibration)}
@@ -308,9 +309,15 @@ def build_registry(pet: "App") -> ToolRegistry:
         """A turn the pet started itself moves it only within the house rules (behavior/initiative.py)."""
         if getattr(pet.brain, "turn_kind", None) != "initiative" or pet.initiative is None:
             return
-        why = pet.initiative.why_not_roam()
+        why = pet.initiative.why_not_roam(
+            outing_on=pet.outings is not None and pet.outings.current is not None)
         if why:
             raise ToolError(f"not now: {why}")
+
+    def person_takes_over() -> None:
+        """A motion asked for outside a self-started turn ends an outing of its own (behavior/explore.py)."""
+        if getattr(pet.brain, "turn_kind", None) != "initiative" and pet.outings is not None:
+            pet.outings.person_took_over()
 
     def own_return_check() -> None:
         if pet.battery is not None and pet.battery.own_return:
@@ -346,6 +353,7 @@ def build_registry(pet: "App") -> ToolRegistry:
             raise ToolError("I'm already on the move; that has to finish (or be stopped) first")
         own_return_check()
         initiative_check()
+        person_takes_over()
         whom = person.name if person is not None else "a face"
         pet.start_motion(search(pet, person), f"search for {whom}", success_is_event=True)
         # Told only "searching", Haiku announced "I found one face" before the
@@ -390,11 +398,12 @@ def build_registry(pet: "App") -> ToolRegistry:
     if pet.people is not None:
         _add_memory_tools(registry, pet)
     if pet.motion is not None:
-        _add_motion_tools(registry, pet, initiative_check, own_return_check)
+        _add_motion_tools(registry, pet, initiative_check, own_return_check, person_takes_over)
     return registry
 
 
-def _add_motion_tools(registry: ToolRegistry, pet: "App", initiative_check, own_return_check) -> None:
+def _add_motion_tools(registry: ToolRegistry, pet: "App", initiative_check, own_return_check,
+                      person_takes_over) -> None:
     """Turning, moving and named places (PLAN.md 4.5; cluster C4)."""
     import asyncio
 
@@ -418,6 +427,7 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App", initiative_check, own_
             if (state.battery_level or 0) < cfg.min_battery_to_leave:
                 raise ToolError(f"my battery is at {state.battery_level}%, too low to leave the "
                                 "dock; I'd only have to come straight back")
+        person_takes_over()
 
     warmup = ("My lidar spins up first, so the first motion takes about ten seconds to start; "
               "say something before calling it rather than leaving a silence.")
@@ -563,6 +573,57 @@ def _add_motion_tools(registry: ToolRegistry, pet: "App", initiative_check, own_
         return (f"coming over to {whom}: a look first, then I drive. Not there yet; I'm told when I "
                 "am, or why I couldn't get there.")
 
+    icfg = pet.cfg.initiative
+
+    @registry.tool(
+        "explore",
+        "Drive to a spot of open floor somewhere in the room that I haven't just been to, to have a "
+        "look around. Returns at once; I'm told when I'm there, and can then look around (look, "
+        "look_direction) and explore on, or go_home. On an outing of my own, up to "
+        f"{icfg.spots_per_outing} spots, then home. " + warmup)
+    async def explore(args: dict) -> str:
+        from ..behavior.explore import pick_spot
+        from ..spatial.mapgeo import current_grid
+        own = getattr(pet.brain, "turn_kind", None) == "initiative"
+        outings = pet.outings
+        outing = outings.current if own else None
+        if outing is not None and len(outing.spots) >= icfg.spots_per_outing:
+            raise ToolError(f"that was {len(outing.spots)} spots this outing: time to go home (go_home)")
+        check_can_move(leaving_dock_ok=True)
+        robot = pet.robot_pose()
+        if robot is None:
+            raise ToolError("I don't know where I am right now")
+        grid = await asyncio.to_thread(current_grid, vacuum)
+        if grid is None:
+            raise ToolError("I have no map of the room to pick a spot from")
+        avoid = list(outing.spots) if outing is not None else list(outings.recent_spots)
+        spot = await asyncio.to_thread(pick_spot, grid, (robot.x, robot.y), avoid,
+                                       icfg.explore_clearance_cm, icfg.explore_min_hop_m * 100)
+        if spot is None:
+            raise ToolError("I can't find open floor I haven't just been to")
+        if own and outing is None:
+            outing = outings.begin()
+        outings.visited(spot, outing)
+        count = (f" (spot {len(outing.spots)} of {icfg.spots_per_outing} this outing)"
+                 if outing is not None else "")
+        last = outing is not None and len(outing.spots) >= icfg.spots_per_outing
+        hop_m = math.hypot(spot[0] - robot.x, spot[1] - robot.y) / 100
+
+        async def run():
+            await motion.disarm()
+            await vacuum.go_to(*spot)
+            # At the dock's polling pace (tests shorten it).
+            outcome, ok = await await_arrival(vacuum, "the spot", MapPose(*spot), cfg.arrive_cm,
+                                              start_grace_s=pet.dock.start_grace_s, poll_s=pet.dock.poll_s)
+            if not ok:
+                return f"exploring: {outcome}{count}", False
+            then = ("That was the last one: go_home when I'm done looking." if last
+                    else "I can look around now (look), then explore on or go_home.")
+            return f"arrived at a spot to look around{count}. {then}", True
+        pet.start_motion(run(), "explore", success_is_event=True,
+                         kind="initiative" if outing is not None else "event")
+        return f"on my way to a spot about {hop_m:.1f} m away{count}; I'm told when I'm there"
+
 
 def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
     """The people and memory tools (PLAN.md 4.5, 4.7; cluster E3)."""
@@ -662,6 +723,44 @@ def _add_memory_tools(registry: ToolRegistry, pet: "App") -> None:
             raise ToolError("remember what, exactly?")
         db.add_fact(text)
         return "noted"
+
+    mcfg = pet.cfg.memory
+
+    @registry.tool(
+        "note_observation",
+        "Note something worth remembering that I saw, in a few words ('a new plant on the "
+        "windowsill'), after a look: on an outing, or when shown something. Kept with where I "
+        "was and the photo; the latest come back to me in later conversations.",
+        {"type": "object", "properties": {"caption": {"type": "string", "maxLength": 300}},
+         "required": ["caption"]})
+    async def note_observation(args: dict) -> str:
+        caption = " ".join((args.get("caption") or "").split())
+        if not caption:
+            raise ToolError("note what, exactly?")
+        x = y = None
+        pose = pet.robot_pose()
+        if pose is not None and pet.frame is not None:
+            spot = await pet.frame.to_reference(pose.x, pose.y)
+            if spot is not None:
+                x, y = spot
+        observation_id = db.add_observation(caption, x, y)
+        photo = pet.last_photo
+        if photo is not None and time.time() - photo[0] < 120:
+            path = await asyncio.to_thread(_keep_observation_photo, pet.cfg.path(mcfg.observations_dir),
+                                           observation_id, photo[1], mcfg.observations_keep_photos)
+            db.set_observation_photo(observation_id, str(path))
+        return "noted"
+
+
+def _keep_observation_photo(folder, observation_id: int, jpeg: bytes, keep: int):
+    """Saves an observation's photo; only the newest `keep` photos stay."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{observation_id}.jpg"
+    path.write_bytes(jpeg)
+    photos = sorted(folder.glob("*.jpg"), key=lambda p: p.stat().st_mtime)
+    for old in photos[:max(0, len(photos) - keep)]:
+        old.unlink(missing_ok=True)
+    return path
 
 
 # A face in view and a recognition track this far apart (normalized frame) are one face.

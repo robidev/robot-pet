@@ -96,8 +96,11 @@ class BatteryWatch:
             self._tell(f"My battery is at {level}%, so I'm already driving back to my dock: "
                        "that comes before anything else now.")
         elif level <= cfg.low_battery_tell_pct and not self.told:
-            log.warning("battery at %d%%: telling the brain", level)
             self.told = True
+            outings = self.pet.outings
+            if outings is not None and outings.current is not None:
+                return          # the outing's watchdog sends it home, and says why
+            log.warning("battery at %d%%: telling the brain", level)
             self.pet.bus.publish(LowBattery(level=level, action="told"))
             self._tell(f"My battery is at {level}%. Head back to the dock now with go_home, "
                        f"whatever I'm doing; at {cfg.low_battery_dock_pct}% I'm sent home anyway.")

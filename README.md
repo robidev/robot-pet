@@ -163,7 +163,8 @@ scripts/start.sh --echo          # repeats what it hears: tests the audio path a
 - **Talking to it:** say its name ("Hey GLaDOS, …"); within a conversation
   it keeps listening for a while. "Remember my face, I'm …" enrolls you.
 - Everything it keeps is under `runtime/` (git-ignored: it holds photos of
-  people). It stays under ~300 MB: old runs, logs and face crops are pruned.
+  people, and in `runtime/observations/` the photos behind what it noted
+  seeing, the newest 100). It stays under ~300 MB: old runs, logs and face crops are pruned.
 
 ### Starting with WSL
 
@@ -206,7 +207,7 @@ it survive a Windows reboot, both outside this repository:
 | `speaker` | `sink` (the robot, a `local` sound card, or `null`), piper's URL, the robot's ports, `volume`, `lead_s` (buffer against WiFi stalls) and the echo gate |
 | `brain` | `backend` (`claude_cli`, or `ollama`), the model, the persona files in `memory/` |
 | `memory` | the database, how often it greets someone, familiarity tiers |
-| `initiative` | whether it starts things by itself at all (`enabled`, off by default), `quiet_hours`, how recently someone must have been seen, outings an hour, how often it speaks up |
+| `initiative` | whether it starts things by itself at all (`enabled`, off by default), `quiet_hours`, how recently someone must have been seen, outings an hour and spots per outing, how often it speaks up |
 | `motion` | limits, docking, and the battery: `min_battery_to_leave`, `low_battery_tell_pct` (the brain told to go home), `low_battery_dock_pct` (sent home) |
 | `recognition` | face recognition thresholds (from measurements: see PLAN.md 4.7), growth of the stored faces, the 10 s recheck |
 | `log` | log folder, run count and size limits |
