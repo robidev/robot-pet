@@ -12,8 +12,13 @@ from petd.events import Heard, HeardDropped, SpeakingFinished
 from petd.io.face import Face
 
 
+def matcher():
+    cfg = Config().converse
+    return NameMatcher("GLaDOS", cfg.wake_words, cfg.sentence_start_words)
+
+
 def words_after_name(text):
-    return NameMatcher("GLaDOS", Config().converse.wake_words).split(text)
+    return matcher().split(text)
 
 
 @pytest.mark.parametrize("text", [
@@ -36,23 +41,35 @@ def test_the_name_however_whisper_spells_it(text):
     ("OkGLaDOS, what time is it", "GLaDOS, what time is it"),
     ("I'd gladly do it, Gladys.", "I'd gladly do it, GLaDOS."),
     ("Gila Das, what do you see?", "GLaDOS, what do you see?"),
-    ("the DOS prompt", "the DOS prompt")])
+    ("the DOS prompt", "the DOS prompt"),
+    ("Class, come here.", "GLaDOS, come here."),
+    ("Okay. Class, come here.", "Okay. GLaDOS, come here."),
+    ("we had class today", "we had class today")])
 def test_the_brain_reads_the_name_spelled_right(text, said):
-    assert NameMatcher("GLaDOS", Config().converse.wake_words).named(text, "GLaDOS") == said
+    assert matcher().named(text, "GLaDOS") == said
 
 
 @pytest.mark.parametrize("text", [
     "I'd gladly do it", "a glass of water", "the gladiolus", "what time is it",
-    "the DOS prompt", "those kudos"])
+    "the DOS prompt", "those kudos", "we had a class today", "the class. Was it good?"])
 def test_words_that_are_not_the_name(text):
     assert not words_after_name(text)[0]
+
+
+@pytest.mark.parametrize("text", [
+    "Class, what time is it?", "Class what time is it", "Okay. Class, what time is it?",
+    "Hm? \"Class, what time is it?\""])
+def test_class_is_the_name_at_a_sentences_start(text):
+    found, rest = words_after_name(text)
+    assert found
+    assert rest[-4:] == ["what", "time", "is", "it"]
 
 
 @pytest.mark.parametrize("text,reflex", [
     ("Stop!", "stop"), ("please stop", "stop"), ("GLaDOS, stop it.", "stop"),
     ("Freeze!", "stop"), ("Be quiet.", "quiet"), ("That's enough!", "quiet"),
     ("Shut up, Gladys", "quiet"), ("Gladys, go home", "home"), ("Go back to your dock.", "home"),
-    ("GLaDOS go to sleep", "sleep"),
+    ("GLaDOS go to sleep", "sleep"), ("Class, stop.", "stop"),
     ("don't stop", None), ("stop by the shop later", None), ("I need to go home soon", None),
     ("is it quiet in here", None), ("what time is it", None)])
 def test_reflexes_match_whole_commands_only(text, reflex):
@@ -189,14 +206,20 @@ async def test_with_echo_cancelled_a_stop_word_over_the_voice_interrupts(pet):
     assert pet.brain.told == [] and "no no stop" in pet.brain.notes[-1]
 
 
-async def test_with_echo_cancelled_talking_over_the_voice_reaches_the_brain(pet):
+async def test_with_echo_cancelled_only_the_name_gets_past_the_voice(pet):
+    # A room mic hears the TV as well (2026-10-11): an open window doesn't let
+    # unnamed speech through while the pet talks.
     cancel_echo(pet)
+    pet.listener.window_until = time.time() + 60
     pet.speaker.say("I have been thinking about the nature of cake.")
     await until_audible(pet)
     await asyncio.sleep(1.1)
-    pet.stt.inject("the nature of cake is a lie")    # our words, but not an echo
+    pet.stt.inject("we are going to be a little bit older")
     await asyncio.sleep(0.05)
-    assert pet.brain.told[-1][0] == "the nature of cake is a lie"
+    assert pet.brain.told == []
+    pet.stt.inject("GLaDOS, the nature of cake is a lie")    # our words, but not an echo
+    await asyncio.sleep(0.05)
+    assert pet.brain.told[-1][0] == "GLaDOS, the nature of cake is a lie"
     assert ("stop",) not in pet.vacuum.commands
 
 

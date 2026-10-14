@@ -228,8 +228,9 @@ audio never reaches WSL. With `stt.source: local`, `scripts/preflight.py` says
 whether the device opens; `arecord` complaints are in `petd.log` as `petd.proc.mic`.
 
 **It hears "Gladys", "Clovis", "Class" instead of GLaDOS.** Whisper, primed
-with the name; the name matcher accepts the common misses. Saying "Hey GLaDOS"
-helps most.
+with the name; the name matcher accepts the common misses
+(`converse.wake_words`, and "Class" as a sentence's first word:
+`converse.sentence_start_words`). Saying "Hey GLaDOS" helps most.
 
 **The voice cuts out mid-sentence.** The robot's WiFi: `wlanmgr`'s scan every
 30 s. petd pauses it (look for "robot WiFi:" in petd.log: "is paused", or why

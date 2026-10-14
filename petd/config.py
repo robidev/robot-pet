@@ -351,9 +351,13 @@ class ConverseConfig:
     wake_words: list = field(default_factory=lambda: [
         "glados", "gladys", "gladis", "gladdis", "glad os", "glados's", "gladas", "gila das",
     ])
+    # Spellings that count as the name only as a sentence's first word:
+    # whisper's "Class, come here" (2026-10-05); "a class" stays a class.
+    sentence_start_words: list = field(default_factory=lambda: ["class"])
     # After the pet speaks, or after being addressed, it keeps listening
-    # without its name for this long.
-    window_s: float = 20.0
+    # without its name for this long. 20 s let a TV across the room keep it
+    # talking: each reply to the TV opened another window (2026-10-11).
+    window_s: float = 8.0
     # A known person in view counts as talking to the pet (with recognition
     # off, anyone in view).
     gaze_opens: bool = True

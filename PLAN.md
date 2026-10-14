@@ -458,7 +458,8 @@ latency numbers.
 
 ### Step 6: loose ends before M4
 
-- Whisper's "GLaDOS" misses ("Gladys", "Class", "GluDOS" on 2026-10-05):
+- ~~Whisper's "GLaDOS" misses~~ **Closed (2026-10-14, not tried live)**
+  ("Gladys", "Class", "GluDOS" on 2026-10-05):
   maybe a new name Whisper hears reliably (Robin, 2026-10-05). `pet.name`
   feeds Whisper's prompt and the name matcher; the personality and voice
   (`memory/*.md`, piper) would need rewording. Candidates can be tried first
@@ -469,9 +470,14 @@ latency numbers.
   syllables."). Now the brain reads every spelling the gate takes as the name
   as "GLaDOS" (`NameMatcher.named`), and `memory/body.md` says how it's said
   (like Gladys, ending in -dos as in DOS: two syllables) and that a garbled
-  word is its hearing, never to correct anyone's pronunciation. Still open:
-  misses the gate doesn't take at all ("Class").
-- **A room mic and a TV** (2026-10-11, the Jabra over Bluetooth, the TV on
+  word is its hearing, never to correct anyone's pronunciation. ~~Still open:
+  misses the gate doesn't take at all ("Class").~~ **2026-10-14 (Robin):**
+  "Class" counts as the name as a sentence's first word
+  (`converse.sentence_start_words`): "Class, come here" and "Okay. Class,
+  come here" reach the brain as "GLaDOS, ...", "we had a class today"
+  doesn't. A TV line starting with "Class" gets through too; accepted.
+- ~~**A room mic and a TV**~~ **Built (2026-10-14), the check is in Step 8**
+  (2026-10-11, the Jabra over Bluetooth, the TV on
   across the room): Whisper made stock lines of the TV's speech and music
   ("We are going to be a little bit older / more / better", ~15 times in 8
   min) and petd passed them to the brain as Robin's or Claudia's words; the
@@ -479,17 +485,28 @@ latency numbers.
   for the robot's own mic, which mostly heard whoever was near it:
   1. **While the pet talks, everything heard counts as addressed**
      (`over_voice` in `converse.on_heard`, with `stt.echo_cancelled`). Let
-     only "stop" and sentences with its name through then.
+     only "stop" and sentences with its name through then. **Done:** with
+     `stt.echo_cancelled`, speech over the pet's voice is a barge-in
+     ("stop", "quiet" and their kin anywhere in it, as before) or has the
+     name, or it's dropped ("over the pet's voice"), even with a window
+     open.
   2. **Self-repeating transcripts** ("a little bit more a little bit more a
      little bit more"), Whisper's habit on unclear audio: drop them in
      `stt.drop_reason`. `no_speech_prob` doesn't help: 0.00 on every line.
+     **Done:** a phrase of two or more words three times in a row is
+     dropped ("repeats itself"); "stop stop stop" and "come here, come
+     here" aren't. The 2026-10-11 runs had one such line ("It's a brand new
+     brand" x3); "I'm not gonna stop. I'm not gonna stop." (twice) still
+     passes.
   3. **The 20 s window (`converse.window_s`) and `gaze_opens`**: each reply
      to the TV opened another 20 s, and whoever faces the camera opens it
      too. With a room mic: speech without the name only from the person the
      pet is talking to, still in view; or at least a shorter window (~8 s).
+     **Done (Robin: only the window):** `converse.window_s` 20 -> 8, in the
+     default and the three local configs. `gaze_opens` stays as it was.
 
-  To check: a few minutes' talk with the TV on, counting the TV lines that get
-  through.
+  To check (Step 8): a few minutes' talk with the TV on, counting the TV
+  lines that get through.
 - **petd's stop hung** (2026-10-11 17:11): it logged "petd stopped", then the
   process stayed 30 s until systemd killed it (`Result: timeout`); nothing was
   left running. The face and the robot had dropped out for 10-16 s a few
@@ -553,6 +570,11 @@ docks on low battery.
 
 ### Step 8: later
 
+- **The room mic and the TV, tried** (Step 6, built 2026-10-14): a few
+  minutes' talk with the TV on and the Jabra as mic, counting the TV lines
+  that reach the brain (petd.log: "over the pet's voice", "repeats itself",
+  "not addressed"), and whether 8 s is long enough to answer the pet
+  without its name.
 - **F2 games:** 20 questions, riddles, guess what I see (`look()`), hide and
   seek-lite (`search_for_person`), played through the dashboard's "hear" box
   first, then by voice.

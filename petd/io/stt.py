@@ -9,7 +9,9 @@ Filtering happens here, before anything reaches the brain:
   answer begun just before the pet's voice had quite died away is still
   someone talking (behavior/converse.py catches echoes by their words);
 - Whisper hallucinations on noise: bracketed tags ("[BLANK_AUDIO]"),
-  a configurable ignore list, too-short text, high no_speech_prob.
+  a configurable ignore list, too-short text, a phrase said three times in a
+  row ("a little bit more a little bit more a little bit more", a TV's music
+  on 2026-10-11, at no_speech_prob 0.00), high no_speech_prob.
 Dropped transcripts are published as HeardDropped for debugging.
 
 The audio comes from the face's UDP stream (stt.source: face) or from a sound
@@ -62,9 +64,24 @@ def drop_reason(text: str, no_speech_prob: float, cfg: SttConfig) -> Optional[st
         return "too short"
     if norm in {normalize(p) for p in cfg.ignore_phrases}:
         return "ignore list"
+    if repeats_itself(norm):
+        return "repeats itself"
     if no_speech_prob > cfg.max_no_speech_prob:
         return f"no_speech_prob {no_speech_prob:.2f}"
     return None
+
+
+def repeats_itself(norm: str) -> bool:
+    """
+    A phrase of two or more words three times in a row: whisper looping on
+    unclear audio. One word doesn't count: "stop stop stop" is someone.
+    """
+    words = norm.split()
+    for n in range(2, len(words) // 3 + 1):
+        for i in range(len(words) - 3 * n + 1):
+            if words[i:i + n] == words[i + n:i + 2 * n] == words[i + 2 * n:i + 3 * n]:
+                return True
+    return False
 
 
 def lga1_packet(sequence: int, pcm: bytes) -> bytes:

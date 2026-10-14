@@ -85,6 +85,12 @@ def test_hallucination_filters():
     assert drop_reason("a", 0, cfg) == "too short"
     assert drop_reason("go to the kitchen", 0.9, cfg).startswith("no_speech_prob")
     assert drop_reason("go to the kitchen", 0.1, cfg) is None
+    # whisper looping on a TV's music (2026-10-11)
+    assert drop_reason("a little bit more a little bit more a little bit more", 0, cfg) == "repeats itself"
+    assert drop_reason("It's a brand new brand, it's a brand new brand. It's a brand new brand.",
+                       0, cfg) == "repeats itself"
+    assert drop_reason("stop stop stop", 0, cfg) is None
+    assert drop_reason("come here, come here", 0, cfg) is None
 
 
 def test_mic_packets_are_what_whisper_parses():

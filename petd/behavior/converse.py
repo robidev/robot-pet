@@ -20,7 +20,10 @@ then the attention gate, then the brain.
 - With stt.echo_cancelled (a mic that doesn't hear the pet) neither filter
   runs: whatever is heard is someone talking. A stop or quiet word said
   over the pet's voice is then the barge-in, as in an echo-gated
-  transcript, and anything else said over it counts as talking to the pet.
+  transcript, and otherwise only speech with its name gets past its voice:
+  such a mic sits in the room and hears the TV as well (2026-10-11).
+- "Class" counts as the name only as a sentence's first word
+  (converse.sentence_start_words): whisper's "Class, come here".
 - The strict reflex match (the whole utterance is the command, give or take
   the name and a "please") keeps "don't stop" or "stop by the shop later"
   from halting the robot.
@@ -86,15 +89,19 @@ class NameMatcher:
     the name's last three capitals, or containing the name, counts.
     """
 
-    def __init__(self, name: str, wake_words: list[str]):
+    def __init__(self, name: str, wake_words: list[str], sentence_start_words: list[str] = ()):
         self.name = normalize(name).replace(" ", "")
         self.tail = re.sub(r"[^A-Za-z]", "", name)[-3:] if name[-3:].isupper() else None
         self.phrases = {normalize(w) for w in wake_words} | {self.name}
+        # The name only as a sentence's first word ("Class, come here", not "a class").
+        self.openers = {normalize(w) for w in sentence_start_words}
 
     def split(self, text: str) -> tuple[bool, list[str]]:
         """(was the name said, the remaining words)."""
-        raw = [w.strip(string.punctuation) for w in text.split()]
-        raw = [w for w in raw if w]
+        tokens = text.split()
+        kept = [i for i, token in enumerate(tokens) if token.strip(string.punctuation)]
+        raw = [tokens[i].strip(string.punctuation) for i in kept]
+        starts = [_starts_sentence(tokens, i) for i in kept]
         words = [normalize(w) for w in raw]
         rest: list[str] = []
         found = False
@@ -104,7 +111,8 @@ class NameMatcher:
             if len(words) > i + 1 and (pair in self.phrases or self._close(words[i] + words[i + 1])):
                 found = True
                 i += 2
-            elif words[i] in self.phrases or self._close(words[i]) or self._marked(raw[i]):
+            elif (words[i] in self.phrases or self._close(words[i]) or self._marked(raw[i])
+                  or (starts[i] and words[i] in self.openers)):
                 found = True
                 i += 1
             else:
@@ -131,7 +139,8 @@ class NameMatcher:
                     out.append(_lead(tokens[i]) + name + _trail(tokens[i + 1]))
                     i += 2
                     continue
-            if word and (word in self.phrases or self._close(word) or self._marked(raw)):
+            if word and (word in self.phrases or self._close(word) or self._marked(raw)
+                         or (_starts_sentence(tokens, i) and word in self.openers)):
                 out.append(_lead(tokens[i]) + name + _trail(tokens[i]))
             else:
                 out.append(tokens[i])
@@ -147,6 +156,10 @@ class NameMatcher:
             return True
         return (self.tail is not None and len(raw) > len(self.tail)
                 and raw.endswith(self.tail))
+
+
+def _starts_sentence(tokens: list[str], i: int) -> bool:
+    return i == 0 or tokens[i - 1].rstrip("\"')").endswith((".", "?", "!"))
 
 
 def _lead(token: str) -> str:
@@ -196,7 +209,8 @@ class Listener:
         self.pet = pet
         self.cfg = pet.cfg.converse
         self.echo_cancelled = pet.cfg.stt.echo_cancelled
-        self.names = NameMatcher(pet.cfg.pet.name, self.cfg.wake_words)
+        self.names = NameMatcher(pet.cfg.pet.name, self.cfg.wake_words,
+                                 self.cfg.sentence_start_words)
         self.window_until = 0.0
         self._task: Optional[asyncio.Task] = None
 
@@ -259,10 +273,14 @@ class Listener:
                 log.warning("barge-in %r -> %s", event.text, barged)
                 await self.reflex(barged, said)
                 return
+            # Past its voice only with its name: a room mic hears the TV too,
+            # and every reply to it would have answered the TV (2026-10-11).
+            if not addressed:
+                return self._ignore(event.text, "over the pet's voice")
 
         if self.cfg.ignore_while_driving and self._driving() and not addressed:
             return self._ignore(event.text, "driving")
-        if not (addressed or over_voice or self.window_open(event.t) or self._gaze()):
+        if not (addressed or self.window_open(event.t) or self._gaze()):
             return self._ignore(event.text, "not addressed")
         self.window_until = event.t + self.cfg.window_s
 
