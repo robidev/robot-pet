@@ -598,12 +598,10 @@ shows as status `returning` that petd didn't ask for. So:
 - To see when it happens: the battery level at the robot's own return, and
   whether it comes during a go_to.
 
-**Still to decide:**
-5. **Near a child** (Noah, 8): may it approach him on its own, not
-   called? The persona gentler with him (a child flag on his record and a
-   line in the prompt)? An unknown child can't be told from an adult.
-6. **Low battery numbers:** the brain's event at ~30%, petd docking itself
-   at ~22% (both above the robot's 20%)?
+5. **No special handling for a child** (Noah, 8): no child flag, no rules of
+   its own; he's treated like everyone else.
+6. **Low battery:** the brain's event at 30%, petd docking itself at 22%
+   (both above the robot's 20%), configurable.
 
 **Build E5** with the fakes: drives (social, curiosity, energy), `sleep`,
 `attention` (turn toward motion, greet), `explore` (a free spot, `look()`, a
@@ -648,7 +646,7 @@ docks on low battery.
 | Household | ~~Adults only~~ **Corrected 2026-09-27: Robin's son Noah is 8** and around the robot. No animals | **Approaching Noah is fine** (he's happy to interact). Still open: speed caps and the standoff near him (Step 5). |
 | Camera height | **0.20 m for now; the head's design may change it** (2026-09-27) | Nothing hard-codes it: `calibration.camera_height_m`, read by `spatial/person.py` and `calibrate_face.py`. |
 | Autonomy (M4) | **Through the brain** (2026-10-14): drives and the schedule send `[event]`s, the brain acts through tools; the code keeps only hard limits (quiet hours, someone seen, battery) | Replaces 4.6's code-picked Idle/AttentionSeeking/Explore and the LowBattery/Sleep reflexes, except the hard limits (Step 7). |
-| Home rules (M4) | **Quiet hours 20:00-09:00** every day, configurable; it talks then, doesn't move on its own. **Roams only with someone seen in the last 30 min**, back to the dock when that runs out or quiet hours begin. **Anywhere free on the map**, no zones. At most 2 outings an hour, one unprompted remark per ~15 min, none to an empty room (2026-10-14) | Step 7; our own zones (C1) aren't needed. Near a child and the battery numbers still open. |
+| Home rules (M4) | **Quiet hours 20:00-09:00** every day, configurable; it talks then, doesn't move on its own. **Roams only with someone seen in the last 30 min**, back to the dock when that runs out or quiet hours begin. **Anywhere free on the map**, no zones. At most 2 outings an hour, one unprompted remark per ~15 min, none to an empty room (2026-10-14) | Step 7; our own zones (C1) aren't needed. **No special handling for a child.** **Low battery:** the brain told at 30%, petd docks it at 22%. |
 
 ---
 
@@ -1642,6 +1640,6 @@ Concurrency, state machines, and where the "feel" lives.
 ## 9. Open questions
 
 - **Noah near the robot:** approaching him is fine; no speed cap (a `go_to` all the way), the standoff 1.0 m as for everyone, and anyone may summon it, guests too (Robin, 2026-10-11).
-- ~~**Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.~~ **Decided 2026-10-14** (Decisions, Step 7); near a child and the battery numbers still open.
+- ~~**Home rules for M4:** quiet hours, the windows for moving on its own, places it must not go (our own zones; Valetudo has none here). Decide before Step 7.~~ **Decided 2026-10-14** (Decisions, Step 7).
 - **Standing adults and the camera:** whether face size and tilt give a distance for a standing adult near the robot, or a person/feet detector or a camera tilted up on its mount is needed (Step 2).
 - **Answered since the first list:** the name is GLaDOS; tilt 90 is level and lower tilt looks up (`calibrate_face.py`, 2026-09-23); the tilt servo reaches 58 (up) to 105 (down), measured by hand. Both changed with the remount of 2026-10-05: higher tilt looks up, 67 to 180; tilt 90 is still level and pan 75 is straight ahead (Findings). The first list's other answers are under "Decisions".
