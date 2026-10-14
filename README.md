@@ -188,6 +188,7 @@ it survive a Windows reboot, both outside this repository:
 | `scripts/show_memory.py [conversation N \| map \| faces]` | what the pet stored: people, places, conversations; `map` draws places on the map; `faces` lists fingerprints and draws the face crops and recent recognition attempts |
 | `scripts/fix_faces.py forget <id>… \| assign <attempt> <name>` | correct a stored face: drop a wrong fingerprint, or give a misread attempt to the right person |
 | `scripts/latency.py [run]` | where each turn's time went, from a run's event trace |
+| `scripts/simulate_day.py [--off]` | a day of the pet's initiative in seconds (fake hardware, fake clock, a brain that says yes to everything): the timeline of nudges, outings and what the rules refused |
 | `scripts/smoke.py vacuum \| face \| …` | hardware smoke tests of each adapter |
 | `scripts/fetch_face_models.py` | downloads the face recognition models |
 | `scripts/mic_levels.py quiet \| say <distance> \| report` | the microphone's levels: speech at a distance against the room's quiet, and what whisper made of it (petd stopped) |

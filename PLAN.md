@@ -20,7 +20,7 @@ ESP32-S3 face, into a pet with GLaDOS's personality.
 | **M1: It talks** | **Works on the robot.** Name gate, spoken answers in the GLaDOS voice with eye and head gestures, "stop", the echo gate. |
 | **M2: It knows you** | **Works**, with face recognition on the PC: Robin, Claudia and Noah enrolled; named in daylight and lamp light, after restarts; a guest stayed unknown. Swaps and coming back work (2026-10-05); two people at once are named, slowly when far; their speech goes to the biggest face since 2026-10-05, not yet tried (Step 1). |
 | **M3: It comes to you** | **Works** (2026-10-11): "come here" in view, and called from out of view it searches (turning its body), finds you and comes over; "stop" halts it. Heading and position from the robot's SLAM. |
-| **M4: It feels alive** | **Not built** (Step 7). |
+| **M4: It feels alive** | **Built with the fakes** (E5a-d, 2026-10-14): the initiative switch, house rules, battery, outings, nudges, a simulated day. **The live day is next** (Step 7, E5d). |
 
 | Area | Works (tried on the hardware) | Built, not yet tried live | Not built |
 |---|---|---|---|
@@ -730,7 +730,20 @@ eye held through the night (the brain can emote it in its goodnight).
 - **Acceptance:** with the fakes, each nudge fires only within its rules and
   rate limits; none when off.
 
-**E5d: a simulated day, then a live one.**
+**E5d: a simulated day, then a live one.** **The simulated day is done
+(2026-10-14):** `petd/simday.py` runs petd's real initiative, outing,
+battery and nudge code on fake hardware and a fake clock, 06:00-23:00 in
+~2.5 s, with a brain that takes up every nudge and even tries to explore at
+goodnight; `scripts/simulate_day.py` prints the timeline,
+`tests/test_simulated_day.py` checks it against every rule below, plus how
+outings end (quiet hours, nobody for 30 min, the battery) and a day with the
+switch off (339 tests pass). **It found three bugs**, fixed: a restless nudge
+inviting talk during a "be quiet" hour; the same nudge saying "I spoke up
+recently" about itself (the remark was recorded before the text was
+written); and a second goodnight when quiet hours began mid-outing, since
+the nudges and the outing watchdog run on their own timers. With a greedy
+brain and people about all evening, the rules allow 2 outings every hour:
+the real brain will decline some. The live day is still to do (below).
 - A test that runs a scripted day on a fake clock (people seen in the
   morning and evening, out in the afternoon, the battery draining while out,
   a "be quiet" at noon, the switch off for an hour): the timeline of nudges,
@@ -743,6 +756,35 @@ eye held through the night (the brain can emote it in its goodnight).
   robot's own return does, if it comes).
 - `emotions.yaml` keyframes (sleepy breathing, a nod) only if the day shows
   they're missed.
+
+**The live day: a checklist** (hands-on; the floor clear before the switch
+goes on). To get through it in an afternoon, shorten the waits for the
+session in `config.yaml`, e.g. `initiative: {enabled: true,
+restless_after_min: 5, someone_seen_min: 5}`, and move `quiet_hours` to start
+a few minutes ahead for its item; put them back afterwards. The dashboard's
+Status rows say what each rule thinks; petd.log has "nudge:", "outing",
+"initiative", "battery".
+1. **Off by default:** start petd; the button reads "initiative off"; come
+   into view: no greeting, no remark. Talk to it: it answers.
+2. **Switch on:** stay in view without talking (2 min, then up to 15): a
+   remark, or a deliberate silence.
+3. **An outing:** leave it idle (`restless_after_min`): it may set off;
+   watch the spots (open floor, clear of furniture), the looks, any
+   `note_observation`, and that it docks after the last spot.
+4. **A person takes over:** mid-outing, "come here": it comes, and stays
+   with you afterwards (no trip home later on the outing's account).
+5. **The switch off mid-outing:** it heads home, says why; then nothing by
+   itself until it's on again.
+6. **Nobody around:** mid-outing, leave the room for `someone_seen_min`:
+   it heads home (only if the brain hasn't gone home by itself first).
+7. **Quiet hours:** at their start, a goodnight (or nothing, with nobody in
+   view), home if out; an outing on its own refused, "go to the kitchen"
+   still done, talk still answered. And the morning.
+8. **The head:** nobody in view, walk past in front of it: a curious perk
+   and a glance up; left alone, a glance every few minutes.
+9. **Battery:** not forced; when it happens, 30% (told), 22% (sent home),
+   and the robot's own return if it comes: its battery level, and that petd
+   stood aside.
 
 ### Step 8: later
 

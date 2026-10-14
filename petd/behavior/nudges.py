@@ -5,8 +5,9 @@ initiative switch (behavior/initiative.py).
 Every `TICK_S`, with the switch on, at most one turn of kind "initiative"
 goes to the brain, which may take it up or do nothing:
 - **quiet hours beginning and ending**: one event each (goodnight: go home if
-  out; good morning). Not when an outing was just ended for quiet hours:
-  the watchdog already said so.
+  out; good morning). No goodnight during an outing, or just after one ended
+  for quiet hours: the outing's watchdog says so (the two run on their own
+  timers, so either may notice first).
 - **social**: someone in view for a couple of minutes without talking to it,
   when `why_not_remark` allows (rate, "be quiet", not mid-conversation).
 - **restless**: nothing to do for `restless_after_min`, when `why_not_roam`
@@ -117,9 +118,10 @@ class Nudges:
             initiative.remarked(now)
             return self._nudge("social", self._social_text(now))
         if self._restless_due(now):
-            if self._someone_in_view():
+            text = self._restless_text(now)         # before remarked(): it says whether to speak
+            if self._someone_in_view() and initiative.why_not_remark(now) is None:
                 initiative.remarked(now)
-            return self._nudge("restless", self._restless_text(now))
+            return self._nudge("restless", text)
         self._maybe_glance(now)
         return None
 
@@ -156,6 +158,8 @@ class Nudges:
         start, end = self.cfg.quiet_hours
         if quiet:
             outings = self.pet.outings
+            if outings is not None and outings.current is not None:
+                return None     # the outing's watchdog ends it, sends it home and says why
             ended = getattr(outings, "last_end", None)
             if ended is not None and self.now - ended[0] < OUTING_JUST_ENDED_S and ended[1].startswith("quiet"):
                 return None     # the watchdog has just said so, and sent it home
@@ -192,7 +196,8 @@ class Nudges:
 
     def _social_text(self, now: float) -> str:
         minutes = max(2, round((now - self.in_view_since) / 60))
-        return (f"{self._who()} has been in view for about {minutes} minutes without talking to "
+        who = self._who()
+        return (f"{who[0].upper()}{who[1:]} has been in view for about {minutes} minutes without talking to "
                 "me. I may say something (a remark, a question, something I noticed), or leave "
                 "them be: saying nothing is fine.")
 
@@ -200,7 +205,12 @@ class Nudges:
         idle_min = round((now - self.last_active_at) / 60)
         seen = self.pet.initiative.seen_ago_s(now)
         if self._someone_in_view():
-            around = f"{self._who()} is in view."
+            who = self._who()
+            around = f"{who[0].upper()}{who[1:]} is in view."
+            hush = self.pet.initiative.why_not_remark(now)
+            if hush is not None and hush != "mid-conversation":
+                # A "be quiet" still holds, or it spoke up only just now.
+                around += f" I shouldn't speak up now: {hush}. If I go, I go without a word."
         else:
             around = (f"Nobody is in view (someone was, {round((seen or 0) / 60)} minutes ago), so "
                       "there's nobody to talk to.")

@@ -82,8 +82,9 @@ class Initiative:
 
     async def _watch(self, sub) -> None:
         async for event in sub:
-            # Arriving and leaving both mark the time: in view until then.
-            self.last_seen_at = event.t
+            # Arriving and leaving both mark the time: in view until then. On
+            # this clock, not the event's, so a simulated day (petd/simday.py) agrees.
+            self.last_seen_at = self.clock()
 
     # --- the switch ---------------------------------------------------------------
 
