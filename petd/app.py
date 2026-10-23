@@ -76,7 +76,9 @@ class App:
             self.speaker, self._piper = build_speaker(cfg, self.bus, fake)
         if cfg.stt.enabled:
             gate = self.speaker.overlap_fraction if self.speaker else None
-            self.stt = FakeStt(cfg, self.bus, gate) if fake else SttAdapter(cfg, self.bus, gate)
+            clips = run_dir / "speech" if run_dir is not None and cfg.stt.save_clips else None
+            self.stt = (FakeStt(cfg, self.bus, gate) if fake
+                        else SttAdapter(cfg, self.bus, gate, clips_dir=clips))
 
         if self.vacuum is not None and cfg.vacuum.pause_wlanmgr and not fake:
             from .io.robot_wifi import WlanmgrPause

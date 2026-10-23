@@ -158,6 +158,12 @@ class SttConfig:
     # "G let us" or "Clovis". None = the pet's name.
     prompt: Optional[str] = None
     min_chars: int = 2
+    # Keep every transcribed utterance as a WAV in the run's log folder
+    # (runtime/logs/<run>/speech/HH-MM-SS.mmm.wav, named in petd.log's
+    # "heard:" lines), with the speech and room levels logged: to hear what
+    # the recognizer got when transcripts come out garbled (2026-10-23).
+    # About 32 KB per second of speech; old runs are pruned with the logs.
+    save_clips: bool = False
     # Compared after lowercasing and stripping punctuation.
     ignore_phrases: list = field(default_factory=lambda: [
         "you", "thank you", "thanks for watching", "thank you for watching", "bye", "okay",

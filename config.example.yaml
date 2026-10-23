@@ -49,6 +49,7 @@ stt:
   threads: 4
   extra_args: []           # e.g. ["--vad-threshold", "0.4", "--min-silence-ms", "600"]
   max_no_speech_prob: 0.6
+  save_clips: false        # true: each utterance as a WAV in runtime/logs/<run>/speech/, levels in petd.log
 
 speaker:
   sink: robot              # robot (socat on the vacuum) | local (a sound card on this PC) | null

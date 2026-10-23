@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <iostream>
 #include <limits>
@@ -241,6 +242,11 @@ struct Params {
     // Initial prompt for whisper: words it should expect, e.g. a name it
     // would otherwise hear as something more common ("GLaDOS" -> "Gladys").
     std::string prompt;
+
+    // Write each transcribed utterance here as a WAV, exactly the audio the
+    // recognizer got, named by its local start time (HH-MM-SS.mmm.wav); the
+    // JSON text line names it ("clip"). Empty = none.
+    std::string save_dir;
 };
 
 // -----------------------------------------------------------------------------
@@ -335,6 +341,9 @@ Options:
   --prompt TEXT            Initial prompt, to bias whisper toward words it
                            would otherwise mishear (e.g. a name); parakeet
                            has none and ignores it [none]
+  --save-dir DIR           Save each transcribed utterance as a WAV in DIR
+                           (an existing folder), named by its local start
+                           time, HH-MM-SS.mmm.wav [none]
   --json                   Machine-readable output: one JSON object per
                            line on stdout (ready, speech_start,
                            speech_end, text, stopped); banners go to
@@ -413,6 +422,8 @@ static bool parse_args(int argc, char ** argv, Params & params) {
             params.json_output = true;
         } else if (arg == "--prompt") {
             params.prompt = require_value("--prompt");
+        } else if (arg == "--save-dir") {
+            params.save_dir = require_value("--save-dir");
         } else {
             std::fprintf(stderr, "Unknown argument: %s\n", arg.c_str());
             print_usage(argv[0]);
@@ -426,6 +437,61 @@ static bool parse_args(int argc, char ** argv, Params & params) {
 // -----------------------------------------------------------------------------
 // Transcription: whisper or parakeet
 // -----------------------------------------------------------------------------
+
+// "HH-MM-SS.mmm.wav", local time: the names line up with petd.log's times.
+static std::string clip_name(double t_utc) {
+    const std::time_t seconds = static_cast<std::time_t>(t_utc);
+    const int millis = static_cast<int>((t_utc - static_cast<double>(seconds)) * 1000.0);
+    std::tm local {};
+    localtime_r(&seconds, &local);
+    char name[32];
+    std::snprintf(name, sizeof(name), "%02d-%02d-%02d.%03d.wav",
+                  local.tm_hour, local.tm_min, local.tm_sec, millis);
+    return name;
+}
+
+// 16 kHz mono 16-bit PCM, the format the audio arrived in.
+static bool write_wav(const std::string & path, const std::vector<float> & audio) {
+    FILE * f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr) {
+        return false;
+    }
+
+    auto u32 = [f](uint32_t v) {
+        const uint8_t b[4] = {uint8_t(v), uint8_t(v >> 8), uint8_t(v >> 16), uint8_t(v >> 24)};
+        std::fwrite(b, 1, 4, f);
+    };
+    auto u16 = [f](uint16_t v) {
+        const uint8_t b[2] = {uint8_t(v), uint8_t(v >> 8)};
+        std::fwrite(b, 1, 2, f);
+    };
+
+    const uint32_t data_bytes = static_cast<uint32_t>(audio.size() * BYTES_PER_SAMPLE);
+    std::fwrite("RIFF", 1, 4, f);
+    u32(36 + data_bytes);
+    std::fwrite("WAVEfmt ", 1, 8, f);
+    u32(16);
+    u16(1);                                         // PCM
+    u16(CHANNELS);
+    u32(SAMPLE_RATE);
+    u32(SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE);
+    u16(CHANNELS * BYTES_PER_SAMPLE);
+    u16(8 * BYTES_PER_SAMPLE);
+    std::fwrite("data", 1, 4, f);
+    u32(data_bytes);
+
+    std::vector<int16_t> pcm(audio.size());
+    for (size_t i = 0; i < audio.size(); ++i) {
+        const float v = std::max(-1.0f, std::min(1.0f, audio[i]));
+        pcm[i] = static_cast<int16_t>(std::lround(v * 32767.0f));
+    }
+    for (const int16_t v : pcm) {
+        u16(static_cast<uint16_t>(v));
+    }
+
+    const bool ok = std::ferror(f) == 0;
+    return std::fclose(f) == 0 && ok;
+}
 
 // One finished utterance, with the wall-clock span of the speech it holds
 // (padding included), so consumers can line transcripts up with other
@@ -502,6 +568,16 @@ public:
 
         const auto started = std::chrono::steady_clock::now();
 
+        std::string clip;
+        if (!params_->save_dir.empty()) {
+            clip = clip_name(utterance.t_start_utc);
+            if (!write_wav(params_->save_dir + "/" + clip, audio)) {
+                std::fprintf(stderr, "[STT] couldn't save %s in %s\n",
+                             clip.c_str(), params_->save_dir.c_str());
+                clip.clear();
+            }
+        }
+
         std::string text;
 
         // Highest per-segment no-speech probability (whisper): a cheap
@@ -546,9 +622,13 @@ public:
                 utterance.t_start_utc, utterance.t_end_utc,
                 no_speech_prob, token_p, transcribe_ms);
 
+            const std::string clip_field = clip.empty()
+                ? std::string()
+                : ",\"clip\":\"" + json_escape(clip) + "\"";
+
             emit_json_line(
                 std::string("{\"type\":\"text\",\"text\":\"") +
-                json_escape(text) + "\"," + fields + "}");
+                json_escape(text) + "\"," + fields + clip_field + "}");
         } else if (!text.empty()) {
             std::lock_guard<std::mutex> lock(g_stdout_mutex);
             std::printf("\n[YOU] %s\n", text.c_str());
@@ -1280,6 +1360,10 @@ int main(int argc, char ** argv) {
         params.engine == "parakeet" ? "Parakeet:" : "Whisper:",
         params.model.c_str(),
         params.vad_model.c_str());
+
+    if (!params.save_dir.empty()) {
+        std::fprintf(banner, "Saving utterances in %s\n\n", params.save_dir.c_str());
+    }
 
     if (params.engine == "parakeet" && !params.prompt.empty()) {
         std::fprintf(

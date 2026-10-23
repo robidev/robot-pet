@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import socket
 import struct
 
@@ -159,3 +160,18 @@ def test_the_engine_switches_with_its_own_model():
     cfg.stt.engine = "moonshine"
     with pytest.raises(ConfigError, match="stt.engine"):
         SttAdapter(cfg, EventBus())
+
+
+def test_clips_are_saved_in_the_runs_folder_only_when_asked(tmp_path, caplog):
+    # To hear what the recognizer got when the face mic garbled (2026-10-23).
+    cfg = Config()
+    assert arg(SttAdapter(cfg, EventBus()), "--save-dir") is None
+    stt = SttAdapter(cfg, EventBus(), clips_dir=tmp_path / "speech")
+    assert arg(stt, "--save-dir") == str(tmp_path / "speech") and (tmp_path / "speech").is_dir()
+    assert "--log-levels" in stt.process.argv
+
+    with caplog.at_level(logging.INFO, logger="petd.io.stt"):
+        stt.handle_line('{"type":"text","text":"Hey GLaDOS, how far am I?","t_start_utc":1.0,'
+                        '"t_end_utc":2.0,"no_speech_prob":0.0,"clip":"20-53-00.151.wav"}')
+    assert "heard: 'Hey GLaDOS, how far am I?' [20-53-00.151.wav]" in caplog.text
+

@@ -29,6 +29,7 @@ import socket
 import string
 import struct
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from ..bus import EventBus
@@ -122,7 +123,8 @@ class LocalMic:
 
 
 class SttAdapter:
-    def __init__(self, cfg: Config, bus: EventBus, echo_gate: Optional[EchoGate] = None):
+    def __init__(self, cfg: Config, bus: EventBus, echo_gate: Optional[EchoGate] = None,
+                 clips_dir: Optional[Path] = None):
         self.cfg = cfg.stt
         self.bus = bus
         self.echo_gate = echo_gate
@@ -132,6 +134,8 @@ class SttAdapter:
         if c.engine not in ("whisper", "parakeet"):
             raise ConfigError(f"stt.engine must be whisper or parakeet, not {c.engine!r}")
         port = c.local_port if c.source == "local" else cfg.face.audio_port
+        if clips_dir is not None:
+            clips_dir.mkdir(parents=True, exist_ok=True)
         self.mic = LocalMic(c.local_device, port, bus) if c.source == "local" else None
         argv = [
             str(cfg.path(c.binary)), "--json",
@@ -142,6 +146,8 @@ class SttAdapter:
             # parakeet takes no prompt
             *(["--prompt", c.prompt if c.prompt is not None else cfg.pet.name]
               if c.engine == "whisper" else []),
+            # The levels say whether a garbled clip was quiet or the room loud.
+            *(["--save-dir", str(clips_dir.resolve()), "--log-levels"] if clips_dir is not None else []),
             *[str(a) for a in c.extra_args],
         ]
         self.process = ManagedProcess(
@@ -178,23 +184,24 @@ class SttAdapter:
             self.bus.publish(SpeechEnded(t_utc=msg["t_utc"], discarded=msg.get("discarded", False)))
         elif kind == "text":
             self.handle_text(msg.get("text", ""), msg["t_start_utc"], msg["t_end_utc"],
-                             msg.get("no_speech_prob", 0.0))
+                             msg.get("no_speech_prob", 0.0), clip=msg.get("clip"))
         elif kind == "ready":
             log.info("stt ready on UDP port %s", msg.get("port"))
 
     def handle_text(self, text: str, t_start: float, t_end: float, no_speech_prob: float = 0.0,
-                    source: str = "mic") -> None:
+                    source: str = "mic", clip: Optional[str] = None) -> None:
         text = text.strip()
+        saved = f" [{clip}]" if clip else ""
         share = self._echo_share(t_start, t_end)
         reason = ("echo of own speech" if share >= self.cfg.echo_overlap
                   else drop_reason(text, no_speech_prob, self.cfg))
         if reason:
             # An echo drop may well be someone talking over the pet: worth seeing.
             level = logging.INFO if share >= self.cfg.echo_overlap else logging.DEBUG
-            log.log(level, "dropped %r: %s (%.0f%% over my own voice)", text, reason, share * 100)
+            log.log(level, "dropped %r: %s (%.0f%% over my own voice)%s", text, reason, share * 100, saved)
             self.bus.publish(HeardDropped(text=text, reason=reason))
             return
-        log.info("heard: %r", text)
+        log.info("heard: %r%s", text, saved)
         self.bus.publish(Heard(text=text, t_start=t_start, t_end=t_end,
                                no_speech_prob=no_speech_prob, source=source))
 

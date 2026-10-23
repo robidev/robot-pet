@@ -813,6 +813,19 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   sign and the raised finger right. `memory/style.md` and the `look` tool's
   text: anything beyond where faces are (held, shown, worn, gestures,
   fingers) means a photo first, and never "I can't see" without one.
+- **The face mic garbled more than on 2026-10-11:** of 68 transcripts, the
+  name was caught 9 times and missed once for sure ("Hey Claude."); most
+  "missed" requests were said without it after the window (and are fixed
+  above). But ~8 came out cut short or invented, clips far shorter than what
+  was said: "How far do you think I" (1.0 s), "Hey Gladys, how?" (1.1 s),
+  "Please look at where we're going to be able to do" (0.8 s, the same
+  invention twice), "Let me help you with a little bit of a little bit...".
+  Mostly with the robot off the dock and Robin further off, or the head
+  turned away; the VAD may be catching only the loud parts. Unproven without
+  the audio, so `stt.save_clips` keeps every utterance as a WAV in the run's
+  folder (`--save-dir` in udp-stream) with `--log-levels` (speech and room
+  levels in petd.log), on in `config.yaml` for the next face-mic session.
+  The Jabra run had none of it.
 
 ### Step 8: later
 

@@ -62,3 +62,9 @@ Parakeet takes no `--prompt` (it is ignored) and has no `--audio-ctx-pad-ms`
 `token_p` and `transcribe_ms`) and `stopped`. `no_speech_prob` is whisper's
 (0 from parakeet); `token_p` is parakeet's mean token probability (-1 from
 whisper). Times are Unix epoch seconds.
+
+`--save-dir DIR` writes each transcribed utterance to DIR (which must exist) as
+a 16 kHz mono WAV, exactly the audio the recognizer got, named by its local
+start time (`HH-MM-SS.mmm.wav`); the `text` line then names it in `clip`.
+petd passes it, with `--log-levels`, when `stt.save_clips` is on: the clips
+go to the run's log folder, `runtime/logs/<run>/speech/`.
