@@ -189,7 +189,7 @@ def _who_is_here(pet: "App") -> str:
 
 
 def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str] = None,
-               notes: Optional[list[str]] = None) -> str:
+               notes: Optional[list[str]] = None, photo=None) -> str:
     """
     A user turn: the senses line plus what happened.
 
@@ -204,7 +204,13 @@ def build_turn(pet: "App", text: str, kind: str = "heard", speaker: Optional[str
     else:
         body = f"[event] {text}\n(Say something only if it's worth saying out loud.)"
     meanwhile = "".join(f"[meanwhile] {note}\n" for note in notes or ())
-    return f"{senses_line(pet)}\n{meanwhile}{body}"
+    seen = ""
+    if photo is not None:
+        from .tools import _describe_look
+        # Without saying whose it is, the model may take it for one they sent.
+        where = _describe_look(photo.pan_deg, photo.tilt_deg, pet.cfg.calibration)
+        seen = f"[my camera, as they spoke, looking {where}: the photo above]\n"
+    return f"{senses_line(pet)}\n{meanwhile}{seen}{body}"
 
 
 JOURNAL_REQUEST = (

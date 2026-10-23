@@ -187,6 +187,8 @@ class FaceAdapter(ABC):
         self._last_faces: Optional[FacesChanged] = None
         self.presence = PresenceDebouncer(bus, cfg.faces_lost_debounce_s)
         self._sub = None
+        # (when, Snapshot) of the latest photo, whoever asked for it (brain/photos.py).
+        self.last_snapshot: Optional[tuple] = None
 
     @property
     def state(self) -> FaceDeviceState:
@@ -365,7 +367,10 @@ class RobotFace(FaceAdapter):
 
     async def snapshot(self):
         """face_client.Snapshot (jpeg bytes + servo pose + capture time)."""
-        return await asyncio.to_thread(self._client.get_snapshot)
+        snap = await asyncio.to_thread(self._client.get_snapshot)
+        if snap is not None and snap.jpeg:
+            self.last_snapshot = (time.time(), snap)
+        return snap
 
     async def set_servo(self, *, mode=None, pan_deg=None, tilt_deg=None) -> None:
         if mode is not None:
@@ -432,8 +437,10 @@ class FakeFace(FaceAdapter):
         """A 1x1 black JPEG: something for the recognizer's (fake) engine to look at."""
         self.commands.append(("snapshot",))
         from face_client import Snapshot
-        return Snapshot(jpeg=_tiny_jpeg(), utc=None, age_ms=0,
+        snap = Snapshot(jpeg=_tiny_jpeg(), utc=None, age_ms=0,
                         servo_pan_deg=self._state.pan_deg, servo_tilt_deg=self._state.tilt_deg)
+        self.last_snapshot = (time.time(), snap)
+        return snap
 
     async def set_servo(self, *, mode=None, pan_deg=None, tilt_deg=None) -> None:
         self.commands.append(("servo", mode, pan_deg, tilt_deg))

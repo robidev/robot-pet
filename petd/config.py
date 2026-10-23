@@ -239,6 +239,10 @@ class BrainConfig:
     # Start the model's process before anyone speaks (at start-up, and after
     # a conversation closes), so the first reply isn't also waiting for it.
     prestart: bool = True
+    # A photo from the head's camera with what someone says, while someone is
+    # in view: the first time in a conversation, then at most this often;
+    # 0 = never (brain/photos.py). ~510 input tokens each with Haiku.
+    photo_every_s: float = 120.0
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:7b"
     max_tool_iterations: int = 8

@@ -607,7 +607,7 @@ class ScriptedBackend:
     async def start_episode(self, system_prompt: str) -> None:
         self.episodes += 1
 
-    async def send(self, user_turn: str):
+    async def send(self, user_turn: str, images=()):
         self.turns.append(user_turn)
         reply = "[emote:happy] Spoke with Noah about cake." if "[journal]" in user_turn else "Hello."
         yield TextDelta(reply)

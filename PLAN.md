@@ -826,6 +826,17 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   folder (`--save-dir` in udp-stream) with `--log-levels` (speech and room
   levels in petd.log), on in `config.yaml` for the next face-mic session.
   The Jabra run had none of it.
+- **A photo with the conversation:** with someone in view, the first thing
+  said in a conversation, then at most every `brain.photo_every_s` (120 s),
+  comes with a photo from the head (`brain/photos.py`), marked in the turn as
+  its own camera's; taken when they start talking (0.7-1.2 s, while they
+  speak and it transcribes), or one the recognizer or `look` took in the last
+  3 s. Measured first on the claude CLI (2.1.309, Haiku, a 640x480 frame
+  from the head): accepted as an image block in a stream-json user turn,
+  ~510 more input tokens (~$0.0004), first words no later (2.1-2.2 s against
+  2.3-3.0 s without, two runs each). It stays in the conversation's context.
+  To try live: does it use the photo without describing it every time, and
+  does "how many fingers?" still get a fresh `look`.
 
 ### Step 8: later
 

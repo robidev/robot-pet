@@ -9,6 +9,7 @@ touching the machine petd runs on.
 
 Protocol (verified against CLI 2.1.278):
   in:  {"type":"user","message":{"role":"user","content":[{"type":"text","text":...}]}}
+       (image blocks before the text for a turn's photo: brain/photos.py, CLI 2.1.309, 2026-10-23)
   out: {"type":"system","subtype":"init",...}            once per turn
        {"type":"stream_event","event":{...}}             deltas (thinking + text)
        {"type":"assistant","message":{...}}              complete blocks, incl. tool_use
@@ -23,12 +24,13 @@ already spoke (2026-09-28, CLI 2.1.283). That reply is not spoken.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
 import time
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Sequence
 
 from ..config import BrainConfig, Config
 
@@ -136,14 +138,13 @@ class ClaudeCliBackend:
 
     # --- one turn -------------------------------------------------------------
 
-    async def send(self, user_turn: str) -> AsyncIterator[BrainEvent]:
+    async def send(self, user_turn: str, images: Sequence[bytes] = ()) -> AsyncIterator[BrainEvent]:
         async with self._lock:
             if not self.running:
                 yield BrainError("brain process is not running")
                 return
             started = time.monotonic()
-            message = {"type": "user", "message": {"role": "user",
-                                                   "content": [{"type": "text", "text": user_turn}]}}
+            message = user_message(user_turn, images)
             try:
                 self._proc.stdin.write((json.dumps(message) + "\n").encode())
                 await self._proc.stdin.drain()
@@ -201,6 +202,15 @@ class ClaudeCliBackend:
                                cost_usd=msg.get("total_cost_usd"),
                                duration_s=time.monotonic() - started)
                 return
+
+
+def user_message(text: str, images: Sequence[bytes] = ()) -> dict:
+    """A stream-json user turn; photos go before the text, as the API advises."""
+    content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                            "data": base64.b64encode(jpeg).decode("ascii")}}
+               for jpeg in images]
+    content.append({"type": "text", "text": text})
+    return {"type": "user", "message": {"role": "user", "content": content}}
 
 
 def _short_tool_name(name: str) -> str:

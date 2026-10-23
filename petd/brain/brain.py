@@ -28,6 +28,7 @@ from ..events import (BrainToolCall, HeardDropped, SentenceReady, SpeechEnded, S
 from . import prompt as prompt_module
 from .backend import BrainError, LLMBackend, TextDelta, ToolFinished, ToolStarted, TurnDone
 from .expressions import Expressions
+from .photos import TurnPhotos
 from .tags import Action, Sentence, SpeechStreamParser
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ class Brain:
         self.cfg = pet.cfg.brain
         self.expressions: Optional[Expressions] = (
             Expressions(pet.face, pet.cfg.calibration) if pet.face is not None else None)
+        self.photos = TurnPhotos(pet)
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=2)
         self._tasks: list[asyncio.Task] = []
         self._last_turn_at = 0.0
@@ -126,6 +128,7 @@ class Brain:
                     fallback.cancel()
                     fallback = None
                 if isinstance(event, SpeechStarted):
+                    self.photos.prefetch()
                     self.expressions.fire(LISTENING)
                 elif isinstance(event, SpeechEnded) and not event.discarded:
                     self.expressions.fire(THINKING)
@@ -181,6 +184,7 @@ class Brain:
         self._prestarted = False
         self._episode_open = True
         self._heard_this_episode = 0
+        self.photos.new_conversation()
         if self.pet.db is not None:
             self._conversation_id = self.pet.db.start_conversation()
 
@@ -223,8 +227,11 @@ class Brain:
         bus.publish(TurnStarted(kind=kind, text=text, queued_at=queued_at or time.time()))
         await self._ensure_episode()
         notes, self._notes = self._notes, []
-        turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker, notes=notes)
-        log.info("-> brain: %s", turn.replace("\n", " | "))
+        photo = await self.photos.take(kind)
+        turn = prompt_module.build_turn(self.pet, text, kind=kind, speaker=speaker, notes=notes,
+                                        photo=photo)
+        log.info("-> brain: %s%s", turn.replace("\n", " | "),
+                 f" [+photo {time.time() - photo.taken_at:.1f} s old]" if photo else "")
 
         if kind == "heard":
             self._heard_this_episode += 1
@@ -240,7 +247,8 @@ class Brain:
         first_text = ended = False
         tool_calls = 0
         try:
-            async for event in self.backend.send(turn):
+            async for event in (self.backend.send(turn, images=[photo.jpeg]) if photo
+                                else self.backend.send(turn)):
                 if isinstance(event, TextDelta):
                     if not first_text:
                         first_text = True

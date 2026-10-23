@@ -69,6 +69,7 @@ brain:
   memory_dir: memory           # persona.md / backstory.md / body.md / style.md
   episode_idle_timeout_s: 600  # quiet for this long -> start a fresh conversation
   thinking: false          # true: private reasoning first; replies start ~1.5-3 s later
+  photo_every_s: 120       # a camera photo with what someone says (someone in view), at most this often; 0 = never
   # ollama_url: http://127.0.0.1:11434
   # ollama_model: qwen2.5:7b
 

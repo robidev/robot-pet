@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, Sequence
 
 import httpx
 
@@ -49,7 +49,8 @@ class OllamaBackend:
                               "parameters": t["schema"]}}
                 for t in self.registry.list()]
 
-    async def send(self, user_turn: str) -> AsyncIterator[BrainEvent]:
+    async def send(self, user_turn: str, images: Sequence[bytes] = ()) -> AsyncIterator[BrainEvent]:
+        # Text only: a turn's photo (brain/photos.py) is left out.
         if self._client is None:
             yield BrainError("no episode started")
             return

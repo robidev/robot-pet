@@ -7,7 +7,7 @@ them stream the same events back.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Optional, Protocol, Sequence, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -47,8 +47,8 @@ class LLMBackend(Protocol):
     async def start_episode(self, system_prompt: str) -> None:
         """Begins a fresh conversation (new context)."""
 
-    def send(self, user_turn: str) -> AsyncIterator[BrainEvent]:
-        """Runs one turn, streaming events as they happen."""
+    def send(self, user_turn: str, images: Sequence[bytes] = ()) -> AsyncIterator[BrainEvent]:
+        """Runs one turn, streaming events as they happen; images are JPEGs that come with it."""
 
     async def end_episode(self) -> None:
         """Ends the conversation and releases any resources."""

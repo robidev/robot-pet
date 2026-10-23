@@ -25,7 +25,7 @@ class SlowBackend:
     async def start_episode(self, system_prompt: str) -> None: ...
     async def end_episode(self) -> None: ...
 
-    async def send(self, user_turn: str):
+    async def send(self, user_turn: str, images=()):
         await asyncio.sleep(0.05)
         yield ToolStarted("get_senses", {})
         await asyncio.sleep(0.02)
