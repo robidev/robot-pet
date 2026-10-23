@@ -11,7 +11,7 @@ then the attention gate, then the brain.
 - The gate lets speech through to the brain when the pet's name is in it,
   when a conversation window is open (it spoke, or was addressed, in the
   last `window_s`), or when a known person is in view (any face, while
-  recognition is off). Everything else is
+  recognition is off) or was in the last `gaze_grace_s`. Everything else is
   published as HeardDropped("not addressed") and left alone. The window
   counts from when someone started talking, not from when the transcript
   came: a 5 s answer begun 2 s after the pet stopped was dropped as
@@ -41,7 +41,7 @@ import string
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ..events import Heard, HeardDropped, SpeakingFinished
+from ..events import FacesPresence, Heard, HeardDropped, PersonLeft, SpeakingFinished
 from ..io.stt import normalize
 
 if TYPE_CHECKING:
@@ -215,10 +215,11 @@ class Listener:
         self.names = NameMatcher(pet.cfg.pet.name, self.cfg.wake_words,
                                  self.cfg.sentence_start_words)
         self.window_until = 0.0
+        self.gaze_until = 0.0           # whoever opened it by being in view, just gone
         self._task: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
-        sub = self.pet.bus.subscribe(Heard, HeardDropped, SpeakingFinished)
+        sub = self.pet.bus.subscribe(Heard, HeardDropped, SpeakingFinished, PersonLeft, FacesPresence)
         self._task = asyncio.create_task(self._run(sub), name="listener")
 
     async def close(self) -> None:
@@ -234,6 +235,11 @@ class Listener:
                 if isinstance(event, SpeakingFinished):
                     if not event.interrupted:
                         self.window_until = event.t + self.cfg.window_s
+                elif isinstance(event, PersonLeft):
+                    self.gaze_until = event.t + self.cfg.gaze_grace_s
+                elif isinstance(event, FacesPresence):
+                    if not event.present and not self.pet.recognition_on:
+                        self.gaze_until = event.t + self.cfg.gaze_grace_s
                 elif isinstance(event, HeardDropped):
                     if event.reason.startswith("echo"):
                         await self._maybe_barge_in(event.text)
@@ -283,7 +289,7 @@ class Listener:
 
         if self.cfg.ignore_while_driving and self._driving() and not addressed:
             return self._ignore(event.text, "driving")
-        if not (addressed or self.window_open(event.t_start) or self._gaze()):
+        if not (addressed or self.window_open(event.t_start) or self._gaze(event.t_start)):
             return self._ignore(event.text, "not addressed")
         self.window_until = event.t + self.cfg.window_s
 
@@ -306,8 +312,12 @@ class Listener:
         return self.pet.moving or (vacuum is not None
                                    and vacuum.state.status in ("moving", "returning", "cleaning"))
 
-    def _gaze(self) -> bool:
-        if not self.cfg.gaze_opens or self.pet.face is None or not self.pet.face.presence.present:
+    def _gaze(self, t: Optional[float] = None) -> bool:
+        if not self.cfg.gaze_opens or self.pet.face is None:
+            return False
+        if (t or time.time()) < self.gaze_until:
+            return True     # in view a moment ago: a detection dropout, or a glance away
+        if not self.pet.face.presence.present:
             return False
         if not self.pet.recognition_on:
             return True     # nobody can be known without it: a face in view will do

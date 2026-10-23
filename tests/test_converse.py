@@ -193,6 +193,30 @@ async def test_a_known_face_in_view_opens_the_gate(pet):
     assert pet.brain.told[-1] == ("what do you think about that", "heard", "Robin")
 
 
+async def test_someone_known_just_out_of_view_is_still_heard_for_a_while(pet):
+    # The head's face detection lost Robin standing in front of it 14 times
+    # in 11 minutes; "How many fingers am I holding up?" came 13 s after one
+    # such loss and was dropped (2026-10-23).
+    robin = pet.db.add_person("Robin")
+    pet.face.show(Face(-1, 0.9, 0.4, 0.3, 0.6, 0.7))
+    pet.people.recognized(robin.id, time.time(), 0.8)
+    await asyncio.sleep(0.05)
+    pet.face.show()
+    for _ in range(100):                            # the presence debounce, then "Robin left"
+        if not pet.people.present:
+            break
+        await asyncio.sleep(0.01)
+    assert not pet.people.present
+    await asyncio.sleep(0.02)
+    await hear(pet, "how many fingers am I holding up")
+    assert pet.brain.told[-1][0] == "how many fingers am I holding up"
+
+    pet.listener.gaze_until = time.time() - 1       # longer ago than gaze_grace_s
+    pet.listener.window_until = 0                   # and no conversation window open
+    await hear(pet, "did you feed the cat")
+    assert pet.brain.told[-1][0] != "did you feed the cat"
+
+
 async def test_stop_works_unaddressed_and_mid_sentence(pet):
     await hear(pet, "Stop!")
     assert ("stop",) in pet.vacuum.commands

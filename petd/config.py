@@ -381,6 +381,11 @@ class ConverseConfig:
     # A known person in view counts as talking to the pet (with recognition
     # off, anyone in view).
     gaze_opens: bool = True
+    # ...and for this long after they were last in view. The head's own face
+    # detection lost Robin standing in front of it 14 times in 11 minutes,
+    # and naming him again took 2.5-19 s: five things he said were dropped
+    # in those gaps (2026-10-23).
+    gaze_grace_s: float = 15.0
     # Motor noise makes junk transcripts; while driving, only reflexes and
     # speech that names the pet get through.
     ignore_while_driving: bool = True

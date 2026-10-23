@@ -576,7 +576,7 @@ async def test_prompt_says_when_speech_reaches_it_and_which_mic_it_has(pet):
     pet.cfg.converse.window_s = 8.0
     prompt = build_system_prompt(pet)
     assert "within 8 seconds of my last words" in prompt
-    assert "while someone I know is in view" in prompt
+    assert "while someone I know is in view, or was in the last 15 seconds" in prompt
     assert "while I talk I hear almost nobody" in prompt
 
     pet.cfg.stt.echo_cancelled = True

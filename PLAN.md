@@ -838,7 +838,43 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   To try live: does it use the photo without describing it every time, and
   does "how many fingers?" still get a fresh `look`.
 
+**Tried live the same evening (22:29-22:41, face mic, docked, Robin;
+`runtime/logs/20261023-222917`, 60 clips):**
+- Turn photos: 5 in 11 minutes, none described unprompted; "what colour is
+  my shirt?" answered from the conversation's first photo ("black, with a
+  zip"). Gestures and held things got a `look` first ("a bottle... water, or
+  possibly gin"); fingers read "five" from an ambiguous hand (Robin).
+- The brain on itself: the 8 s, no name needed while it sees you, and on
+  this mic not hearing over its own voice, all said right.
+- `locate_person` called both times ("1.5 m, slightly right", "1.3 m,
+  left"); the posture came out "on the floor".
+- Out of view, answers 7-8 s after it spoke got through without the name;
+  "I'm to your right" led to `search_for_person`, found in 11 s.
+- **The gate closed with Robin in front of it:** "Robin is no longer in
+  view" 14 times in 11 minutes. The head's own face detection lost him for
+  over the 5 s debounce while the PC's recognizer still found his face
+  (~60 px) in snapshots, and naming him again took 2.5-19 s; five things he
+  said without the name fell in those gaps ("What colour is my shirt?",
+  "How many fingers...", 1 s before he was named again). **Fixed:** the gate
+  stays open `converse.gaze_grace_s` (15 s, Robin) after a known person was
+  last in view (anyone, with recognition off).
+- The face mic's level, from the new clips and `--log-levels`: below.
+
 ### Step 8: later
+
+- **The face mic's level (2026-10-23, backlog):** Robin's speech at ~1-2 m
+  arrives at ~-60 dBFS RMS (peaks -38 to -48; sample RMS ~30), the room at
+  ~-75: a 15 dB margin. For a whole minute (22:36:53-22:37:43) the levels
+  rose with his voice ~8 times and the VAD never started; the name came out
+  "Planos", "Claudos", "Claros", "Claudus", "Val", or not at all. **Not a
+  gain before truncation:** the 16-bit floor (~-96 dBFS) is below the mic's
+  own noise (~-83, datasheet) and the room's, so the dropped bits are noise
+  and more gain wouldn't raise the speech above the room (Robin; as worked
+  out on 2026-09-27, Findings, "The microphone"). What's left to look at: the
+  mic's placement and port (closer, facing the speaker), another mic, or the
+  Jabra; whether Silero misses quiet speech by its level alone (a
+  normalised copy of the clips through the VAD would tell). The name's
+  spellings above as wake words only after that.
 
 - **The room mic and the TV, tried** (Step 6, built 2026-10-14): a few
   minutes' talk with the TV on and the Jabra as mic, counting the TV lines

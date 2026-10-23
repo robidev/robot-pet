@@ -114,7 +114,8 @@ def hearing_section(pet: "App") -> str:
             f"it begins within {pet.cfg.converse.window_s:.0f} seconds of my last words or of "
             "the last thing said to me"]
     if pet.cfg.converse.gaze_opens:
-        ways.append("someone I know is in view" if pet.recognition_on else "someone is in view")
+        who = "someone I know" if pet.recognition_on else "someone"
+        ways.append(f"{who} is in view, or was in the last {pet.cfg.converse.gaze_grace_s:.0f} seconds")
     when = ", when ".join(ways[:-1]) + ", or " + ("when " if len(ways) == 2 else "while ") + ways[-1]
     if pet.cfg.stt.echo_cancelled:
         voice = ("My microphone sits in the room and doesn't hear my own voice, so someone "
