@@ -204,7 +204,9 @@ def build_registry(pet: "App") -> ToolRegistry:
     @registry.tool(
         "look",
         "Take a photo with my camera and look at it. Use it to answer questions about what I can "
-        "see, or when curious about my surroundings.",
+        "see, or when curious about my surroundings. Always before answering about what someone "
+        "is holding, showing, wearing or doing, a gesture, or how many fingers: my senses only "
+        "say where faces are. If it's outside the photo, look_direction there and take another.",
         returns_image=True)
     async def look(args: dict) -> dict:
         snap = await require_face().snapshot()

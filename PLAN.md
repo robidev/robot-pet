@@ -808,6 +808,11 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   every 30 s. New tool `locate_person`: approach's look (tracking, a few
   frames, the median) without driving; says the distance, the side, the
   posture and the nearest place, and moves their last-seen spot.
+- **"Can you see what gesture I'm making?"** got "I can't see what your hands
+  are doing from here" without a photo; asked for snapshots, it read the peace
+  sign and the raised finger right. `memory/style.md` and the `look` tool's
+  text: anything beyond where faces are (held, shown, worn, gestures,
+  fingers) means a photo first, and never "I can't see" without one.
 
 ### Step 8: later
 
