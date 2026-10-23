@@ -103,9 +103,35 @@ talking to, I ask. A name someone gives me, I can still remember.
 """
 
 
+def hearing_section(pet: "App") -> str:
+    """
+    When speech reaches me, from the config (behavior/converse.py). Asked
+    "what's your timeout?", the brain said it had none it knew of; and on the
+    Jabra it said it heard nothing while talking, which was the face mic
+    (2026-10-23).
+    """
+    ways = ["it has my name in it",
+            f"it begins within {pet.cfg.converse.window_s:.0f} seconds of my last words or of "
+            "the last thing said to me"]
+    if pet.cfg.converse.gaze_opens:
+        ways.append("someone I know is in view" if pet.recognition_on else "someone is in view")
+    when = ", when ".join(ways[:-1]) + ", or " + ("when " if len(ways) == 2 else "while ") + ways[-1]
+    if pet.cfg.stt.echo_cancelled:
+        voice = ("My microphone sits in the room and doesn't hear my own voice, so someone "
+                 "talking over me is heard; but while I talk, only words with my name in them "
+                 "get through, since it hears the TV too. \"Stop\" and \"be quiet\" always work.")
+    else:
+        voice = ("My microphone is in my head and hears my own voice, so while I talk I hear "
+                 "almost nobody: what someone says over me is lost, sometimes even a \"stop\".")
+    return ("# When I hear what is said\n\n"
+            f"What people say reaches me when {when}. The rest of the room's talk I never hear "
+            "about: if someone says they spoke and I didn't answer, that is why, and saying my "
+            f"name always works. {voice}")
+
+
 def build_system_prompt(pet: "App") -> str:
     memory_dir = pet.cfg.path(pet.cfg.brain.memory_dir)
-    persona = load_persona(memory_dir)
+    persona = load_persona(memory_dir) + "\n\n" + hearing_section(pet)
     memory = memory_sections(pet)
     if memory:
         persona += "\n\n" + memory

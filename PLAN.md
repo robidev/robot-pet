@@ -795,6 +795,13 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   few seconds missed it however promptly it started: 3 in the Bluetooth run
   (begun 1.9-5.4 s after the pet stopped, transcripts 8.6-10.6 s after).
   Fixed: the window counts from `t_start`.
+- **What the brain knew about itself:** it said it knew the time "because
+  you've told me" (it's in the senses line), that it had no timeout it knew
+  of (the 8 s window), and on the Jabra that it heard nobody while talking
+  (the face mic's way). `memory/body.md` now says the senses line is its own,
+  clock included; a "When I hear what is said" section is written from the
+  config (`prompt.hearing_section`: the window, the known face in view, which
+  mic).
 
 ### Step 8: later
 

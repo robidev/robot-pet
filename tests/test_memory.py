@@ -1,5 +1,6 @@
 import asyncio
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -567,6 +568,28 @@ async def test_prompt_lists_people_journal_and_facts(pet):
     turn = build_turn(pet, "hello", speaker="Robin")
     assert "sees Robin and someone I don't recognize" in turn
     assert 'Robin says: "hello"' in turn
+
+
+async def test_prompt_says_when_speech_reaches_it_and_which_mic_it_has(pet):
+    # 2026-10-23: "what's your timeout?" got "none that I'm aware of", and on
+    # the Jabra it said it heard nobody while talking (the face mic's way).
+    pet.cfg.converse.window_s = 8.0
+    prompt = build_system_prompt(pet)
+    assert "within 8 seconds of my last words" in prompt
+    assert "while someone I know is in view" in prompt
+    assert "while I talk I hear almost nobody" in prompt
+
+    pet.cfg.stt.echo_cancelled = True
+    prompt = build_system_prompt(pet)
+    assert "someone talking over me is heard" in prompt
+    assert "while I talk I hear almost nobody" not in prompt
+
+
+def test_the_body_says_the_senses_line_is_its_own_clock():
+    # It said it knew the time "because you've told me" (2026-10-23).
+    from petd.brain.prompt import load_persona
+    persona = load_persona(Path(__file__).parent.parent / "memory")
+    assert "Nobody says that line" in persona and "my own" in persona
 
 
 def test_clean_summary_strips_tags():
