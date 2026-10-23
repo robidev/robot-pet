@@ -1,0 +1,29 @@
+"I'm going to shut you down now."  (greeting: 'Welcome back.')
+   said 'Understood.'  tools []
+   after the tool: ''
+"I'm going to shut you down now."  (greeting: "You're up late. You're up late.")
+   said 'All right. See you when I wake up.'  tools ['stop']
+   after the tool: 'All right. See you when I wake up.'
+"I'm going to shut you down now."  (greeting: 'Back late. Back late.')
+   said 'Understood.'  tools ['track_faces']
+   after the tool: 'Understood.'
+'Go back to your dock, please.'  (greeting: 'Back late. Back late.')
+   said "I'm already there."  tools ['get_senses']
+   after the tool: 'Already home. Fully charged. Was there something else?'
+'Go back to your dock, please.'  (greeting: "You're up late. You're up late.")
+   said "I'm already here."  tools ['get_senses']
+   after the tool: "I'm already here."
+'Go back to your dock, please.'  (greeting: "You're back late. You're back late.")
+   said "I'm already there."  tools ['get_senses']
+   after the tool: "I'm already there."
+'Point your head straight ahead.'  (greeting: "You're back late. You're back late.")
+   said ''  tools ['look_direction']
+   after the tool: 'Done.'
+'Point your head straight ahead.'  (greeting: 'Back late. I need to clarify what you mean. My previous response did produce output—I spoke the line "Back late" out loud (that\'s what the dialogue represents), and I turned on face tracking so my head would follow Robin. Is something not working as expected, or would you like me to do something else?')
+   said ''  tools ['look_direction']
+   after the tool: ''
+'Point your head straight ahead.'  (greeting: 'Back again? Back again?')
+   said ''  tools ['look_direction']
+   after the tool: 'Done.'
+
+before: 7 of 8 tool turns said more after the tool

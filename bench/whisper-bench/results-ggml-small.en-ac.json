@@ -1,0 +1,155 @@
+{
+ "4/5000": [
+  [
+   [
+    "Hello GLaDOS",
+    867
+   ],
+   [
+    "Hello GLaDOS",
+    729
+   ],
+   [
+    "Can you go back to your dock please?",
+    854
+   ],
+   [
+    "We're testing how quickly you respond. Can you say something now?",
+    1096
+   ],
+   [
+    "GLaDOS, what do you see in the kitchen right now?",
+    1047
+   ],
+   [
+    "SOP",
+    650
+   ],
+   [
+    "Tell me something interesting about the history of cake and keep it short.",
+    1093
+   ],
+   [
+    "Who is in the room with me?",
+    796
+   ],
+   [
+    "I was thinking that tomorrow morning we could clean the living room the only after everyone has left for work because the noise is quite annoying",
+    1748
+   ]
+  ],
+  [
+   [
+    "Hello GLaDOS",
+    875
+   ],
+   [
+    "Hello GLaDOS",
+    746
+   ],
+   [
+    "Can you go back to your dock please?",
+    815
+   ],
+   [
+    "We're testing how quickly you respond. Can you say something now?",
+    1107
+   ],
+   [
+    "GLaDOS, what do you see in the kitchen right now?",
+    1018
+   ],
+   [
+    "SOP",
+    648
+   ],
+   [
+    "Tell me something interesting about the history of cake and keep it short.",
+    1182
+   ],
+   [
+    "Who is in the room with me?",
+    746
+   ],
+   [
+    "I was thinking that tomorrow morning we could clean the living room the only after everyone has left for work because the noise is quite annoying",
+    1759
+   ]
+  ]
+ ],
+ "4/-1": [
+  [
+   [
+    "Hello GLaDOS",
+    3473
+   ],
+   [
+    "Hello GLaDOS",
+    3587
+   ],
+   [
+    "Can you go back to your dock please?",
+    3544
+   ],
+   [
+    "We're testing how quickly you respond. Can you say something now?",
+    3628
+   ],
+   [
+    "GLaDOS, what do you see in the kitchen right now?",
+    3656
+   ],
+   [
+    "SOP",
+    3695
+   ],
+   [
+    "Tell me something interesting about the history of cake and keep it short.",
+    3849
+   ],
+   [
+    "Who is in the room with me?",
+    3815
+   ],
+   [
+    "I was thinking that tomorrow morning we could clean the living room. But only after everyone has left for work, because the noise is quite annoying.",
+    3870
+   ]
+  ],
+  [
+   null,
+   [
+    "Hello GLaDOS",
+    3332
+   ],
+   [
+    "Can you go back to your dock please?",
+    3533
+   ],
+   [
+    "We're testing how quickly you respond. Can you say something now?",
+    3635
+   ],
+   [
+    "GLaDOS, what do you see in the kitchen right now?",
+    3617
+   ],
+   [
+    "SOP",
+    3600
+   ],
+   [
+    "Tell me something interesting about the history of cake and keep it short.",
+    3802
+   ],
+   [
+    "Who is in the room with me?",
+    3568
+   ],
+   [
+    "I was thinking that tomorrow morning we could clean the living room. But only after everyone has left for work, because the noise is quite annoying.",
+    3873
+   ]
+  ]
+ ]
+}

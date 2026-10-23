@@ -1,0 +1,193 @@
+Loading Parakeet model from: ../udp-stream/models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin
+parakeet_init_from_file_with_params_no_state: loading model from '../udp-stream/models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin'
+parakeet_init_with_params_no_state: use gpu    = 1
+parakeet_init_with_params_no_state: gpu_device = 0
+parakeet_init_with_params_no_state: devices    = 1
+parakeet_init_with_params_no_state: backends   = 1
+parakeet_model_load: loading model
+parakeet_model_load: arch                   = Parakeet TDT
+parakeet_model_load: n_vocab                = 8192
+parakeet_model_load: n_audio_ctx            = 5000
+parakeet_model_load: n_audio_state          = 1024
+parakeet_model_load: n_audio_head           = 8
+parakeet_model_load: n_audio_layer          = 24
+parakeet_model_load: n_mels                 = 128
+parakeet_model_load: n_fft                  = 512
+parakeet_model_load: eps                    = 0.000010
+parakeet_model_load: ftype                  = 7
+parakeet_model_load: qntvr                  = 2
+parakeet_model_load: subsampling_factor     = 8
+parakeet_model_load: n_subsampling_channels = 256
+parakeet_model_load: n_conv_kernel          = 9
+parakeet_model_load: n_pred_dim             = 640
+parakeet_model_load: n_pred_layers          = 2
+parakeet_model_load: n_tdt_durations        = 5
+parakeet_model_load: n_max_tokens           = 10
+parakeet_model_load: loaded window function with 400 samples
+parakeet_model_load: loaded tdt_durations: [0 1 2 3 4 ]
+parakeet_model_load: loaded vocab with 8192 tokens (blank_id=8192, unk=0, bos=4, eos=3)
+parakeet_model_load:          CPU total size =   668.50 MB
+parakeet_model_load: model size    =  668.50 MB
+parakeet_init_with_params_no_state: initialized mel cache with n_fft = 512
+parakeet_backend_init_gpu: device 0: CPU (type: 0)
+parakeet_backend_init_gpu: no GPU found
+parakeet_init_state: enc_out state:    0.00 MB (meta) +    2.44 MB (data)
+parakeet_init_state: lstm state:    0.00 MB (meta) +    0.01 MB (data)
+parakeet_init_state: pred state:    0.00 MB (meta) +    0.00 MB (data)
+parakeet_init_state: compute buffer (encode) =  337.79 MB
+parakeet_init_state: compute buffer (decode) =   67.12 MB
+Successfully loaded Parakeet model
+system_info: n_threads = 4 / 8 | PARAKEET : CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | OPENMP = 1 | REPACK = 1 | 
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip0.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip0.wav' ...
+read_audio_data: trying to decode with miniaudio
+Hello Gladas.
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =     2.22 ms
+parakeet_print_timings:   sample time =     0.05 ms /     6 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =   262.90 ms /     1 runs (   262.90 ms per run)
+parakeet_print_timings:   decode time =     2.01 ms /    13 runs (     0.15 ms per run)
+parakeet_print_timings:  predict time =     1.84 ms /     7 runs (     0.26 ms per run)
+parakeet_print_timings:    - build     =     0.07 ms /     7 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.08 ms /     7 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =     1.68 ms /     7 runs (     0.24 ms per run)
+parakeet_print_timings:    total time =   492.76 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip1.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip1.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Hello Gladas.
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =     4.41 ms
+parakeet_print_timings:   sample time =     0.10 ms /    12 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =   527.91 ms /     2 runs (   263.96 ms per run)
+parakeet_print_timings:   decode time =     3.78 ms /    26 runs (     0.15 ms per run)
+parakeet_print_timings:  predict time =     3.74 ms /    14 runs (     0.27 ms per run)
+parakeet_print_timings:    - build     =     0.14 ms /    14 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.18 ms /    14 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =     3.42 ms /    14 runs (     0.24 ms per run)
+parakeet_print_timings:    total time =   768.82 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip2.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip2.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Can you go back to your dock please?
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =     7.10 ms
+parakeet_print_timings:   sample time =     0.22 ms /    23 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =   848.96 ms /     3 runs (   282.99 ms per run)
+parakeet_print_timings:   decode time =     5.78 ms /    40 runs (     0.14 ms per run)
+parakeet_print_timings:  predict time =     7.00 ms /    26 runs (     0.27 ms per run)
+parakeet_print_timings:    - build     =     0.25 ms /    26 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.32 ms /    26 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =     6.41 ms /    26 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  1100.16 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip3.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip3.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+We're testing how quickly you respond. Can you say something now?
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    11.98 ms
+parakeet_print_timings:   sample time =     0.38 ms /    44 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  1426.57 ms /     4 runs (   356.64 ms per run)
+parakeet_print_timings:   decode time =     9.61 ms /    62 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    13.24 ms /    48 runs (     0.28 ms per run)
+parakeet_print_timings:    - build     =     0.60 ms /    48 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.67 ms /    48 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    11.95 ms /    48 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  1696.03 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip4.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip4.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Gila Das, what do you see in the kitchen right now?
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    15.89 ms
+parakeet_print_timings:   sample time =     0.50 ms /    59 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  1948.88 ms /     5 runs (   389.78 ms per run)
+parakeet_print_timings:   decode time =    13.17 ms /    83 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    17.56 ms /    64 runs (     0.27 ms per run)
+parakeet_print_timings:    - build     =     0.72 ms /    64 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.85 ms /    64 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    15.96 ms /    64 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  2234.15 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip5.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip5.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Stop.
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    17.23 ms
+parakeet_print_timings:   sample time =     0.54 ms /    63 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  2134.88 ms /     6 runs (   355.81 ms per run)
+parakeet_print_timings:   decode time =    14.81 ms /    93 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    19.18 ms /    69 runs (     0.28 ms per run)
+parakeet_print_timings:    - build     =     0.79 ms /    69 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     0.93 ms /    69 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    17.43 ms /    69 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  2426.31 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip6.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip6.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Tell me something interesting about the history of cake, and keep it short.
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    21.98 ms
+parakeet_print_timings:   sample time =     0.72 ms /    86 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  2749.08 ms /     7 runs (   392.73 ms per run)
+parakeet_print_timings:   decode time =    18.75 ms /   118 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    25.57 ms /    93 runs (     0.27 ms per run)
+parakeet_print_timings:    - build     =     1.04 ms /    93 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     1.25 ms /    93 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    23.25 ms /    93 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  3058.31 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip7.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip7.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+Who is in the room with me?
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    23.87 ms
+parakeet_print_timings:   sample time =     0.80 ms /    96 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  3040.08 ms /     8 runs (   380.01 ms per run)
+parakeet_print_timings:   decode time =    20.85 ms /   130 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    28.79 ms /   104 runs (     0.28 ms per run)
+parakeet_print_timings:    - build     =     1.14 ms /   104 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     1.41 ms /   104 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    26.21 ms /   104 runs (     0.25 ms per run)
+parakeet_print_timings:    total time =  3359.65 ms
+
+Processing file: /tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip8.wav
+read_audio_data: reading audio data from '/tmp/claude-1000/-home-user-robot-pet/e0b3470f-d371-4bf5-9dd7-5aa240d51f5e/scratchpad/parakeet/clips/clip8.wav' ...
+read_audio_data: trying to decode with miniaudio
+
+I was thinking that tomorrow morning we could clean the living room, but only after everyone has left for work, because the noise is quite annoying.
+parakeet_print_timings:     load time =   218.74 ms
+parakeet_print_timings:     fallbacks =   0 p /   0 h
+parakeet_print_timings:      mel time =    32.38 ms
+parakeet_print_timings:   sample time =     1.20 ms /   142 runs (     0.01 ms per run)
+parakeet_print_timings:   encode time =  4177.30 ms /     9 runs (   464.14 ms per run)
+parakeet_print_timings:   decode time =    27.97 ms /   178 runs (     0.16 ms per run)
+parakeet_print_timings:  predict time =    39.69 ms /   151 runs (     0.26 ms per run)
+parakeet_print_timings:    - build     =     1.46 ms /   151 runs (     0.01 ms per run)
+parakeet_print_timings:    - alloc     =     1.90 ms /   151 runs (     0.01 ms per run)
+parakeet_print_timings:    - compute   =    36.28 ms /   151 runs (     0.24 ms per run)
+parakeet_print_timings:    total time =  4527.34 ms
+

@@ -1,0 +1,139 @@
+[
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "Welcome back."
+  ],
+  "before": [
+   "Understood."
+  ],
+  "tools": [],
+  "after": []
+ },
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "You're up late.",
+   "You're up late."
+  ],
+  "before": [
+   "All right.",
+   "See you when I wake up."
+  ],
+  "tools": [
+   "stop"
+  ],
+  "after": [
+   "All right.",
+   "See you when I wake up."
+  ]
+ },
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "Back late.",
+   "Back late."
+  ],
+  "before": [
+   "Understood."
+  ],
+  "tools": [
+   "track_faces"
+  ],
+  "after": [
+   "Understood."
+  ]
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "Back late.",
+   "Back late."
+  ],
+  "before": [
+   "I'm already there."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": [
+   "Already home.",
+   "Fully charged.",
+   "Was there something else?"
+  ]
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "You're up late.",
+   "You're up late."
+  ],
+  "before": [
+   "I'm already here."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": [
+   "I'm already here."
+  ]
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "You're back late.",
+   "You're back late."
+  ],
+  "before": [
+   "I'm already there."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": [
+   "I'm already there."
+  ]
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "You're back late.",
+   "You're back late."
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": [
+   "Done."
+  ]
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "Back late.",
+   "I need to clarify what you mean.",
+   "My previous response did produce output\u2014I spoke the line \"Back late\" out loud (that's what the dialogue represents), and I turned on face tracking so my head would follow Robin.",
+   "Is something not working as expected, or would you like me to do something else?"
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": []
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "Back again?",
+   "Back again?"
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": [
+   "Done."
+  ]
+ }
+]

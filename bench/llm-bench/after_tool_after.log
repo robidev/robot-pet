@@ -1,0 +1,29 @@
+"I'm going to shut you down now."  (greeting: 'Back late.')
+   said 'Understood.'  tools ['track_faces']
+   after the tool: ''
+"I'm going to shut you down now."  (greeting: "You're up late.")
+   said 'Understood.'  tools ['go_home']
+   after the tool: ''
+"I'm going to shut you down now."  (greeting: 'Welcome back.')
+   said 'Understood.'  tools ['go_home']
+   after the tool: ''
+'Go back to your dock, please.'  (greeting: "You're back late.")
+   said "I'm already on it."  tools []
+   after the tool: ''
+'Go back to your dock, please.'  (greeting: 'Back late, are we?')
+   said 'I am on my dock.'  tools ['get_senses']
+   after the tool: ''
+'Go back to your dock, please.'  (greeting: "You're back late.")
+   said "I'm already docked."  tools ['get_senses']
+   after the tool: ''
+'Point your head straight ahead.'  (greeting: 'Back again.')
+   said ''  tools ['look_direction']
+   after the tool: 'Done.'
+'Point your head straight ahead.'  (greeting: "You're back. Late night, or early morning?")
+   said ''  tools ['look_direction']
+   after the tool: 'Done.'
+'Point your head straight ahead.'  (greeting: 'Back late.')
+   said ''  tools ['look_direction']
+   after the tool: 'Done.'
+
+after: 3 of 8 tool turns said more after the tool

@@ -10,6 +10,9 @@ local_config.yaml
 bluetooth_config.yaml
 runtime/
 
+# The benches' test speech: piper's, remade by bench.py and make_clips.py
+bench/**/*.wav
+
 # Third-party checkout, rebuilt from stt/README.md
 stt/whisper.cpp/
 

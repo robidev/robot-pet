@@ -1,0 +1,118 @@
+[
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "Back late."
+  ],
+  "before": [
+   "Understood."
+  ],
+  "tools": [
+   "track_faces"
+  ],
+  "after": []
+ },
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "You're up late."
+  ],
+  "before": [
+   "Understood."
+  ],
+  "tools": [
+   "go_home"
+  ],
+  "after": []
+ },
+ {
+  "request": "I'm going to shut you down now.",
+  "greeting": [
+   "Welcome back."
+  ],
+  "before": [
+   "Understood."
+  ],
+  "tools": [
+   "go_home"
+  ],
+  "after": []
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "You're back late."
+  ],
+  "before": [
+   "I'm already on it."
+  ],
+  "tools": [],
+  "after": []
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "Back late, are we?"
+  ],
+  "before": [
+   "I am on my dock."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": []
+ },
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "You're back late."
+  ],
+  "before": [
+   "I'm already docked."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": []
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "Back again."
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": [
+   "Done."
+  ]
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "You're back.",
+   "Late night, or early morning?"
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": [
+   "Done."
+  ]
+ },
+ {
+  "request": "Point your head straight ahead.",
+  "greeting": [
+   "Back late."
+  ],
+  "before": [],
+  "tools": [
+   "look_direction"
+  ],
+  "after": [
+   "Done."
+  ]
+ }
+]

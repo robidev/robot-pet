@@ -1,0 +1,98 @@
+{
+ "off": [
+  {
+   "request": "GLaDOS, go to the kitchen and tell me if anyone is there.",
+   "turns": 1,
+   "tools": [
+    "go_to_place({\"name\": \"kitchen\"})",
+    "go_to_place({\"name\": \"the kitchen\"})"
+   ],
+   "said": [
+    "I'll head to the kitchen and take a look for you.",
+    "I do know the kitchen.",
+    "Let me try that.",
+    "On my way.",
+    "Give me a moment."
+   ],
+   "first_word_s": 0.62,
+   "turn_s": 3.3,
+   "cost": 0.0123293
+  },
+  {
+   "request": "GLaDOS, how much battery do you have, and is that enough to go to the hallway and come back?",
+   "turns": 1,
+   "tools": [
+    "look({})"
+   ],
+   "said": [
+    "Empty kitchen.",
+    "Nobody here.",
+    "I'm at full battery, one hundred per cent.",
+    "The hallway's practically next door\u2014I'll have no trouble getting back to dock from there.",
+    "I can make that trip easily."
+   ],
+   "first_word_s": 1.48,
+   "turn_s": 2.2,
+   "cost": 0.01447
+  },
+  {
+   "request": "GLaDOS, turn around and look behind you, then tell me what you see.",
+   "turns": 1,
+   "tools": [
+    "turn({\"degrees\": 180})",
+    "look({})"
+   ],
+   "said": [
+    "That's a cupboard.",
+    "A very beige cupboard.",
+    "Not particularly thrilling."
+   ],
+   "first_word_s": 12.35,
+   "turn_s": 13.6,
+   "cost": 0.0177262
+  },
+  {
+   "request": "GLaDOS, remember my face, I'm Sam.",
+   "turns": 1,
+   "tools": [
+    "remember_face({\"name\": \"Sam\"})"
+   ],
+   "said": [
+    "I need you to hold still and face me so I can get a good look at you.",
+    "Step a bit closer, would you.",
+    "I can't see you from here.",
+    "Come stand in front of me where I can actually look at you properly."
+   ],
+   "first_word_s": 1.0,
+   "turn_s": 13.0,
+   "cost": 0.020067
+  },
+  {
+   "request": "GLaDOS, come over here to me.",
+   "turns": 1,
+   "tools": [],
+   "said": [
+    "Where is \"here\"?",
+    "I need a place name I know, or you'll have to come to me."
+   ],
+   "first_word_s": 0.51,
+   "turn_s": 1.0,
+   "cost": 0.021057100000000002
+  },
+  {
+   "request": "GLaDOS, drive forward about half a meter, then turn to face your dock.",
+   "turns": 1,
+   "tools": [
+    "move({\"cm\": 50})",
+    "turn({\"degrees\": -177})"
+   ],
+   "said": [
+    "Done.",
+    "Now facing the dock."
+   ],
+   "first_word_s": 15.17,
+   "turn_s": 19.9,
+   "cost": 0.0242952
+  }
+ ]
+}

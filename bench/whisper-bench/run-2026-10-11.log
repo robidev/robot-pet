@@ -1,0 +1,81 @@
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+model: models/ggml-base.en.bin
+round 1: threads 4, pad 5000 done
+round 1: threads 4, pad -1 done
+round 2: threads 4, pad 5000 done
+round 2: threads 4, pad -1 done
+
+threads 4, utterance + 5000 ms: median 463 ms, mean 467 ms, missing 1
+   1.5s     -/ 463 ms  Hello GilaDOS
+   1.9s   393/ 380 ms  Can you go back to your doc please? | Can you go back to your dock please?
+   3.9s   462/ 495 ms  We're testing how quickly you respond. Can you say something now? | We're testing how quickly you respond, can you say something now?
+   3.3s   476/ 466 ms  Gee Ladas, what do you see in the kitchen right now? | Gee Laddas, what do you see in the kitchen right now?
+   0.8s   352/ 299 ms  Stop! | Stop
+   4.2s   503/ 464 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s   340/ 357 ms  Who is in a room with me?
+   8.5s   760/ 791 ms  I was thinking that tomorrow morning we could clean the living room. The only after everyone has left for work, because the noise is quite annoying.
+
+threads 4, full 30 s window: median 1488 ms, mean 1511 ms, missing 0
+   1.5s  1472/1692 ms  Hello GilaDOS | Hello G-Lados
+   1.9s  1467/1467 ms  Can you go back to your dock please?
+   3.9s  1531/1476 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s  1517/1511 ms  Gee Laddas, what do you see in the kitchen right now?
+   0.8s  1552/1468 ms  SOP
+   4.2s  1490/1432 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s  1448/1487 ms  Who is in a room with me?
+   8.5s  1555/1606 ms  I was thinking that tomorrow morning we could clean the living room. The only after everyone has left for work, because the noise is quite annoying.
+=== exit 0 for models/ggml-base.en.bin
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+model: models/ggml-small.en.bin
+round 1: threads 4, pad 5000 done
+round 1: threads 4, pad -1 done
+round 2: threads 4, pad 5000 done
+round 2: threads 4, pad -1 done
+
+threads 4, utterance + 5000 ms: median 1444 ms, mean 1544 ms, missing 0
+   1.5s  1141/1155 ms  Hello GLaDOS
+   1.9s  1330/1271 ms  Can you go back to your dock please?
+   3.9s  1617/1623 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s  1557/1581 ms  GLaDOS, what do you see in the kitchen right now?
+   0.8s  1008/ 993 ms  SOP
+   4.2s  1782/1746 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s  1178/1247 ms  Who is in the room with me?
+   8.5s  2728/2748 ms  I was thinking that tomorrow morning we could clean the living room the only after everyone has left for work because the noise is quite annoying
+
+threads 4, full 30 s window: median 5834 ms, mean 5899 ms, missing 0
+   1.5s  5657/6427 ms  Hello GLaDOS
+   1.9s  5775/5688 ms  Can you go back to your dock please?
+   3.9s  5834/5871 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s  5829/5823 ms  GLaDOS, what do you see in the kitchen right now?
+   0.8s  5944/5706 ms  SOP
+   4.2s  5897/5824 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s  5835/5850 ms  Who is in the room with me?
+   8.5s  6361/6056 ms  I was thinking that tomorrow morning we could clean the living room. But only after everyone has left for work, because the noise is quite annoying.
+=== exit 0 for models/ggml-small.en.bin
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+model: models/ggml-large-v3-turbo-q5_0.bin
+round 1: threads 4, pad 5000 done
+round 1: threads 4, pad -1 done
+round 2: threads 4, pad 5000 done
+round 2: threads 4, pad -1 done
+
+threads 4, utterance + 5000 ms: median 9568 ms, mean 9729 ms, missing 0
+   1.5s  7212/7298 ms  hello chi la da s
+   1.9s  7628/7772 ms  Can you go back to your .please?
+   3.9s  9616/9688 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s  8792/8969 ms  What do you see in the kitchen right now?
+   0.8s  9714/10021 ms  A.R.I.P.S.
+   4.2s  9519/9468 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s  10682/10771 ms  A
+   8.5s  13977/14530 ms  I was thinking that tomorrow morning we could clean the living room. But only after everyone has left for work, because the noise is quite annoying.
+
+threads 4, full 30 s window: median 32516 ms, mean 32516 ms, missing 15
+   1.5s  32516/   - ms  Hello G-Ladas
+   1.9s     -/   - ms  
+   3.9s     -/   - ms  
+   3.3s     -/   - ms  
+   0.8s     -/   - ms  
+   4.2s     -/   - ms  
+   1.6s     -/   - ms  
+   8.5s     -/   - ms  
+=== exit 0 for models/ggml-large-v3-turbo-q5_0.bin

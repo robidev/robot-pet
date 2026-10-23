@@ -1,0 +1,30 @@
+20:43:24.914 INFO    petd.io.vacuum: vacuum reachable
+20:43:24.914 INFO    petd.io.vacuum: vacuum None -> docked (battery 100%, at (2560, 2549, heading 342))
+20:43:24.914 INFO    petd.io.vacuum: vacuum's dock at (2560, 2530) (was ?)
+20:43:25.147 INFO    petd.memory.recognition: face recognition on: 0 people with a stored face
+20:43:25.156 INFO    petd.spatial.dock: docked at (2560, 2549), charger at (2560, 2530): approach point (2560, 2590)
+20:43:25.822 INFO    petd.app: petd up (fake hardware)
+20:43:25.828 INFO    petd.brain.claude_cli: starting brain: claude -p --input-format stream-json --output-format stream-json ...
+20:43:25.990 INFO    petd.api.server: local API on http://127.0.0.1:8799
+20:43:31.824 INFO    petd.io.stt: heard: 'GLaDOS, go to the kitchen and tell me if anyone is there.'
+20:43:31.826 INFO    petd.brain.brain: -> brain: [20:43 | battery 100% | docked | nobody in view] | someone says: "GLaDOS, go to the kitchen and tell me if anyone is there."
+20:43:32.716 INFO    petd.brain.brain: <- brain says: I'll head to the kitchen and take a look for you.
+20:43:33.291 INFO    petd.brain.brain: brain calls go_to_place({'name': 'kitchen'})
+20:43:33.310 INFO    petd.brain.tools: tool go_to_place refused: I don't know a place called kitchen (I know: the hallway, the kitchen)
+20:43:33.338 INFO    petd.brain.brain: tool reported an error back to the brain
+20:43:34.148 INFO    petd.brain.expressions: expresses emote:curious
+20:43:34.149 INFO    petd.brain.brain: <- brain says: Right.
+20:43:34.187 INFO    petd.brain.brain: <- brain says: Let me try that again.
+20:43:34.671 INFO    petd.brain.brain: brain calls go_to_place({'name': 'the kitchen'})
+20:43:34.681 INFO    petd.brain.tools: tool go_to_place({'name': 'the kitchen'}) -> 0ms
+20:43:34.681 INFO    petd.io.vacuum: vacuum docked -> moving (battery 100%, at (2560, 2549, heading 342))
+20:43:34.733 INFO    petd.io.vacuum: vacuum moving -> idle (battery 100%, at (2800, 2300, heading 342))
+20:43:35.305 INFO    petd.brain.brain: <- brain says: I'm on my way.
+20:43:35.343 INFO    petd.brain.brain: <- brain says: Give me a moment.
+20:43:35.416 INFO    petd.brain.brain: turn done in 3.6s (cost 0.012311299999999999)
+20:43:35.416 INFO    petd.brain.expressions: expresses rest
+20:43:37.685 INFO    petd.app: motion: arrived at the kitchen
+[thinking off] GLaDOS, go to the kitchen and tell me if anyone is there.
+   first word 0.79 s, turn 3.6 s, $0.012311299999999999
+   tools: ['go_to_place({"name": "kitchen"})', 'go_to_place({"name": "the kitchen"})']
+   said: I'll head to the kitchen and take a look for you. Right. Let me try that again. I'm on my way. Give me a moment.

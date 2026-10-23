@@ -1,0 +1,45 @@
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+engine: whisper model: models/ggml-base.en.bin
+round 1: threads 4, pad 5000 done
+round 2: threads 4, pad 5000 done
+
+threads 4, utterance + 5000 ms: median 292 ms, mean 290 ms, missing 0
+   1.5s   289/ 331 ms  Hello GilaDOS
+   1.9s   236/ 229 ms  Can you go back to your dock please?
+   3.9s   301/ 300 ms  We're testing how quickly you respond, can you say something now?
+   3.3s   296/ 305 ms  Gee Laddas, what do you see in the kitchen right now?
+   0.8s   196/ 188 ms  Stop
+   4.2s   295/ 288 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s   220/ 220 ms  Who is in a room with me?
+   8.5s   473/ 481 ms  I was thinking that tomorrow morning we could clean the living room. The only after everyone has left for work, because the noise is quite annoying.
+=== exit 0 for whisper models/ggml-base.en.bin
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+engine: parakeet model: models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin
+round 1: threads 4, pad 5000 done
+round 2: threads 4, pad 5000 done
+
+threads 4, utterance + 5000 ms: median 384 ms, mean 435 ms, missing 0
+   1.5s   227/ 222 ms  Hello Gladas.
+   1.9s   293/ 325 ms  Can you go back to your dock please?
+   3.9s   526/ 506 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s   453/ 442 ms  Gila Das, what do you see in the kitchen right now?
+   0.8s   126/ 118 ms  Stop.
+   4.2s   552/ 559 ms  Tell me something interesting about the history of cake, and keep it short.
+   1.6s   247/ 233 ms  Who is in the room with me?
+   8.5s  1053/1082 ms  I was thinking that tomorrow morning we could clean the living room, but only after everyone has left for work, because the noise is quite annoying.
+=== exit 0 for parakeet models/ggml-parakeet-tdt-0.6b-v3-q8_0.bin
+lines: 1.5s, 1.9s, 3.9s, 3.3s, 0.8s, 4.2s, 1.6s, 8.5s
+engine: whisper model: models/ggml-small.en.bin
+round 1: threads 4, pad 5000 done
+round 2: threads 4, pad 5000 done
+
+threads 4, utterance + 5000 ms: median 913 ms, mean 970 ms, missing 0
+   1.5s   714/ 720 ms  Hello GLaDOS
+   1.9s   842/ 802 ms  Can you go back to your dock please?
+   3.9s  1033/1081 ms  We're testing how quickly you respond. Can you say something now?
+   3.3s  1010/ 984 ms  GLaDOS, what do you see in the kitchen right now?
+   0.8s   595/ 618 ms  SOP
+   4.2s  1070/1111 ms  Tell me something interesting about the history of cake and keep it short.
+   1.6s   786/ 765 ms  Who is in the room with me?
+   8.5s  1680/1717 ms  I was thinking that tomorrow morning we could clean the living room the only after everyone has left for work because the noise is quite annoying
+=== exit 0 for whisper models/ggml-small.en.bin

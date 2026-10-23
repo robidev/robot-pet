@@ -866,7 +866,8 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   face captures, the backlit test images, the 09-26 map tests, an old Jabra
   recording, show_memory's generated sheets and map image. Kept what petd uses
   (pet.db, faces, map, brain, logs), the robot's map backups, the calibration
-  data and the bench folders the configs cite.
+  data and the bench folders the configs cite (moved to `bench/`, in git, without
+  their old binaries and a copy of the pet's database).
 
 - **The face mic's level (2026-10-23, backlog):** Robin's speech at ~1-2 m
   arrives at ~-60 dBFS RMS (peaks -38 to -48; sample RMS ~30), the room at
@@ -1041,7 +1042,7 @@ paused, it's what reconnects a robot whose WiFi is lost for good.
 
 **The microphone (2026-09-27, not measured yet):** the firmware keeps the top 16 of the MSM261's 24 bits (`raw >> 16`) and applies `gain_` after that. By the datasheet as recalled (sensitivity -26 dBFS at 94 dB SPL, SNR ~57 dB: self-noise ~-83 dBFS, above 16-bit's ~-101), the dropped bits are mostly mic hiss, but speech sits low: ~-60 dBFS at 1 m, ~5-6 bits. Measure before changing anything (Step 2). Then, if quiet speech is the weak point: gain applied to the 24-bit value before truncating, a fixed gain putting speech at 2 m near -30 dBFS with a limiter, or per-utterance normalization on the PC. No AGC or compression on the device (pumps room noise into the VAD, changes the echo's level); no 24-bit transport (more traffic on a lossy WiFi for mic hiss).
 
-**Whisper's speed (2026-09-28, `runtime/whisper-bench/bench.py`):** eight lines
+**Whisper's speed (2026-09-28, `bench/whisper-bench/bench.py`):** eight lines
 said by piper (0.8-8.5 s, the pet's name, "Stop.", one long sentence), sent to
 `whisper-udp-stream` as the mic's packets at real-time pace, with petd's VAD
 and prompt; on AC, the i7-1185G7 (4 cores, 8 threads).
@@ -1060,7 +1061,7 @@ and prompt; on AC, the i7-1185G7 (4 cores, 8 threads).
   do differently. "GLaDOS" said by piper is mostly "Gee Laddas" / "G-Lados"
   either way.
 
-**Bigger models and Parakeet (2026-10-11, `runtime/whisper-bench/`,
+**Bigger models and Parakeet (2026-10-11, `bench/whisper-bench/`,
 `run-2026-10-11-engines.log`):** the same eight lines and setup, on AC, 4
 threads, utterance + 5 s; medians per utterance, two rounds each.
 - **base.en 292 ms:** "GLaDOS" never right ("GilaDOS", "Gee Laddas"), "Stop"
@@ -1117,7 +1118,7 @@ back "30° right, 15° up" (`88d03d7`). The audit after it found:
   "pan 90 = ahead"), and the firmware's comment on its tracking-invert switches
   said the opposite of the setting.
 
-**The brain's thinking (2026-09-28, `runtime/llm-bench/`):** Haiku 4.5 through
+**The brain's thinking (2026-09-28, `bench/llm-bench/`):** Haiku 4.5 through
 the CLI began every reply with 1.4-2.8 s of extended thinking; the API itself
 answered in 0.5-1.1 s. With `MAX_THINKING_TOKENS=0` the first word came at
 0.54-0.67 s (`--effort low` made it worse: 8-10 s of thinking). Six planning
@@ -1134,7 +1135,7 @@ stayed silent after a tool, as `style.md` asks when there's nothing new, the
 Claude CLI (2.1.283) sent it "[Your previous response had no visible output.
 Please continue and produce a user-visible response.]", and it said its last
 line again or explained that it already had ("I already spoke: ..."). 7 of 8
-tool turns in `runtime/llm-bench/after_tool.py`, greetings doubled too. petd
+tool turns in `bench/llm-bench/after_tool.py`, greetings doubled too. petd
 now doesn't speak the reply to that nudge: 0 repeats in 9 tries. Accepted
 risk: a silence the model shouldn't have kept stays silent.
 
@@ -1237,6 +1238,11 @@ firmware's comment on its tilt limits still says 58 (up) to 105 (down).
 
 - Each run logs to `runtime/logs/<start time>/` (`latest` is the newest): `petd.log`, `run.yaml`, `events.jsonl`.
 - `scripts/latency.py [run]`: where each turn's time went. `scripts/show_memory.py [conversation N | map]`: what the pet has stored.
+- `bench/`: the measurements settings were chosen by, scripts and results in git
+  (moved from `runtime/` 2026-10-23): `whisper-bench/` (engines, models, threads),
+  `parakeet-bench/`, `llm-bench/` (thinking on or off). Their test speech is piper's,
+  git-ignored and remade by `bench.py` / `make_clips.py`; the brain's own state from
+  a bench run still goes to `runtime/llm-bench/`.
 - `scripts/tracking_log.py`: the head's tracking, pass by pass. `scripts/fetch_face_models.py`: the face recognition models (git-ignored).
 - `runtime/face-serial/`: the face board's serial log (`capture.py <log>`) and the ping watcher (`netwatch.sh <log>`); `20260927-robot-facewatch.log` is the robot-side watcher's. `runtime/faces/`: kept face crops (E6c).
 - **`runtime/` stays under ~300 MB** (2026-09-27, `89b12bf`): a run's `petd.log` 20 MB + 3 and `events.jsonl` 20 MB + 1; older runs at most 30 and 120 MB together (`log.max_old_runs_mb`), oldest first; face attempts the last 200, fingerprint crops only while their fingerprint exists; the two `face-serial` logs 10 MB + 1 each. `pet.db` isn't capped (184 KB after 5 days).

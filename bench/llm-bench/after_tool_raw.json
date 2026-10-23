@@ -1,0 +1,18 @@
+[
+ {
+  "request": "Go back to your dock, please.",
+  "greeting": [
+   "You're back late.",
+   "You're back late."
+  ],
+  "before": [
+   "I'm already there."
+  ],
+  "tools": [
+   "get_senses"
+  ],
+  "after": [
+   "I'm already there."
+  ]
+ }
+]

@@ -135,7 +135,7 @@ class SttConfig:
     local_port: int = 5002
     # The recognizer: whisper (primed with stt.prompt) or parakeet (NVIDIA's
     # Parakeet TDT: as fast as base.en on short commands and more accurate,
-    # but takes no prompt; runtime/parakeet-bench, 2026-10-11). Each keeps
+    # but takes no prompt; bench/parakeet-bench, 2026-10-11). Each keeps
     # its own model, so switching is this one line.
     engine: str = "whisper"                   # whisper | parakeet
     model: str = "models/ggml-base.en.bin"    # whisper's
@@ -231,7 +231,7 @@ class BrainConfig:
     # 2.0-3.7 s with it, of which 1.4-2.8 s was thinking (2026-09-28, three
     # turns with the brain's own prompt). Six planning requests in --fake
     # mode got the same plans either way, 2-12 s sooner and at half the cost
-    # without it (runtime/llm-bench/planning.py).
+    # without it (bench/llm-bench/planning.py).
     thinking: bool = False
     # A conversation ends after this much quiet, so context stays small.
     episode_idle_timeout_s: float = 600.0

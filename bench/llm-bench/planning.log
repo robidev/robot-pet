@@ -1,0 +1,25 @@
+[thinking on] GLaDOS, go to the kitchen and tell me if anyone is there.
+   1 turn(s), first word 12.9 s, turns 13.6 s, $0.019
+   tools: ['get_senses({})', 'go_to_place({"name": "the kitchen"})', 'look({})']
+   said: Still en route. The view is fairly dark from here — either the hallway's not keen on lighting or the kitchen has decided to embrace the shadows.
+[thinking on] GLaDOS, how much battery do you have, and is that enough to go to the hallway and come back?
+   1 turn(s), first word 6.95 s, turns 8.0 s, $0.025
+   tools: ['get_senses({})']
+   said: Nobody in the kitchen. It's empty. As for battery: I'm at a hundred per cent. The hallway and back is well within reach — these are not distant cities we're talking about. Yes, I can manage it.
+[thinking on] GLaDOS, turn around and look behind you, then tell me what you see.
+   1 turn(s), first word 17.48 s, turns 18.0 s, $0.032
+   tools: ['turn({"degrees": 180})', 'look({})']
+   said: Walls, mostly. Very plain ones. The kitchen has decided against dramatic lighting this evening, apparently.
+[thinking on] GLaDOS, remember my face, I'm Sam.
+   1 turn(s), first word 4.67 s, turns 18.1 s, $0.037
+   tools: ['remember_face({"name": "Sam"})']
+   said: Hold still, then. This takes about ten seconds. You need to be directly in front of my camera, facing me, and fairly close. Move into position and we'll try again.
+[thinking on] GLaDOS, come over here to me.
+   1 turn(s), first word 2.96 s, turns 3.4 s, $0.040
+   tools: []
+   said: I navigate by place names, not vague gestural geography. Where are you? Kitchen? Hallway? Somewhere else I should know about?
+[thinking on] GLaDOS, drive forward about half a meter, then turn to face your dock.
+   1 turn(s), first word 26.0 s, turns 31.9 s, $0.051
+   tools: ['move({"cm": 50})', 'turn({"degrees": 180})']
+   said: Now turning to face the dock. Done. I'm facing your dock now.
+ERROR:    [Errno 98] error while attempting to bind on address ('127.0.0.1', 8799): [errno 98] address already in use
