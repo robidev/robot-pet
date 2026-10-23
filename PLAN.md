@@ -786,6 +786,16 @@ Status rows say what each rule thinks; petd.log has "nudge:", "outing",
    and the robot's own return if it comes: its battery level, and that petd
    stood aside.
 
+### The evening of 2026-10-23: findings and fixes
+
+Robin talking to it for 40 minutes, first on the face mic (20:44), then on
+the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
+- **Answers dropped as unaddressed:** the 8 s window was checked against when
+  the transcript came, not when the speech began, so an answer longer than a
+  few seconds missed it however promptly it started: 3 in the Bluetooth run
+  (begun 1.9-5.4 s after the pet stopped, transcripts 8.6-10.6 s after).
+  Fixed: the window counts from `t_start`.
+
 ### Step 8: later
 
 - **The room mic and the TV, tried** (Step 6, built 2026-10-14): a few

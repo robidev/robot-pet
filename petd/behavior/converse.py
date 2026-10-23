@@ -12,7 +12,10 @@ then the attention gate, then the brain.
   when a conversation window is open (it spoke, or was addressed, in the
   last `window_s`), or when a known person is in view (any face, while
   recognition is off). Everything else is
-  published as HeardDropped("not addressed") and left alone.
+  published as HeardDropped("not addressed") and left alone. The window
+  counts from when someone started talking, not from when the transcript
+  came: a 5 s answer begun 2 s after the pet stopped was dropped as
+  unaddressed, three times in one evening (2026-10-23).
 - Echo is filtered twice: by time in io/stt.py (while the pet talks, plus
   a tail), and here by content, for echoes that outlast that estimate:
   a transcript that mostly repeats the pet's last 10 s of speech is not
@@ -280,7 +283,7 @@ class Listener:
 
         if self.cfg.ignore_while_driving and self._driving() and not addressed:
             return self._ignore(event.text, "driving")
-        if not (addressed or self.window_open(event.t) or self._gaze()):
+        if not (addressed or self.window_open(event.t_start) or self._gaze()):
             return self._ignore(event.text, "not addressed")
         self.window_until = event.t + self.cfg.window_s
 

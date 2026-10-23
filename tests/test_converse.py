@@ -165,6 +165,25 @@ async def test_the_pet_speaking_opens_the_window(pet):
     assert pet.brain.told[-1][0] == "yes it's me"
 
 
+async def test_the_window_counts_from_when_someone_started_talking(pet):
+    # 2026-10-23: begun 1.9 s after the pet stopped, 5.5 s long, the
+    # transcript came 8.6 s after it, and was dropped as unaddressed.
+    now = time.time()
+    pet.bus.publish(SpeakingFinished(utterance_id=1, text="What are you measuring?", t=now - 8.6))
+    await asyncio.sleep(0)
+    pet.bus.publish(Heard(text="do you know what your timeout is", t_start=now - 6.7, t_end=now - 1.2))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert pet.brain.told[-1][0] == "do you know what your timeout is"
+
+    # Begun after the window closed, it's still not addressed.
+    pet.bus.publish(SpeakingFinished(utterance_id=2, text="Well?", t=now - 20))
+    pet.bus.publish(Heard(text="did you feed the cat", t_start=now - 10, t_end=now - 9))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert len(pet.brain.told) == 1
+
+
 async def test_a_known_face_in_view_opens_the_gate(pet):
     robin = pet.db.add_person("Robin")
     pet.face.show(Face(-1, 0.9, 0.4, 0.3, 0.6, 0.7))
