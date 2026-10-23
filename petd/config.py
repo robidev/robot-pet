@@ -466,7 +466,7 @@ class RecognitionConfig:
     """
     Face recognition on the PC (PLAN.md 4.7, E6; petd/vision/). The head only
     detects. Thresholds are SFace cosine similarities, set from E6a
-    (runtime/e6a/: Robin and Claudia at 0.6-2.5 m, lamp light): the other
+    (PLAN.md 4.7: Robin and Claudia at 0.6-2.5 m, lamp light): the other
     person never scored above 0.29 against someone's centre, the person
     themselves never below 0.43.
     """

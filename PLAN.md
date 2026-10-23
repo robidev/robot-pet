@@ -102,7 +102,7 @@ Finishes M2 and gives the first real latency numbers.
   face, I'm Noah" (typed on the dashboard) was first refused, as he had a
   face; asked again, the brain retook it (`insist`): 5 close (172-179 px), 4 a
   step back (107-140 px), all his; the retake replaced his 30 (a backup in
-  `runtime/db-backups/`). Then all three in view at ~2 m (faces 55-79 px):
+  `runtime/db-backups/`, removed 2026-10-23). Then all three in view at ~2 m (faces 55-79 px):
   all named within 8 s of the first face, every attempt the right person
   (0.44-0.69); on 2026-10-05 faces that small took ~60 s. Short-lived small
   boxes at the frame's edge count as a fourth face that's never named
@@ -862,6 +862,12 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
 
 ### Step 8: later
 
+- **`runtime/` tidied (2026-10-23):** removed the 10-11 database backup, E6a's
+  face captures, the backlit test images, the 09-26 map tests, an old Jabra
+  recording, show_memory's generated sheets and map image. Kept what petd uses
+  (pet.db, faces, map, brain, logs), the robot's map backups, the calibration
+  data and the bench folders the configs cite.
+
 - **The face mic's level (2026-10-23, backlog):** Robin's speech at ~1-2 m
   arrives at ~-60 dBFS RMS (peaks -38 to -48; sample RMS ~30), the room at
   ~-75: a 15 dB margin. For a whole minute (22:36:53-22:37:43) the levels
@@ -983,7 +989,7 @@ Second round: `echo_timing.py` measured the voice lasting up to 1.02 s past its 
 - **This Valetudo has no room segmentation, no no-go areas or virtual walls, and no persistent-map control** (`/api/v2/robot/capabilities`: no `MapSegmentationCapability`, `CombinedVirtualRestrictionsCapability` or `PersistentMapControlCapability`). Rooms and off-limits areas can't come from Valetudo; the kitchen end of the room would be our own zone.
 - **A reboot keeps the map, pixel for pixel;** only `vendorMapId` goes up (3578 → 3579). The robot reboots itself every day at 03:54 on its clock, which runs on Asia/Shanghai time: **21:54 here**.
 - **A new map can have a different frame.** The full-room map made from the dock tonight (3578, `tests/fixtures/valetudo_map_2026-09-26.json`) matches 2026-09-19's closely (dock within 2 cm; the best wall fit still wants ~2° and a shift, unresolved). A partial map earlier tonight (3576, 15 m²) was rotated **~74°** against it. Every map's path starts at (2560, 2560): the frame is wherever the robot was when the map began.
-- **A `go_to` from the dock and back keeps the map and its frame** (`runtime/map-test/`, 23:41): 96% of the wall pixels identical, the dock within 3 cm, the map a little larger; only the `path` entity starts over. Asked for (2562, 2601), 50 cm out, it stopped 8 cm short, facing away from the dock; 12 s out, 37 s back. **`vendorMapId` is no new-map signal:** it went 3579 → 3580 in between with the map unchanged.
+- **A `go_to` from the dock and back keeps the map and its frame** (`runtime/map-test/`, removed 2026-10-23; 23:41): 96% of the wall pixels identical, the dock within 3 cm, the map a little larger; only the `path` entity starts over. Asked for (2562, 2601), 50 cm out, it stopped 8 cm short, facing away from the dock; 12 s out, 37 s back. **`vendorMapId` is no new-map signal:** it went 3579 → 3580 in between with the map unchanged.
 - **A goal on or inside an obstacle is never an error** (23:52, a hollow box in the map ~1.2 m from the dock; `runtime/map-test/wall_*`). On its edge (2670, 2570): stopped 25 cm short, in front of it, 13 s. Inside it (2690, 2570): drove *around* the box for 49 s and stopped on its far side, 39 cm from the goal, with the bumper pressed (RoboController's next GoCheck: "error for: Bumper"). Both ended `moving` → `idle` and `RE_Nav_GotoTargetComplete` with ErrorCode 0, the same as a real arrival. So petd can't learn from the status whether it got there, only from the final pose: `await_arrival` now calls it arrived only within `motion.arrive_cm` (20) of the goal, and otherwise says how far off it stopped. Not yet tried: a goal outside the room.
 - **Named places are raw map coordinates, so they move with the frame.** `kitchen` (saved 2026-09-23) is on the floor, 16 cm from a wall, in the 09-19 map, but 3 cm from a wall and off the floor in tonight's. Not yet known what starts a new map, or what made the 74° one.
 
@@ -1235,7 +1241,7 @@ firmware's comment on its tilt limits still says 58 (up) to 105 (down).
 - `runtime/face-serial/`: the face board's serial log (`capture.py <log>`) and the ping watcher (`netwatch.sh <log>`); `20260927-robot-facewatch.log` is the robot-side watcher's. `runtime/faces/`: kept face crops (E6c).
 - **`runtime/` stays under ~300 MB** (2026-09-27, `89b12bf`): a run's `petd.log` 20 MB + 3 and `events.jsonl` 20 MB + 1; older runs at most 30 and 120 MB together (`log.max_old_runs_mb`), oldest first; face attempts the last 200, fingerprint crops only while their fingerprint exists; the two `face-serial` logs 10 MB + 1 each. `pet.db` isn't capped (184 KB after 5 days).
 - On the robot: `/root/wlanmgr_pause.sh stop | resume | status` pauses `wlanmgr`'s 30 s roaming scans; petd runs it whenever the robot becomes reachable (`petd/io/robot_wifi.py`, `vacuum.ssh_key` in the git-ignored `config.yaml`).
-- `runtime/e6a/`: E6a's face captures of Robin and Claudia (photos of people: never into git) and the probe that took them.
+- `runtime/e6a/`: E6a's face captures of Robin and Claudia and the probe that took them; removed 2026-10-23 (old photos of people), the numbers are below (4.7).
 - `runtime/map/reference.json`: the reference map places are kept in (spatial/frame.py). `runtime/map-backups/<date>/`: the robot's own map files (`last_map`, `ChargerPos.data`, `StartPos.data`, `slam_info.cfg`, `appproxy.map` from `/mnt/data/rockrobo/`, over root SSH, with the robot's md5sums) plus Valetudo's JSON of the same map; floor plans of the home, so never into git. `runtime/map-test/`: the go_to tests of 2026-09-26.
 
 ---
@@ -1670,8 +1676,8 @@ someone the pet keeps seeing, and it can ask their name the next time.
 *Measured first (E6a, 2026-09-23 evening).* In a venv outside petd's, with a
 probe that follows OpenCV's own decoding and alignment for these models: 8
 snapshots each of Robin and Claudia at 0.6, 1.5 and 2.5 m, lamp light, head
-tracking on. The captures, the probe and the full numbers are in `runtime/e6a/`
-(git-ignored: they're photos of people). Faces were ~195, ~80 and ~47 px tall.
+tracking on. The captures, the probe and the full numbers were in `runtime/e6a/`
+(git-ignored: photos of people; removed 2026-10-23, the numbers are here). Faces were ~195, ~80 and ~47 px tall.
 Against each person's centre (trimmed mean, outlier filter):
 
 | enrolled at | lowest own | highest other | smallest margin |
