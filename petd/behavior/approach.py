@@ -69,8 +69,12 @@ def start_centre(pet: "App", person: Optional["Person"], faces) -> Optional[tupl
     return biggest.cx, biggest.cy
 
 
-async def look(pet: "App", person: Optional["Person"]) -> Optional[PersonEstimate]:
-    """Where the person is now: tracking on, a moment to centre, then a few frames."""
+async def look(pet: "App", person: Optional["Person"], on_map: bool = True) -> Optional[PersonEstimate]:
+    """
+    Where the person is now: tracking on, a moment to centre, then a few
+    frames. With on_map, only frames that also place them on the map count
+    (an approach needs that); without, the distance and direction will do.
+    """
     face, cal, pcfg = pet.face, pet.cfg.calibration, pet.cfg.person
     await face.set_servo(mode="track")
     await asyncio.sleep(pcfg.look_settle_s)
@@ -88,14 +92,14 @@ async def look(pet: "App", person: Optional["Person"]) -> Optional[PersonEstimat
         chosen = min(frame.faces, key=lambda f: (f.cx - centre[0]) ** 2 + (f.cy - centre[1]) ** 2)
         centre = chosen.cx, chosen.cy
         e = estimate(chosen, frame.pan_deg, frame.tilt_deg, cal, pcfg, pet.robot_pose(), None, face_z)
-        if e.xy is not None:
+        if e.xy is not None or not on_map:
             seen.append(e)
     if not seen:
         return None
     middle = statistics.median_low([e.distance_m for e in seen])
     chosen = next(e for e in seen if e.distance_m == middle)
-    log.info("approach: a look: %s at (%.0f, %.0f) from %d frames",
-             chosen.describe(), *chosen.xy, len(seen))
+    log.info("a look: %s at %s from %d frames", chosen.describe(),
+             "(%.0f, %.0f)" % chosen.xy if chosen.xy else "an unknown spot", len(seen))
     return chosen
 
 

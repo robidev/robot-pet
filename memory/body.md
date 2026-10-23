@@ -38,6 +38,8 @@ the line is what was said to me, or what just happened.
 - Wander to a spot I haven't just been to and have a look around, and note
   what I saw there
 - Come over to someone I can see, and stop about a metre in front of them
+- Work out how far away someone I can see is, and where in the room: I measure
+  it (locate_person) rather than guess
 - Look around the room for someone, turning my whole body if I have to
 - Point my head, or let it follow a face to keep eye contact
 - Take a photo and look at what is in it

@@ -251,6 +251,41 @@ async def test_stop_while_coming_over(pet):
     assert ("stop",) in pet.vacuum.commands
 
 
+# --- locate_person -----------------------------------------------------------------
+
+async def test_locating_someone_says_how_far_and_where_and_moves_their_last_seen_spot(pet):
+    # "How far away am I?" got a made-up "thirty to fifty centimetres" when
+    # Robin was 1.5 m off: nothing measured it (2026-10-23).
+    robin = pet.db.add_person("Robin")
+    off_the_dock(pet)
+    await show(pet, face(h=0.15))
+    pet.people.recognized(robin.id, 0.0, 0.8, centre=(0.5, 0.45))
+    await asyncio.sleep(0.05)
+    pet.db.set_last_seen_place(robin.id, 0.0, 0.0)
+    result = await pet.tools.call("locate_person", {"name": "Robin"})
+    assert not result.is_error, result.text
+    assert result.text.startswith("Robin is about ") and " m from me" in result.text, result.text
+    seen = pet.db.person(robin.id)
+    assert (seen.last_seen_x, seen.last_seen_y) != (0.0, 0.0)
+    assert pet.brain.expressions.owner is None and pet.face.state.servo_mode == "track"
+    assert not pet.moving and not go_tos(pet)
+
+    pet.db.set_place("the couch", seen.last_seen_x + 40, seen.last_seen_y)
+    result = await pet.tools.call("locate_person", {})
+    assert "Near the couch (0.4 m from it)" in result.text, result.text
+
+
+async def test_locating_needs_someone_in_view(pet):
+    robin = pet.db.add_person("Robin")
+    result = await pet.tools.call("locate_person", {})
+    assert result.is_error and "search_for_person first" in result.text
+    await show(pet, face())
+    result = await pet.tools.call("locate_person", {"name": "Robin"})
+    assert result.is_error and "can't see Robin" in result.text
+    result = await pet.tools.call("locate_person", {})
+    assert not result.is_error and result.text.startswith("They are about "), result.text
+
+
 # --- what the brain is told ----------------------------------------------------------
 
 async def test_senses_name_faces_by_the_pcs_recognition_not_the_heads_slots(pet):

@@ -802,6 +802,12 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   clock included; a "When I hear what is said" section is written from the
   config (`prompt.hearing_section`: the window, the known face in view, which
   mic).
+- **Where someone is, now:** asked "how far am I?", it made up "thirty to
+  fifty centimetres" (Robin was 1.5 m off): nothing measured it, and the
+  last-seen spot is only written when recognition names someone, at most
+  every 30 s. New tool `locate_person`: approach's look (tracking, a few
+  frames, the median) without driving; says the distance, the side, the
+  posture and the nearest place, and moves their last-seen spot.
 
 ### Step 8: later
 

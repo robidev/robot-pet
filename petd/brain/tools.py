@@ -328,7 +328,8 @@ def build_registry(pet: "App") -> ToolRegistry:
         expressions = pet.brain.expressions if pet.brain is not None else None
         owner = getattr(expressions, "owner", None)
         if owner is not None:
-            doing = {"approach": "coming over to someone", "search": "searching"}.get(owner, owner)
+            doing = {"approach": "coming over to someone", "search": "searching",
+                     "locate": "working out where someone is"}.get(owner, owner)
             raise ToolError(f"my head is busy: I'm {doing}. Wait for that to end, or stop it first.")
 
     @registry.tool(
@@ -360,6 +361,41 @@ def build_registry(pet: "App") -> ToolRegistry:
         # head had turned (2026-10-05).
         return (f"search for {whom} started. Nothing found yet, so don't say I found or recognised "
                 "anyone. When it ends I'm told what came of it.")
+
+    @registry.tool(
+        "locate_person",
+        "Work out where someone I can see is right now: my head turns to them and takes a few "
+        "looks, and I learn about how far away they are, which way, and near which place I know. "
+        "Use it whenever someone asks how far away they are or where they are, or when they have "
+        "moved and I need to know where they are now: I never guess a distance. With a name, that "
+        "person (recognised and in view); without, whoever is talking to me, or the only face I "
+        "see. Takes a couple of seconds and leaves my head following them. If I can't see them, "
+        "search_for_person first.",
+        {"type": "object",
+         "properties": {"name": {"type": "string",
+                                 "description": "Who to locate; leave out for whoever is talking to me"}},
+         "required": []})
+    async def locate_person(args: dict) -> str:
+        from ..behavior.approach import head_claim, look
+        face = require_face()
+        person = named_person(args)
+        if person is not None and person.id not in pet.people.present:
+            raise ToolError(f"I can't see {person.name} right now; search_for_person first")
+        if person is None and not face.presence.present:
+            raise ToolError("I can't see anyone right now; search_for_person first")
+        head_owner_check()
+        expressions = head_claim(pet)
+        if expressions is not None:
+            expressions.claim("locate")
+        try:
+            seen = await look(pet, person, on_map=False)
+        finally:
+            if expressions is not None:
+                expressions.release("locate")
+        who = person.name if person is not None else "they"
+        if seen is None:
+            raise ToolError(f"I lost sight of {'them' if person is None else who} while looking")
+        return _describe_location(pet, person, seen, who)
 
     @registry.tool(
         "track_faces",
@@ -810,6 +846,42 @@ def _search_help(fcfg) -> str:
             "and stops at that person. Use it when someone wants me to find them, or calls me and "
             "I can't see them. It returns at once; when it ends I'm told whom I found, and my head "
             "follows them.").format(sweep_s, fcfg.search_turn_deg, fcfg.search_body_turns)
+
+
+# Within this of a place I know, someone is "near" it.
+NEAR_PLACE_CM = 150
+
+
+def _describe_location(pet: "App", person, seen, who: str) -> str:
+    """
+    A located person in words: distance, side, posture, the nearest place.
+    It also moves their last-seen spot, which is otherwise written only when
+    recognition names them, at most every 30 s (2026-10-23).
+    """
+    side = ("straight ahead of me" if abs(seen.bearing_left_deg) < 5 else
+            f"{abs(seen.bearing_left_deg):.0f} degrees to my "
+            f"{'left' if seen.bearing_left_deg > 0 else 'right'}")
+    verb = "is" if person is not None else "are"
+    text = f"{who[0].upper() + who[1:]} {verb} about {seen.distance_m:.1f} m from me, {side}"
+    if seen.posture in pet.cfg.person.postures:
+        text += f"; {seen.posture}, by the look of it"
+    if seen.distance_m > 2:
+        text += ". From this far it's rough: half a metre either way"
+    if not seen.calibrated:
+        text += ". My camera isn't calibrated, so it's a guess"
+    spot = pet.frame.to_reference_now(*seen.xy) if seen.xy is not None and pet.frame else None
+    if spot is not None and pet.db is not None:
+        places = [(name, pet.db.place(name)) for name in pet.db.places()]
+        near = [(math.dist(spot, xy), name) for name, xy in places if xy is not None]
+        if near and min(near)[0] <= NEAR_PLACE_CM:
+            gap, name = min(near)
+            text += f". Near {name} ({gap / 100:.1f} m from it)"
+        whose = person or (pet.people.speaker() if pet.people is not None else None)
+        if whose is not None and pet.db.person(whose.id) is not None:
+            pet.db.set_last_seen_place(whose.id, *spot)
+    elif seen.xy is None:
+        text += ". I can't tell where I am, so not where that is on my map"
+    return text + "."
 
 
 def _clamp(value: Optional[float], low: float, high: float) -> Optional[float]:
