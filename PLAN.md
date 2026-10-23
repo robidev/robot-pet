@@ -882,6 +882,19 @@ the Jabra over Bluetooth (21:06); logs `runtime/logs/20261023-*`.
   Jabra; whether Silero misses quiet speech by its level alone (a
   normalised copy of the clips through the VAD would tell). The name's
   spellings above as wake words only after that.
+  **The servos are in the mic's ear too (Robin, listening to the clips):**
+  while the head moves (tracking) the gears come through as static, loud
+  against his voice. Even holding still they're heard: the firmware's
+  anti-sag pulse (`servo_refresh_ms` 300 every `servo_refresh_interval_ms`
+  10000) triggers the VAD, and Parakeet makes it "Yeah.": with nobody there
+  (22:43-22:49) five 0.4-0.56 s "Yeah."s began at xx:x6.8 s, 20-60 s apart;
+  20:45:10.8 and 20:45:20.8 the same, 10.0 s apart. Those clips carry
+  64-70% of their energy in 300-3400 Hz, so a voice band-pass wouldn't take
+  the gear noise out. Options: the mic off the head (on the body, away
+  from the servos, decoupled), the Jabra, or petd knowing when the servos
+  are driven (a flag in the audio packets from the firmware) to drop or
+  mark what overlaps; a still head while someone talks only once speech
+  detection isn't fooled by the servos themselves.
 
 - **The room mic and the TV, tried** (Step 6, built 2026-10-14): a few
   minutes' talk with the TV on and the Jabra as mic, counting the TV lines
