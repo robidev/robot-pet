@@ -102,7 +102,10 @@ class ClaudeCliBackend:
         (self.runtime_dir / "mcp.json").write_text(json.dumps(config, indent=2))
 
     def _env(self) -> dict:
-        env = {**os.environ, "PETD_API": self.api_url}
+        # No "<total_tokens>N tokens left</total_tokens>" note in every message:
+        # the model began copying it into its replies (2026-10-24, CLI 2.1.310).
+        # An internal switch, so tags.py still keeps any echo from being spoken.
+        env = {**os.environ, "PETD_API": self.api_url, "CLAUDE_CODE_TOTAL_TOKENS_REMINDER": "off"}
         if not self.cfg.thinking:
             env["MAX_THINKING_TOKENS"] = "0"      # the CLI's switch for extended thinking
         return env

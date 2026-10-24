@@ -10,6 +10,10 @@ def test_thinking_off_is_the_clis_own_switch():
     assert "MAX_THINKING_TOKENS" not in ClaudeCliBackend(cfg)._env()
 
 
+def test_no_tokens_left_note():
+    assert ClaudeCliBackend(Config())._env()["CLAUDE_CODE_TOTAL_TOKENS_REMINDER"] == "off"
+
+
 async def test_the_reply_the_cli_asks_for_after_a_silence_is_not_spoken():
     # Captured 2026-09-28 (CLI 2.1.283): the model said its line, called a
     # tool, then stayed silent; the CLI asked it for visible output, and it
