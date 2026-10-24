@@ -5,7 +5,8 @@ talking stream-json over stdin/stdout.
 Isolation matters here. The pet runs with its own cwd, no inherited
 settings or CLAUDE.md, no built-in tools (no Bash, no file access) and
 only the robot's MCP tools allowed, so the persona can't be talked into
-touching the machine petd runs on.
+touching the machine petd runs on. No auto-memory either: the developer's
+notes (SSH access and the like) reached the pet until 2026-10-24.
 
 Protocol (verified against CLI 2.1.278):
   in:  {"type":"user","message":{"role":"user","content":[{"type":"text","text":...}]}}
@@ -105,7 +106,10 @@ class ClaudeCliBackend:
         # No "<total_tokens>N tokens left</total_tokens>" note in every message:
         # the model began copying it into its replies (2026-10-24, CLI 2.1.310).
         # An internal switch, so tags.py still keeps any echo from being spoken.
-        env = {**os.environ, "PETD_API": self.api_url, "CLAUDE_CODE_TOTAL_TOKENS_REMINDER": "off"}
+        env = {**os.environ, "PETD_API": self.api_url, "CLAUDE_CODE_TOTAL_TOKENS_REMINDER": "off",
+               # runtime/brain is inside this repo, so the CLI loaded the developer's
+               # auto-memory into the pet; --setting-sources "" doesn't stop it.
+               "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"}
         if not self.cfg.thinking:
             env["MAX_THINKING_TOKENS"] = "0"      # the CLI's switch for extended thinking
         return env
